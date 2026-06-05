@@ -24,6 +24,7 @@ const sections = [
 ] as const;
 
 function titleFromPath(pathname: string) {
+  if (pathname === '/' || pathname.startsWith('/dashboard')) return 'Overview';
   if (pathname.startsWith('/safe-scan')) return 'Safe Scan';
   if (pathname.startsWith('/detection')) return 'Detection Engine';
   if (pathname.startsWith('/smart-money')) return 'Smart Money Engine';
@@ -44,7 +45,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <button className="icon-button mobile-only" type="button" onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
           <Menu size={21} />
         </button>
-        <Link className="brand-mark desktop-only" to="/safe-scan" aria-label="Atlaix Safe Scan">
+        <Link className="brand-mark desktop-only" to="/dashboard" aria-label="Atlaix overview">
           <span><img src="/logo.png" alt="" /></span>
           <strong>Atlaix</strong>
         </Link>
@@ -64,7 +65,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <button className="mobile-nav-scrim" type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation" />
           <aside>
             <div className="mobile-nav-head">
-              <Link to="/safe-scan" onClick={() => setMobileNavOpen(false)}><span><img src="/logo.png" alt="" /></span><strong>Atlaix</strong></Link>
+              <Link to="/dashboard" onClick={() => setMobileNavOpen(false)}><span><img src="/logo.png" alt="" /></span><strong>Atlaix</strong></Link>
               <button type="button" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation"><X size={21} /></button>
             </div>
             <NavList closeMobile={() => setMobileNavOpen(false)} />
