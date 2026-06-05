@@ -1564,6 +1564,68 @@ main {
   white-space: nowrap;
 }
 
+.overview-volume-card {
+  overflow: hidden;
+}
+
+.overview-volume-card .overview-pulse-main {
+  grid-column: 1 / -1;
+}
+
+.overview-volume-carousel {
+  display: flex;
+  min-width: 0;
+  min-height: 24px;
+  align-items: baseline;
+  gap: 9px;
+  animation: fade-in 320ms ease-out;
+}
+
+.overview-volume-carousel strong {
+  min-width: 0;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overview-volume-carousel b {
+  flex: 0 0 auto;
+  color: var(--primary-green);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.overview-volume-carousel span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 7px;
+  opacity: 0.45;
+}
+
+.overview-volume-carousel em,
+.overview-volume-carousel i {
+  color: var(--text-light);
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.overview-volume-carousel em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.overview-volume-carousel i {
+  color: var(--primary-green);
+  font-size: 12px;
+}
+
 .overview-search-wrap {
   position: relative;
   z-index: 24;
@@ -2264,6 +2326,20 @@ main {
 }
 
 @media (max-width: 760px) {
+  .overview-volume-carousel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 8px;
+  }
+
+  .overview-volume-carousel strong {
+    max-width: none;
+  }
+
+  .overview-volume-carousel span {
+    grid-column: 1 / -1;
+  }
+
   .overview-search-wrap {
     grid-template-columns: minmax(0, 1fr) 48px;
     max-width: none;
