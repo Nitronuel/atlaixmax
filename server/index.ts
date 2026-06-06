@@ -3,6 +3,7 @@ import { loadEnvFile, readEnv } from './env';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
 import { OverviewRoutes } from './overview/routes';
+import { WalletRoutes } from './wallet/routes';
 
 loadEnvFile('.env');
 loadEnvFile('.env.local', true);
@@ -11,6 +12,7 @@ const port = Number(readEnv('API_PORT', 'PORT') || 3101);
 const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
 const insightXRoutes = new InsightXRoutes();
 const overviewRoutes = new OverviewRoutes();
+const walletRoutes = new WalletRoutes();
 
 const server = createServer(async (request, response) => {
   setBaseHeaders(response);
@@ -34,6 +36,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/overview')) {
       await overviewRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/wallet')) {
+      await walletRoutes.handle(request, response, requestUrl);
       return;
     }
 
