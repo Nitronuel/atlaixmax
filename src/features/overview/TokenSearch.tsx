@@ -4,6 +4,8 @@ import type { OverviewToken } from '../../shared/overview';
 import { formatPercentValue, formatPrice, formatUsd, openToken, tokenSearchText } from './overview-utils';
 import { OverviewService } from './overview-service';
 
+const SEARCH_MENU_LIMIT = 40;
+
 export function TokenSearch({ tokens, query, onQueryChange }: {
   tokens: OverviewToken[];
   query: string;
@@ -15,7 +17,7 @@ export function TokenSearch({ tokens, query, onQueryChange }: {
   const localSuggestions = trimmed
     ? tokens.filter((token) => tokenSearchText(token).includes(trimmed)).slice(0, 6)
     : [];
-  const suggestions = [...localSuggestions, ...remoteSuggestions.filter((remote) => !localSuggestions.some((local) => local.id === remote.id))].slice(0, 8);
+  const suggestions = [...localSuggestions, ...remoteSuggestions.filter((remote) => !localSuggestions.some((local) => local.id === remote.id))].slice(0, SEARCH_MENU_LIMIT);
 
   useEffect(() => {
     if (query.trim().length < 2) {

@@ -161,8 +161,8 @@ input:disabled {
 }
 
 .dark-preview .theme-segment button.active {
-  background: #2a2e33;
-  color: var(--text-light);
+  background: var(--primary-green);
+  color: #ffffff;
 }
 
 .dark-preview .brand-mark span,
@@ -298,8 +298,8 @@ input:disabled {
 }
 
 .theme-segment button.active {
-  background: var(--text-light);
-  color: var(--bg-card-solid);
+  background: var(--primary-green);
+  color: #ffffff;
 }
 
 .icon-button,
@@ -1820,7 +1820,9 @@ main {
   top: calc(100% + 8px);
   left: 0;
   right: 62px;
-  overflow: hidden;
+  max-height: min(520px, 62vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border-color);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.96);
@@ -2087,14 +2089,61 @@ main {
   color: var(--text-light);
 }
 
-.overview-column-head th button span,
-.overview-table-wrap th button span {
+.overview-sort-glyph {
+  position: relative;
+  display: inline-grid;
+  width: 9px;
+  height: 14px;
+  flex: 0 0 auto;
   margin-left: auto;
-  color: var(--text-dark);
-  font-size: 11px;
 }
 
-.overview-column-head th.metric-col button span {
+.overview-sort-glyph i {
+  position: absolute;
+  left: 1px;
+  width: 0;
+  height: 0;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+
+.overview-sort-glyph i:first-child {
+  top: 1px;
+  border-bottom: 5px solid #a8b3c3;
+}
+
+.overview-sort-glyph i:last-child {
+  bottom: 1px;
+  border-top: 5px solid #a8b3c3;
+}
+
+.overview-sort-glyph.is-asc i:first-child {
+  border-bottom-color: var(--text-light);
+}
+
+.overview-sort-glyph.is-asc i:last-child {
+  border-top-color: #cfd6df;
+}
+
+.overview-sort-glyph.is-desc i:first-child {
+  border-bottom-color: #cfd6df;
+}
+
+.overview-sort-glyph.is-desc i:last-child {
+  border-top-color: var(--text-light);
+}
+
+.overview-column-head th button > svg,
+.overview-table-wrap th button > svg {
+  flex: 0 0 auto;
+}
+
+.overview-column-head th button > svg + .overview-sort-glyph,
+.overview-table-wrap th button > svg + .overview-sort-glyph {
+  margin-left: auto;
+}
+
+.overview-column-head th.metric-col button .overview-sort-glyph {
   margin-left: 4px;
 }
 
@@ -2482,7 +2531,9 @@ main {
 }
 
 .token-chart-panel {
+  display: flex;
   min-width: 0;
+  flex-direction: column;
   padding: 14px;
 }
 
@@ -2494,6 +2545,9 @@ main {
 
 .token-chart-frame {
   position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   height: min(58vh, 560px);
   min-height: 420px;
   overflow: hidden;
@@ -2502,7 +2556,15 @@ main {
   background: var(--bg-main);
 }
 
-.token-chart-frame iframe,
+.token-chart-frame iframe {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--bg-main);
+}
+
 .token-chart-modal iframe {
   width: 100%;
   height: 100%;
@@ -2528,7 +2590,8 @@ main {
 }
 
 .token-chart-empty {
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .token-chart-actions {
@@ -2538,7 +2601,7 @@ main {
   left: 0;
   z-index: 2;
   display: flex;
-  min-height: 56px;
+  min-height: 96px;
   align-items: center;
   justify-content: center;
   border-top: 1px solid var(--border-color);

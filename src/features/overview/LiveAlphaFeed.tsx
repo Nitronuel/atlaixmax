@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Info, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { OverviewToken } from '../../shared/overview';
 import {
@@ -40,19 +40,31 @@ function ColGroup() {
   );
 }
 
+function SortGlyph({ direction }: { direction?: 'asc' | 'desc' }) {
+  return (
+    <span className={['overview-sort-glyph', direction ? `is-${direction}` : ''].filter(Boolean).join(' ')} aria-hidden="true">
+      <i />
+      <i />
+    </span>
+  );
+}
+
 function HeaderRow({ sortConfig, onSort }: { sortConfig: SortConfig; onSort: (key: OverviewSortKey) => void }) {
   return (
     <tr>
       {columns.map((column) => {
         const active = sortConfig?.key === column.key;
+        const direction = active ? sortConfig?.direction : undefined;
         return (
-          <th key={column.key} className={[column.className || '', column.align === 'right' ? 'metric-col' : ''].filter(Boolean).join(' ')}>
+          <th
+            key={column.key}
+            className={[column.className || '', column.align === 'right' ? 'metric-col' : ''].filter(Boolean).join(' ')}
+            aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+          >
             <button type="button" onClick={() => onSort(column.key)} className={active ? 'active' : ''}>
               {['Price', 'MCap', 'DEX Volume', 'Liquidity', 'DEX Buys', 'DEX Sells'].includes(column.label) ? <Info size={12} /> : null}
               {column.label}
-              <span aria-hidden="true">
-                {active ? (sortConfig?.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} />}
-              </span>
+              <SortGlyph direction={direction} />
             </button>
           </th>
         );

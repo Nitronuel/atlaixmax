@@ -74,6 +74,8 @@ const DISCOVERY_MIN_TXNS_24H = 25;
 const FEED_MIN_SCORE = 32;
 const SUPABASE_TIMEOUT_MS = 30_000;
 const DEXSCREENER_SEARCH_CONCURRENCY = 5;
+const SEARCH_RESULT_LIMIT = 50;
+const TOKEN_DETAILS_CACHE_TTL_MS = 90 * 1000;
 const NORMAL_DISCOVERY_SEARCHES_PER_SCAN = 100;
 const FORCE_DISCOVERY_SEARCHES_PER_SCAN = 120;
 const DEXSCREENER_SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -102,6 +104,8 @@ const TARGET_QUERIES = [
 let shuffledDiscoveryQueries = shuffleValues(TARGET_QUERIES);
 const dexSearchCache = new Map<string, { expiresAt: number; pairs: DexPair[] }>();
 const dexInflightSearches = new Map<string, Promise<DexPair[]>>();
+const tokenDetailsCache = new Map<string, { expiresAt: number; response: OverviewTokenDetailsResponse }>();
+const tokenDetailsInflight = new Map<string, Promise<OverviewTokenDetailsResponse>>();
 
 export type OverviewIngestionResponse = {
   generatedAt: string;
@@ -534,6 +538,10 @@ function tokenKey(token: OverviewToken) {
   return `${token.chain}:${token.address || token.pairAddress}`.toLowerCase();
 }
 
+function searchTokenKey(token: OverviewToken) {
+  return `${token.chain}:${token.pairAddress || token.address}`.toLowerCase();
+}
+
 function mapRow(row: DiscoveredTokenRow): OverviewToken | null {
   const raw = row.raw_data || {};
   const address = (raw.address || row.address || '').trim();
@@ -593,6 +601,45 @@ function mapRow(row: DiscoveredTokenRow): OverviewToken | null {
     dexFlowUsd24h,
     event: normalizeEvent(raw.signal),
     pairCreatedAt: Number.isFinite(raw.createdTimestamp) ? Number(raw.createdTimestamp) : null
+  };
+}
+
+function mapDexPairToSearchToken(pair: DexPair): OverviewToken | null {
+  const address = pair.baseToken?.address?.trim();
+  const pairAddress = pair.pairAddress?.trim();
+  const symbol = pair.baseToken?.symbol?.trim();
+  const name = (pair.baseToken?.name || symbol || '').trim();
+  const chain = getChainId(pair.chainId);
+
+  if (!address || !pairAddress || !symbol || !name || !chain) return null;
+
+  const volume24hUsd = Number(pair.volume?.h24 || 0);
+  const dexBuys24h = Math.max(0, Math.trunc(Number(pair.txns?.h24?.buys || 0)));
+  const dexSells24h = Math.max(0, Math.trunc(Number(pair.txns?.h24?.sells || 0)));
+  const buyVolume24h = Number(pair.volume?.h24Buy ?? pair.volume?.buy ?? pair.volume?.buys ?? 0);
+  const sellVolume24h = Number(pair.volume?.h24Sell ?? pair.volume?.sell ?? pair.volume?.sells ?? 0);
+
+  return {
+    id: `${chain}:${pairAddress}`.toLowerCase(),
+    chain,
+    dex: pair.dexId || 'dex',
+    name,
+    symbol,
+    address,
+    pairAddress,
+    url: pair.url || '',
+    logo: pair.info?.imageUrl,
+    priceUsd: Number.isFinite(Number(pair.priceUsd)) ? Number(pair.priceUsd) : null,
+    change24h: Number.isFinite(Number(pair.priceChange?.h24)) ? Number(pair.priceChange?.h24) : null,
+    marketCapUsd: Number(pair.marketCap || pair.fdv || 0) || null,
+    volume24hUsd,
+    liquidityUsd: Number(pair.liquidity?.usd || 0),
+    dexBuys24h,
+    dexSells24h,
+    dexFlow24h: dexBuys24h - dexSells24h,
+    dexFlowUsd24h: buyVolume24h || sellVolume24h ? buyVolume24h - sellVolume24h : 0,
+    event: normalizeEvent(undefined),
+    pairCreatedAt: pair.pairCreatedAt || null
   };
 }
 
@@ -866,26 +913,47 @@ export async function getOverviewTokenDetails(address: string, chain: string, pr
   if (!tokenAddress) throw new Error('Token address is required.');
   if (!chainId) throw new Error('Token chain is required.');
 
-  const pairs = await fetchDexScreenerTokenPairs(chainId, tokenAddress);
-  const pair = pickBestPair(pairs, tokenAddress, preferredPairAddress);
-  if (!pair) {
-    const fallbackToken = await findFallbackTokenDetails(tokenAddress, chainId, preferredPairAddress);
-    if (!fallbackToken) throw new Error('Token details were not found on DexScreener.');
-    const fallbackPair = mapTokenToFallbackPair(fallbackToken);
-    return {
-      generatedAt: new Date().toISOString(),
-      pair: fallbackPair,
-      pairs: [fallbackPair],
-      poolCount: 1
-    };
-  }
+  const cacheKey = `${chainId}:${tokenAddress.toLowerCase()}:${preferredPairAddress.trim().toLowerCase()}`;
+  const cached = tokenDetailsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.response;
 
-  return {
-    generatedAt: new Date().toISOString(),
-    pair,
-    pairs,
-    poolCount: pairs.length
-  };
+  const inflight = tokenDetailsInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const request = (async () => {
+    const pairs = await fetchDexScreenerTokenPairs(chainId, tokenAddress);
+    const pair = pickBestPair(pairs, tokenAddress, preferredPairAddress);
+    let response: OverviewTokenDetailsResponse;
+    if (!pair) {
+      const fallbackToken = await findFallbackTokenDetails(tokenAddress, chainId, preferredPairAddress);
+      if (!fallbackToken) throw new Error('Token details were not found on DexScreener.');
+      const fallbackPair = mapTokenToFallbackPair(fallbackToken);
+      response = {
+        generatedAt: new Date().toISOString(),
+        pair: fallbackPair,
+        pairs: [fallbackPair],
+        poolCount: 1
+      };
+    } else {
+      response = {
+        generatedAt: new Date().toISOString(),
+        pair,
+        pairs,
+        poolCount: pairs.length
+      };
+    }
+
+    tokenDetailsCache.set(cacheKey, {
+      expiresAt: Date.now() + TOKEN_DETAILS_CACHE_TTL_MS,
+      response
+    });
+    return response;
+  })().finally(() => {
+    tokenDetailsInflight.delete(cacheKey);
+  });
+
+  tokenDetailsInflight.set(cacheKey, request);
+  return request;
 }
 
 function transformPair(pair: DexPair): MarketCoinRow | null {
@@ -1112,9 +1180,26 @@ export async function searchOverviewTokens(query: string) {
   const cached = searchCache.get(normalized);
   if (cached && cached.expiresAt > Date.now()) return cached.tokens;
 
-  const tokens = (await getOverviewFeed()).tokens
+  const localTokens = (await getOverviewFeed()).tokens
     .filter((token) => `${token.symbol} ${token.name} ${token.chain} ${token.address} ${token.pairAddress}`.toLowerCase().includes(normalized))
-    .slice(0, 12);
+    .slice(0, SEARCH_RESULT_LIMIT);
+  const remoteTokens = (await searchDexScreener(query))
+    .map(mapDexPairToSearchToken)
+    .filter((token): token is OverviewToken => Boolean(token));
+  const byKey = new Map<string, OverviewToken>();
+
+  [...localTokens, ...remoteTokens].forEach((token) => {
+    const key = searchTokenKey(token);
+    if (!byKey.has(key)) byKey.set(key, token);
+  });
+
+  const tokens = [...byKey.values()]
+    .sort((left, right) => {
+      const rightScore = Number(right.liquidityUsd || 0) * 0.45 + Number(right.volume24hUsd || 0) * 0.55;
+      const leftScore = Number(left.liquidityUsd || 0) * 0.45 + Number(left.volume24hUsd || 0) * 0.55;
+      return rightScore - leftScore;
+    })
+    .slice(0, SEARCH_RESULT_LIMIT);
   searchCache.set(normalized, { expiresAt: Date.now() + CACHE_TTL_MS, tokens });
   return tokens;
 }

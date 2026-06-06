@@ -12,7 +12,8 @@ import {
   ScannerResponseSchema,
   SnipersResponseSchema
 } from '../../src/shared/insightx-schema';
-import { InsightXClient, INSIGHTX_LABEL_CACHE_TTL_MS } from './client';
+import { InsightXClient, INSIGHTX_DEFAULT_CACHE_TTL_MS, INSIGHTX_LABEL_CACHE_TTL_MS } from './client';
+import { TtlCache } from './cache';
 import { validateInsightXRequest } from './validation';
 
 type ReportEndpointKey = keyof SafeScanReport['endpoints'];
@@ -87,10 +88,29 @@ function endpointPath(key: Exclude<ReportEndpointKey, 'labels'>, network: string
 }
 
 export class InsightXReportService {
+  private readonly reportCache = new TtlCache();
+  private readonly reportInflight = new Map<string, Promise<SafeScanReport>>();
+
   constructor(private readonly client: InsightXClient) {}
 
   async buildReport(network: InsightXNetwork, address: string): Promise<SafeScanReport> {
     validateInsightXRequest(network, address);
+    const reportCacheKey = `report:${network}:${address.toLowerCase()}`;
+    const cached = this.reportCache.get(reportCacheKey);
+    if (cached) return cached.value as SafeScanReport;
+
+    const inflight = this.reportInflight.get(reportCacheKey);
+    if (inflight) return inflight;
+
+    const request = this.fetchReport(network, address, reportCacheKey)
+      .finally(() => {
+        this.reportInflight.delete(reportCacheKey);
+      });
+    this.reportInflight.set(reportCacheKey, request);
+    return request;
+  }
+
+  private async fetchReport(network: InsightXNetwork, address: string, reportCacheKey: string): Promise<SafeScanReport> {
     const encodedNetwork = encodeURIComponent(network);
     const encodedAddress = encodeURIComponent(address);
     const cacheBase = `${network}:${address.toLowerCase()}`;
@@ -128,7 +148,7 @@ export class InsightXReportService {
       ttlMs: INSIGHTX_LABEL_CACHE_TTL_MS
     });
 
-    return {
+    const report: SafeScanReport = {
       network,
       address,
       generatedAt: new Date().toISOString(),
@@ -145,6 +165,9 @@ export class InsightXReportService {
         labels: endpoints.labels
       }
     };
+
+    this.reportCache.set(reportCacheKey, report, INSIGHTX_DEFAULT_CACHE_TTL_MS, report.generatedAt);
+    return report;
   }
 
 }
