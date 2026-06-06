@@ -1,5 +1,5 @@
 import { Activity, Bell, LayoutDashboard, LogIn, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 
 const navItems = [
@@ -25,6 +25,7 @@ const sections = [
 
 function titleFromPath(pathname: string) {
   if (pathname === '/' || pathname.startsWith('/dashboard')) return 'Overview';
+  if (pathname.startsWith('/token')) return 'Token Details';
   if (pathname.startsWith('/safe-scan')) return 'Safe Scan';
   if (pathname.startsWith('/detection')) return 'Detection Engine';
   if (pathname.startsWith('/smart-money')) return 'Smart Money Engine';
@@ -33,11 +34,24 @@ function titleFromPath(pathname: string) {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem('atlaix-theme-preview') === 'dark';
+  });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [navPinned, setNavPinned] = useState(false);
   const location = useLocation();
   const pageTitle = titleFromPath(location.pathname);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
+      document.documentElement.dataset.atlaixTheme = darkMode ? 'dark' : 'light';
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('atlaix-theme-preview', darkMode ? 'dark' : 'light');
+    }
+  }, [darkMode]);
 
   return (
     <div className={`app-shell ${darkMode ? 'dark-preview' : ''}`}>
@@ -51,9 +65,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
         <h1>{pageTitle}</h1>
         <div className="topbar-actions">
-          <button className="appearance-button" type="button" onClick={() => setDarkMode((current) => !current)} aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {darkMode ? <Moon size={18} /> : <Sun size={19} />}
-          </button>
+          <div className="theme-segment" role="group" aria-label="Choose appearance">
+            <button className={!darkMode ? 'active' : ''} type="button" onClick={() => setDarkMode(false)} aria-label="Switch to light mode" aria-pressed={!darkMode} title="Light mode">
+              <Sun size={17} />
+            </button>
+            <button className={darkMode ? 'active' : ''} type="button" onClick={() => setDarkMode(true)} aria-label="Switch to dark mode" aria-pressed={darkMode} title="Dark mode">
+              <Moon size={17} />
+            </button>
+          </div>
           <button className="profile-button" type="button" aria-label="Open user menu">
             <User size={18} />
           </button>

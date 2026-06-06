@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './app/Layout';
 import { OverviewPage } from './features/overview/OverviewPage';
 import { SafeScanPage } from './features/safe-scan/SafeScanPage';
+import { TokenDetailsPage } from './features/token-details/TokenDetailsPage';
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<OverviewPage />} />
+        <Route path="/token/:address" element={<TokenDetailsPage />} />
         <Route path="/safe-scan" element={<SafeScanPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

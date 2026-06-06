@@ -162,7 +162,7 @@ export function LiveAlphaFeed({
       <div className="overview-feed-head" ref={headRef}>
         <div>
           <h2>Live Alpha Feed <span>Live</span></h2>
-          <p>{error || `Showing ${pageRows.length} of ${limited.length} tokens`}</p>
+          <p>{error && !tokens.length ? error : `Showing ${pageRows.length} of ${limited.length} tokens`}</p>
         </div>
         <div>
           <button type="button" className="overview-icon-action" onClick={onRefresh} aria-label="Refresh feed">

@@ -133,13 +133,9 @@ export function visibleLimit(filters: OverviewFilters, total: number) {
 }
 
 export function openToken(token: OverviewToken) {
-  const chain = token.chain.toLowerCase();
-  const insightXChain = chain.includes('solana') ? 'sol' : chain.includes('ethereum') ? 'eth' : chain.includes('base') ? 'base' : chain.includes('bnb') ? 'bsc' : '';
-  if (insightXChain) {
-    window.location.href = `/safe-scan?chain=${encodeURIComponent(insightXChain)}&address=${encodeURIComponent(token.address)}&autoScan=1`;
-    return;
-  }
-  if (token.url) window.open(token.url, '_blank', 'noopener,noreferrer');
+  const params = new URLSearchParams({ chain: token.chain });
+  if (token.pairAddress) params.set('pair', token.pairAddress);
+  window.location.href = `/token/${encodeURIComponent(token.address)}?${params.toString()}`;
 }
 
 export function activeFilterCount(filters: OverviewFilters) {
