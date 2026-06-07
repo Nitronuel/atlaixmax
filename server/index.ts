@@ -1,4 +1,8 @@
 import { createServer } from 'node:http';
+import type { ServerResponse } from 'node:http';
+import { createReadStream, existsSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { extname, join, resolve, sep } from 'node:path';
 import { loadEnvFile, readEnv } from './env';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
@@ -13,10 +17,66 @@ const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
 const insightXRoutes = new InsightXRoutes();
 const overviewRoutes = new OverviewRoutes();
 const walletRoutes = new WalletRoutes();
+const clientRoot = resolve(process.cwd(), 'dist');
+
+const contentTypes: Record<string, string> = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp'
+};
+
+function isInsideClientRoot(filepath: string) {
+  return filepath === clientRoot || filepath.startsWith(`${clientRoot}${sep}`);
+}
+
+async function sendFile(response: ServerResponse, filepath: string, method: string) {
+  const fileStat = await stat(filepath);
+  if (!fileStat.isFile()) {
+    sendNotFound(response);
+    return;
+  }
+
+  response.writeHead(200, {
+    'Content-Length': fileStat.size,
+    'Content-Type': contentTypes[extname(filepath)] || 'application/octet-stream'
+  });
+  if (method === 'HEAD') {
+    response.end();
+    return;
+  }
+  createReadStream(filepath).pipe(response);
+}
+
+async function serveClient(requestPath: string, response: ServerResponse, method: string) {
+  if (!existsSync(clientRoot)) {
+    sendNotFound(response);
+    return;
+  }
+
+  const pathname = decodeURIComponent(requestPath);
+  const requestedPath = resolve(clientRoot, pathname.replace(/^\/+/, ''));
+  if (!isInsideClientRoot(requestedPath)) {
+    sendNotFound(response);
+    return;
+  }
+
+  if (existsSync(requestedPath)) {
+    await sendFile(response, requestedPath, method);
+    return;
+  }
+
+  await sendFile(response, join(clientRoot, 'index.html'), method);
+}
 
 const server = createServer(async (request, response) => {
   setBaseHeaders(response);
-  if ((request.method || 'GET').toUpperCase() === 'OPTIONS') {
+  const method = (request.method || 'GET').toUpperCase();
+  if (method === 'OPTIONS') {
     response.writeHead(204);
     response.end();
     return;
@@ -41,6 +101,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/wallet')) {
       await walletRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (method === 'GET' || method === 'HEAD') {
+      await serveClient(requestUrl.pathname, response, method);
       return;
     }
 
