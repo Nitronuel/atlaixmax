@@ -34,6 +34,12 @@ function writeCachedFeed(feed: CachedOverviewFeed) {
   }
 }
 
+function applyFeed(response: CachedOverviewFeed, setTokens: (tokens: OverviewToken[]) => void, setLastUpdated: (date: Date) => void) {
+  setTokens(response.tokens);
+  setLastUpdated(new Date(response.generatedAt));
+  writeCachedFeed({ generatedAt: response.generatedAt, tokens: response.tokens });
+}
+
 export function OverviewPage() {
   const [tokens, setTokens] = useState<OverviewToken[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,9 +56,7 @@ export function OverviewPage() {
     setError(null);
     try {
       const response = await OverviewService.getFeed();
-      setTokens(response.tokens);
-      setLastUpdated(new Date(response.generatedAt));
-      writeCachedFeed({ generatedAt: response.generatedAt, tokens: response.tokens });
+      applyFeed(response, setTokens, setLastUpdated);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Live Alpha Feed is unavailable.');
     } finally {
@@ -66,9 +70,7 @@ export function OverviewPage() {
     setSyncing(true);
     try {
       const response = await OverviewService.ingest(force);
-      setTokens(response.tokens);
-      setLastUpdated(new Date(response.generatedAt));
-      writeCachedFeed({ generatedAt: response.generatedAt, tokens: response.tokens });
+      applyFeed(response, setTokens, setLastUpdated);
       setError(null);
     } catch (nextError) {
       setError(nextError instanceof Error ? `Sync failed: ${nextError.message}` : 'Live Alpha Feed sync failed.');
