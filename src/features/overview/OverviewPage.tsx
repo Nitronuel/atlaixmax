@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { OverviewToken } from '../../shared/overview';
 import { LiveAlphaFeed } from './LiveAlphaFeed';
 import { MarketPulse } from './MarketPulse';
@@ -7,7 +7,7 @@ import { OverviewService } from './overview-service';
 import { DEFAULT_OVERVIEW_FILTERS, type OverviewFilters } from './overview-utils';
 import { TokenSearch } from './TokenSearch';
 
-const SCAN_INTERVAL_MS = 60_000;
+const FEED_REFRESH_INTERVAL_MS = 60_000;
 const FEED_CACHE_KEY = 'atlaix:overview-feed';
 
 type CachedOverviewFeed = {
@@ -49,13 +49,12 @@ export function OverviewPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<OverviewFilters>(DEFAULT_OVERVIEW_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const scanningRef = useRef(false);
 
-  async function loadFeed(showLoading = true) {
+  async function loadFeed(showLoading = true, force = false) {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      const response = await OverviewService.getFeed();
+      const response = await OverviewService.getFeed(force);
       applyFeed(response, setTokens, setLastUpdated);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Live Alpha Feed is unavailable.');
@@ -64,19 +63,14 @@ export function OverviewPage() {
     }
   }
 
-  async function scanFeed(force = false) {
-    if (scanningRef.current) return;
-    scanningRef.current = true;
+  async function refreshFeed() {
     setSyncing(true);
     try {
-      const response = await OverviewService.ingest(force);
-      applyFeed(response, setTokens, setLastUpdated);
-      setError(null);
+      await loadFeed(false, true);
     } catch (nextError) {
-      setError(nextError instanceof Error ? `Sync failed: ${nextError.message}` : 'Live Alpha Feed sync failed.');
+      setError(nextError instanceof Error ? `Refresh failed: ${nextError.message}` : 'Live Alpha Feed refresh failed.');
     } finally {
       setSyncing(false);
-      scanningRef.current = false;
     }
   }
 
@@ -93,7 +87,7 @@ export function OverviewPage() {
 
     const interval = window.setInterval(() => {
       if (!document.hidden) void loadFeed(false);
-    }, SCAN_INTERVAL_MS);
+    }, FEED_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -109,7 +103,7 @@ export function OverviewPage() {
         searchQuery={searchQuery}
         filters={filters}
         onFiltersClick={() => setFiltersOpen(true)}
-        onRefresh={() => void scanFeed(true)}
+        onRefresh={() => void refreshFeed()}
       />
       <OverviewFiltersModal
         open={filtersOpen}

@@ -6,6 +6,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { loadEnvFile, readEnv } from './env';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
+import { startOverviewIngestionScheduler } from './overview/database';
 import { OverviewRoutes } from './overview/routes';
 import { SmartMoneyRoutes } from './smart-money/routes';
 import { WalletRoutes } from './wallet/routes';
@@ -125,5 +126,6 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
+  startOverviewIngestionScheduler();
   console.log(`Atlaix API listening on http://${host}:${port}`);
 });

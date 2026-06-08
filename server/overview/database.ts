@@ -76,6 +76,8 @@ const SUPABASE_TIMEOUT_MS = 30_000;
 const DEXSCREENER_SEARCH_CONCURRENCY = 5;
 const SEARCH_RESULT_LIMIT = 50;
 const TOKEN_DETAILS_CACHE_TTL_MS = 90 * 1000;
+const OVERVIEW_INGESTION_START_DELAY_MS = 10 * 1000;
+const OVERVIEW_INGESTION_INTERVAL_MS = 2 * 60 * 1000;
 const NORMAL_DISCOVERY_SEARCHES_PER_SCAN = 100;
 const FORCE_DISCOVERY_SEARCHES_PER_SCAN = 120;
 const DEXSCREENER_SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -88,6 +90,7 @@ let lastStalePurgeAt = 0;
 let lastIneligiblePurgeAt = 0;
 let currentDiscoveryQueryIndex = 0;
 let ingestionInFlight: Promise<OverviewIngestionResponse> | null = null;
+let ingestionSchedulerStarted = false;
 let dexRateLimitedUntil = 0;
 
 const TARGET_QUERIES = [
@@ -1171,6 +1174,22 @@ export async function getOverviewFeed(force = false): Promise<OverviewFeedRespon
     tokens = feedCache?.response.tokens || [];
   }
   return cacheOverviewFeed(tokens);
+}
+
+function runScheduledOverviewIngestion() {
+  void ingestOverviewTokens()
+    .then((response) => {
+      cacheOverviewFeed(response.tokens.slice(0, ACTIVE_FEED_LIMIT));
+    })
+    .catch(() => undefined);
+}
+
+export function startOverviewIngestionScheduler() {
+  if (ingestionSchedulerStarted) return;
+  ingestionSchedulerStarted = true;
+
+  setTimeout(runScheduledOverviewIngestion, OVERVIEW_INGESTION_START_DELAY_MS);
+  setInterval(runScheduledOverviewIngestion, OVERVIEW_INGESTION_INTERVAL_MS);
 }
 
 export async function searchOverviewTokens(query: string) {
