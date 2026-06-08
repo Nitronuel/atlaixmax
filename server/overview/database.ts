@@ -1,5 +1,6 @@
 import type { OverviewEvent, OverviewFeedResponse, OverviewToken } from '../../src/shared/overview';
 import { readEnv } from '../env';
+import { acquireSystemLock, releaseSystemLock } from '../locks';
 
 type MarketCoinRow = {
   address?: string;
@@ -78,6 +79,8 @@ const SEARCH_RESULT_LIMIT = 50;
 const TOKEN_DETAILS_CACHE_TTL_MS = 90 * 1000;
 const OVERVIEW_INGESTION_START_DELAY_MS = 10 * 1000;
 const OVERVIEW_INGESTION_INTERVAL_MS = 2 * 60 * 1000;
+const OVERVIEW_INGESTION_LOCK_NAME = 'overview_ingestion';
+const OVERVIEW_INGESTION_LOCK_TTL_SECONDS = 5 * 60;
 const NORMAL_DISCOVERY_SEARCHES_PER_SCAN = 100;
 const FORCE_DISCOVERY_SEARCHES_PER_SCAN = 120;
 const DEXSCREENER_SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -115,6 +118,7 @@ export type OverviewIngestionResponse = {
   scannedPairs: number;
   accepted: number;
   stored: number;
+  skipped?: boolean;
   tokens: OverviewToken[];
 };
 
@@ -1100,7 +1104,7 @@ function refreshOverviewFeedCache() {
     });
 }
 
-export async function ingestOverviewTokens(force = false): Promise<OverviewIngestionResponse> {
+async function runOverviewIngestion(force = false): Promise<OverviewIngestionResponse> {
   if (ingestionInFlight) return ingestionInFlight;
 
   ingestionInFlight = (async () => {
@@ -1160,6 +1164,29 @@ export async function ingestOverviewTokens(force = false): Promise<OverviewInges
   return ingestionInFlight;
 }
 
+export async function ingestOverviewTokens(force = false): Promise<OverviewIngestionResponse> {
+  if (ingestionInFlight) return ingestionInFlight;
+
+  const acquired = await acquireSystemLock(OVERVIEW_INGESTION_LOCK_NAME, OVERVIEW_INGESTION_LOCK_TTL_SECONDS);
+  if (!acquired) {
+    const tokens = (await loadDatabaseTokens().catch(() => feedCache?.response.tokens || [])).slice(0, ACTIVE_FEED_LIMIT);
+    return {
+      generatedAt: new Date().toISOString(),
+      scannedPairs: 0,
+      accepted: 0,
+      stored: 0,
+      skipped: true,
+      tokens
+    };
+  }
+
+  try {
+    return await runOverviewIngestion(force);
+  } finally {
+    await releaseSystemLock(OVERVIEW_INGESTION_LOCK_NAME).catch(() => undefined);
+  }
+}
+
 export async function getOverviewFeed(force = false): Promise<OverviewFeedResponse> {
   if (!force && feedCache && feedCache.expiresAt > Date.now()) return feedCache.response;
   if (!force && feedCache) {
@@ -1181,7 +1208,9 @@ function runScheduledOverviewIngestion() {
     .then((response) => {
       cacheOverviewFeed(response.tokens.slice(0, ACTIVE_FEED_LIMIT));
     })
-    .catch(() => undefined);
+    .catch((error) => {
+      console.warn('[OverviewIngestion] scheduled run failed.', error);
+    });
 }
 
 export function startOverviewIngestionScheduler() {
