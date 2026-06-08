@@ -7,6 +7,7 @@ import { loadEnvFile, readEnv } from './env';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
 import { OverviewRoutes } from './overview/routes';
+import { SmartMoneyRoutes } from './smart-money/routes';
 import { WalletRoutes } from './wallet/routes';
 
 loadEnvFile('.env');
@@ -16,6 +17,7 @@ const port = Number(readEnv('API_PORT', 'PORT') || 3101);
 const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
 const insightXRoutes = new InsightXRoutes();
 const overviewRoutes = new OverviewRoutes();
+const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
 const clientRoot = resolve(process.cwd(), 'dist');
 
@@ -96,6 +98,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/overview')) {
       await overviewRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/smart-money')) {
+      await smartMoneyRoutes.handle(request, response, requestUrl);
       return;
     }
 

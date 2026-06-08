@@ -20,15 +20,20 @@ function writeWallets(wallets: SavedWallet[]) {
 
 function normalizeWallet(wallet: Partial<SavedWallet> & { addr?: string }) {
   const addr = wallet.addr || '';
+  const qualification = wallet.qualification;
+  const categories = Array.isArray(wallet.categories)
+    ? wallet.categories.filter((category) => category !== 'Smart Money' || qualification?.qualified)
+    : [];
   return {
     addr,
     name: wallet.name?.trim() || walletNameFor(addr),
-    categories: Array.isArray(wallet.categories) ? wallet.categories : [],
+    categories,
     chain: wallet.chain || 'All Chains',
     timestamp: wallet.timestamp || Date.now(),
     lastBalance: wallet.lastBalance,
     lastWinRate: wallet.lastWinRate,
-    lastPnl: wallet.lastPnl
+    lastPnl: wallet.lastPnl,
+    qualification
   } satisfies SavedWallet;
 }
 
@@ -45,15 +50,20 @@ export const WalletStorage = {
     const wallets = readWallets();
     const index = wallets.findIndex((wallet) => wallet.addr.toLowerCase() === address.toLowerCase());
     const previous = index >= 0 ? wallets[index] : null;
+    const qualification = previous?.qualification;
+    const nextCategories = qualification?.qualified
+      ? Array.from(new Set([...categories, 'Smart Money' as const]))
+      : categories.filter((category) => category !== 'Smart Money');
     const next: SavedWallet = {
       addr: address,
       name: name.trim() || walletNameFor(address),
-      categories,
+      categories: nextCategories,
       chain,
       timestamp: previous?.timestamp || Date.now(),
       lastBalance: previous?.lastBalance,
       lastWinRate: previous?.lastWinRate,
-      lastPnl: previous?.lastPnl
+      lastPnl: previous?.lastPnl,
+      qualification
     };
 
     if (index >= 0) {
@@ -72,15 +82,20 @@ export const WalletStorage = {
     return WalletStorage.save(address, walletNameFor(address), [], chain);
   },
 
-  updateStats(address: string, stats: { balance: string; winRate: string; pnl: string }) {
+  updateStats(address: string, stats: { balance: string; winRate: string; pnl: string; qualification?: SavedWallet['qualification'] }) {
     const wallets = readWallets();
     const index = wallets.findIndex((wallet) => wallet.addr.toLowerCase() === address.toLowerCase());
     if (index < 0) return;
+    const qualification = stats.qualification;
+    const baseCategories = wallets[index].categories.filter((category) => category !== 'Smart Money');
+    const categories = qualification?.qualified ? [...baseCategories, 'Smart Money' as const] : baseCategories;
     wallets[index] = {
       ...wallets[index],
+      categories,
       lastBalance: stats.balance,
       lastWinRate: stats.winRate,
-      lastPnl: stats.pnl
+      lastPnl: stats.pnl,
+      qualification
     };
     writeWallets(wallets);
   },

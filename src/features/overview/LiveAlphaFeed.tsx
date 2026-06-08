@@ -19,7 +19,6 @@ import {
 const PAGE_SIZE = 24;
 const columns: Array<{ label: string; key: OverviewSortKey; className?: string; width: number; align?: 'right' }> = [
   { label: 'Chain Token', key: 'symbol', className: 'token-col', width: 230 },
-  { label: 'Event', key: 'event', width: 180 },
   { label: 'Price', key: 'priceUsd', width: 122, align: 'right' },
   { label: 'Chg 24h', key: 'change24h', width: 116, align: 'right' },
   { label: 'MCap', key: 'marketCapUsd', width: 132, align: 'right' },
@@ -27,7 +26,8 @@ const columns: Array<{ label: string; key: OverviewSortKey; className?: string; 
   { label: 'Liquidity', key: 'liquidityUsd', width: 136, align: 'right' },
   { label: 'DEX Buys', key: 'dexBuys24h', width: 116, align: 'right' },
   { label: 'DEX Sells', key: 'dexSells24h', width: 116, align: 'right' },
-  { label: 'DEX Flow', key: 'dexFlow24h', width: 150, align: 'right' }
+  { label: 'DEX Flow', key: 'dexFlow24h', width: 150, align: 'right' },
+  { label: 'Event', key: 'event', width: 180 }
 ];
 
 function ColGroup() {
@@ -219,7 +219,6 @@ export function LiveAlphaFeed({
                       <small>{token.chain} / {token.name}</small>
                     </span>
                   </td>
-                  <td><span className="overview-event-pill">{token.event}</span></td>
                   <td className="metric-col">{formatPrice(token.priceUsd)}</td>
                   <td className={`metric-col ${signedClass(Number(token.change24h))}`}>{formatPercentValue(token.change24h)}</td>
                   <td className="metric-col">{formatUsd(token.marketCapUsd)}</td>
@@ -228,6 +227,7 @@ export function LiveAlphaFeed({
                   <td className="metric-col positive">{formatInteger(token.dexBuys24h)}</td>
                   <td className="metric-col negative">{formatInteger(token.dexSells24h)}</td>
                   <td className={`metric-col ${signedClass(token.dexFlow24h)}`}><FlowBar value={token.dexFlow24h} max={maxFlow} /></td>
+                  <td><span className="overview-event-pill">{token.event}</span></td>
                 </tr>
               ))}
             </tbody>

@@ -28,9 +28,14 @@ function titleFromPath(pathname: string) {
   if (pathname.startsWith('/token')) return 'Token Details';
   if (pathname.startsWith('/safe-scan')) return 'Safe Scan';
   if (pathname.startsWith('/detection')) return 'Detection Engine';
+  if (pathname.startsWith('/sentiment')) return 'Narrative Intelligence';
   if (pathname.startsWith('/smart-money')) return 'Smart Money Engine';
+  if (pathname.startsWith('/heatmap')) return 'Token Heatmap';
   if (pathname.startsWith('/wallet')) return 'Wallet Tracker';
-  return 'Overview';
+  if (pathname.startsWith('/smart-alerts')) return 'Smart Alerts';
+  if (pathname.startsWith('/ai-assistant')) return 'AI Assistant';
+  if (pathname.startsWith('/settings')) return 'Settings';
+  return 'Page not found';
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {

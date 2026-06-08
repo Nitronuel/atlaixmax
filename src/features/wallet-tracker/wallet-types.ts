@@ -15,6 +15,21 @@ export type SavedWallet = {
   lastBalance?: string;
   lastWinRate?: string;
   lastPnl?: string;
+  qualification?: SmartMoneyQualification;
+};
+
+export type SmartMoneyQualification = {
+  score: number;
+  qualified: boolean;
+  reasons: string[];
+  evaluatedAt: number;
+  metrics: {
+    netWorthUsd: number;
+    winRate: number;
+    pnlPercent: number;
+    activePositions: number;
+    profitablePositions: number;
+  };
 };
 
 export type WalletAsset = {

@@ -1,11 +1,13 @@
 import { ArrowLeft, Check, CheckCircle, ChevronDown, Clock, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { SmartMoneyService } from '../smart-money/smart-money-service';
 import type { SavedWallet, WalletCategory, WalletChain, WalletTimeFilter } from './wallet-types';
 import { useWalletPortfolio } from './useWalletPortfolio';
 import { WalletStorage } from './wallet-storage';
 import {
   formatTimeHeld,
+  evaluateSmartMoney,
   getDefaultChain,
   isChainCompatible,
   normalizeWalletChain,
@@ -190,11 +192,19 @@ function WalletProfile({ address }: { address: string }) {
 
   useEffect(() => {
     if (!validation.isValid || portfolioState.loading) return;
+    const qualification = evaluateSmartMoney(portfolioState.stats);
     WalletStorage.updateStats(address, {
       balance: portfolioState.stats.netWorth,
       winRate: portfolioState.stats.winRate,
-      pnl: portfolioState.stats.totalPnl
+      pnl: portfolioState.stats.totalPnl,
+      qualification
     });
+    if (qualification.qualified) {
+      const wallet = WalletStorage.get(address);
+      if (wallet) {
+        SmartMoneyService.promoteWallet(wallet).catch(() => undefined);
+      }
+    }
   }, [address, portfolioState.loading, portfolioState.stats, validation.isValid]);
 
   function saveProfile() {
