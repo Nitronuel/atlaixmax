@@ -6788,22 +6788,6 @@ main {
   background: radial-gradient(ellipse 32% 24% at 52% 44%, rgba(63, 163, 77, 0.05), transparent 72%), var(--bg-main);
 }
 
-.ai-assistant-page .ai-assistant-rail {
-  background: linear-gradient(90deg, rgba(63, 163, 77, 0.06), transparent 82%), var(--bg-card-solid);
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.38);
-}
-
-.ai-assistant-page .ai-assistant-rail:hover,
-.ai-assistant-page .ai-assistant-rail:focus-within {
-  width: 292px;
-  box-shadow: 18px 0 48px rgba(93, 112, 145, 0.2);
-}
-
-.ai-assistant-page .ai-assistant-rail:hover .opacity-0,
-.ai-assistant-page .ai-assistant-rail:focus-within .opacity-0 {
-  opacity: 1;
-}
-
 .ai-assistant-page .ai-assistant-textarea,
 .global-ai-assistant textarea {
   color: var(--text-light);
@@ -6859,8 +6843,6 @@ main {
   background: radial-gradient(ellipse 32% 24% at 52% 44%, rgba(38, 211, 86, 0.035), transparent 72%), #111315;
 }
 
-.app-shell.dark-preview .ai-assistant-rail,
-.app-shell.dark-preview .ai-assistant-mobile-header,
 .app-shell.dark-preview .ai-assistant-page .bg-card\/90,
 .app-shell.dark-preview .global-ai-assistant .bg-card,
 .app-shell.dark-preview .global-ai-assistant .bg-white\/88 {
@@ -6898,5 +6880,222 @@ main {
 @media (max-width: 1023px) {
   .ai-assistant-page {
     height: calc(100dvh - 112px);
+  }
+}
+
+.ai-assistant-page,
+.global-ai-assistant {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-light);
+}
+
+.ai-assistant-page {
+  border-radius: 8px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-subtle);
+  backdrop-filter: blur(18px);
+}
+
+.ai-assistant-page .ai-assistant-stage {
+  background: var(--bg-main);
+}
+
+.ai-assistant-page .ai-assistant-chat-column {
+  max-width: min(1280px, 100%);
+}
+
+.ai-assistant-page .bg-card\/90,
+.ai-assistant-page .bg-card\/95 {
+  background: var(--bg-card);
+  border-color: var(--border-color);
+}
+
+.ai-assistant-page .rounded-lg,
+.ai-assistant-page .rounded-xl,
+.ai-assistant-page .rounded-2xl,
+.global-ai-assistant .rounded-2xl,
+.global-ai-assistant .rounded-\[26px\] {
+  border-radius: 8px;
+}
+
+.ai-assistant-page .rounded-full,
+.global-ai-assistant .rounded-full,
+.global-ai-assistant.rounded-full {
+  border-radius: 999px;
+}
+
+.ai-assistant-page .ai-assistant-hero-composer,
+.ai-assistant-page .ai-assistant-prompt-chip,
+.ai-assistant-page .ai-assistant-message,
+.global-ai-assistant > div:first-child,
+.global-ai-assistant .bg-card,
+.global-ai-assistant form {
+  border-color: var(--border-color);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-subtle);
+}
+
+.ai-assistant-page .ai-assistant-message.bg-primary-green,
+.global-ai-assistant .bg-primary-green {
+  background: var(--primary-green);
+  color: #ffffff;
+}
+
+.ai-assistant-page .text-3xl,
+.ai-assistant-page .sm\:text-4xl {
+  font-size: 28px;
+  line-height: 1.14;
+  font-weight: 900;
+}
+
+.ai-assistant-page .text-2xl {
+  font-size: 24px;
+  line-height: 1.12;
+  font-weight: 900;
+}
+
+.ai-assistant-page .text-base,
+.ai-assistant-page textarea,
+.global-ai-assistant textarea {
+  font-size: 16px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.ai-assistant-page .text-sm,
+.global-ai-assistant .text-sm,
+.ai-assistant-page .ai-assistant-message .text-sm,
+.global-ai-assistant .rounded-2xl .text-sm {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.ai-assistant-page .text-xs,
+.global-ai-assistant .text-xs,
+.ai-assistant-page .ai-assistant-prompt-chip {
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ai-assistant-page .text-\[11px\],
+.global-ai-assistant .text-\[11px\] {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.ai-assistant-page .text-\[10px\],
+.global-ai-assistant .text-\[10px\] {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.ai-assistant-page .font-black,
+.global-ai-assistant .font-black {
+  font-weight: 800;
+}
+
+.ai-assistant-page .font-bold,
+.global-ai-assistant .font-bold {
+  font-weight: 700;
+}
+
+.ai-assistant-page .font-semibold,
+.global-ai-assistant .font-semibold {
+  font-weight: 600;
+}
+
+.ai-assistant-page .font-medium,
+.global-ai-assistant .font-medium {
+  font-weight: 500;
+}
+
+.ai-assistant-page .uppercase,
+.global-ai-assistant .uppercase,
+.ai-assistant-page .tracking-wide {
+  letter-spacing: 0;
+}
+
+.ai-assistant-page button,
+.ai-assistant-page textarea,
+.global-ai-assistant button,
+.global-ai-assistant textarea {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+.ai-assistant-page .ai-assistant-textarea,
+.global-ai-assistant textarea {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-light);
+  border-color: var(--border-color);
+  box-shadow: none;
+}
+
+.ai-assistant-page .ai-assistant-hero-composer .ai-assistant-textarea {
+  background: transparent;
+}
+
+.ai-assistant-page .ai-assistant-textarea:focus,
+.global-ai-assistant textarea:focus {
+  border-color: rgba(63, 163, 77, 0.58);
+  box-shadow: 0 0 0 3px rgba(63, 163, 77, 0.10);
+}
+
+.ai-assistant-page button.bg-primary-green,
+.global-ai-assistant button.bg-primary-green,
+.global-ai-assistant.bg-primary-green {
+  color: #ffffff;
+}
+
+.ai-assistant-page .ai-assistant-prompt-chip:hover {
+  background: var(--bg-card-hover);
+}
+
+.global-ai-assistant > button {
+  height: 52px;
+  border-color: rgba(63, 163, 77, 0.35);
+  box-shadow: 0 12px 28px rgba(47, 143, 66, 0.20);
+}
+
+.global-ai-assistant > div:first-child {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-card-solid) 94%, transparent);
+}
+
+.app-shell.dark-preview .ai-assistant-page,
+.app-shell.dark-preview .ai-assistant-stage {
+  background: #111315;
+}
+
+.app-shell.dark-preview .ai-assistant-hero-composer,
+.app-shell.dark-preview .ai-assistant-prompt-chip,
+.app-shell.dark-preview .ai-assistant-message:not(.bg-primary-green),
+.app-shell.dark-preview .global-ai-assistant > div:first-child,
+.app-shell.dark-preview .global-ai-assistant .bg-card,
+.app-shell.dark-preview .global-ai-assistant form {
+  background: #1c1f22;
+  border-color: #2a2e33;
+}
+
+.app-shell.dark-preview .ai-assistant-textarea,
+.app-shell.dark-preview .global-ai-assistant textarea {
+  background: #111315;
+  border-color: #2a2e33;
+  color: var(--text-light);
+}
+
+@media (max-width: 640px) {
+  .ai-assistant-page .text-3xl,
+  .ai-assistant-page .sm\:text-4xl {
+    font-size: 24px;
+  }
+
+  .ai-assistant-page .text-sm,
+  .global-ai-assistant .text-sm,
+  .ai-assistant-page .ai-assistant-message .text-sm,
+  .global-ai-assistant .rounded-2xl .text-sm {
+    font-size: 14px;
   }
 }

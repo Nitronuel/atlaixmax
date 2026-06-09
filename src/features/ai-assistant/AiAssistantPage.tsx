@@ -8,12 +8,9 @@ import {
     CheckCircle2,
     ExternalLink,
     Loader2,
-    Megaphone,
     MessageSquare,
-    PanelLeft,
     Plus,
     Radar,
-    RefreshCw,
     Send,
     ShieldCheck,
     User
@@ -21,7 +18,6 @@ import {
 import {
     AiAssistantAction,
     AiAssistantConversationMessage,
-    AiAssistantNotification,
     AiAssistantPageContext,
     AiAssistantProvider,
     AiAssistantService
@@ -37,16 +33,6 @@ type ChatMessage = {
     createdAt: number;
 };
 
-type ChatMenuItem = {
-    id: 'assistant' | 'announcements';
-    title: string;
-    subtitle: string;
-    meta: string;
-    icon: React.ReactNode;
-    active?: boolean;
-    unread?: number;
-};
-
 const SUGGESTED_PROMPTS = [
     'How is $KISHU moving?',
     'What tokens are performing well?',
@@ -54,7 +40,6 @@ const SUGGESTED_PROMPTS = [
     'Run a risk read on a token'
 ];
 
-const OFFICIAL_ANNOUNCEMENTS: AiAssistantNotification[] = [];
 const ASSISTANT_CHAT_CACHE_KEY = 'atlaix-ai-assistant-chat-v1';
 const ASSISTANT_HANDOFF_KEY = 'atlaix-ai-assistant-handoff-v1';
 const ASSISTANT_CHAT_TTL_MS = 60 * 60 * 1000;
@@ -63,7 +48,6 @@ const MARKET_HISTORY_MAX_AGE_MS = 2 * 60 * 1000;
 type AssistantChatCache = {
     messages: ChatMessage[];
     draft: string;
-    activeMenu: 'assistant' | 'announcements';
     provider: AiAssistantProvider | null;
     savedAt: number;
 };
@@ -103,7 +87,6 @@ const loadAssistantChatCache = (): AssistantChatCache | null => {
         return {
             messages: parsed.messages.filter((message) => message?.id && message?.role && message?.text).slice(-40),
             draft: typeof parsed.draft === 'string' ? parsed.draft : '',
-            activeMenu: parsed.activeMenu === 'announcements' ? 'announcements' : 'assistant',
             provider: parsed.provider || null,
             savedAt: parsed.savedAt
         };
@@ -229,16 +212,6 @@ const toConversationHistory = (messages: ChatMessage[]): AiAssistantConversation
             text: message.text
         }));
 
-const formatRelative = (timestamp: number) => {
-    const diff = Math.max(0, Date.now() - timestamp);
-    const minutes = Math.floor(diff / 60_000);
-    if (minutes < 1) return 'now';
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h`;
-    return `${Math.floor(hours / 24)}d`;
-};
-
 const formatClock = (timestamp: number) => new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
     minute: '2-digit'
@@ -270,13 +243,6 @@ const toolIcon = (tool?: string) => {
     return <img src="/logo.png" alt="Atlaix" className="h-4 w-4 object-contain" />;
 };
 
-const notificationToneClass = (tone: AiAssistantNotification['tone']) => {
-    if (tone === 'risk') return 'text-primary-red';
-    if (tone === 'bearish') return 'text-primary-yellow';
-    if (tone === 'bullish') return 'text-primary-green';
-    return 'text-text-medium';
-};
-
 const promptToMessage = (prompt: string) => {
     if (prompt === 'How is $KISHU moving?') return 'How is $KISHU moving today?';
     if (prompt === 'What tokens are performing well?') return 'What tokens are performing well today?';
@@ -295,11 +261,7 @@ export const AiAssistantPage: React.FC = () => {
         systemContext: 'The user is on the full AI Assistant page. Continue the conversation naturally and use Atlaix tools when needed.',
         preferredTools: ['get_platform_updates', 'get_token_deep_brief', 'get_detection_updates', 'run_safe_scan', 'prepare_alert_setup']
     });
-    const [notifications, setNotifications] = useState<AiAssistantNotification[]>([]);
     const [provider, setProvider] = useState<AiAssistantProvider | null>(handoffRef.current?.provider || cachedChatRef.current?.provider || null);
-    const [activeMenu, setActiveMenu] = useState<'assistant' | 'announcements'>(handoffRef.current ? 'assistant' : cachedChatRef.current?.activeMenu || 'assistant');
-    const [loadingNotifications, setLoadingNotifications] = useState(true);
-    const [notificationError, setNotificationError] = useState('');
     const [messages, setMessages] = useState<ChatMessage[]>(
         handoffRef.current?.messages?.length
             ? handoffRef.current.messages
@@ -309,32 +271,13 @@ export const AiAssistantPage: React.FC = () => {
     const [sending, setSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-    const loadNotifications = async () => {
-        setLoadingNotifications(true);
-        setNotificationError('');
-        try {
-            const payload = await AiAssistantService.getNotifications();
-            setNotifications(OFFICIAL_ANNOUNCEMENTS);
-            setProvider(payload.provider);
-        } catch (error) {
-            setNotifications(OFFICIAL_ANNOUNCEMENTS);
-            setNotificationError('');
-        } finally {
-            setLoadingNotifications(false);
-        }
-    };
-
-    useEffect(() => {
-        loadNotifications();
-    }, []);
-
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }, [messages, sending]);
 
     useEffect(() => {
-        saveAssistantChatCache({ messages, draft, activeMenu, provider });
-    }, [activeMenu, draft, messages, provider]);
+        saveAssistantChatCache({ messages, draft, provider });
+    }, [draft, messages, provider]);
 
     const goToAction = (href: string) => {
         if (href.startsWith('/')) {
@@ -345,7 +288,6 @@ export const AiAssistantPage: React.FC = () => {
     };
 
     const startNewChat = () => {
-        setActiveMenu('assistant');
         setMessages([createWelcomeMessage()]);
         setDraft('');
     };
@@ -397,174 +339,14 @@ export const AiAssistantPage: React.FC = () => {
         }
     };
 
-    const chatItems: ChatMenuItem[] = [
-        {
-            id: 'assistant',
-            title: 'Atlaix AI',
-            subtitle: messages[messages.length - 1]?.text || 'Ready to help',
-            meta: '',
-            icon: <MessageSquare size={18} />,
-            active: activeMenu === 'assistant'
-        },
-        {
-            id: 'announcements',
-            title: 'Announcements',
-            subtitle: notifications[0]?.body || 'Official updates from Atlaix',
-            meta: notifications[0] ? formatRelative(notifications[0].timestamp) : '',
-            icon: <Megaphone size={18} />,
-            active: activeMenu === 'announcements',
-            unread: notifications.length || undefined
-        }
-    ];
     const hasUserMessages = messages.some((message) => message.role === 'user');
     const conversationMode = hasUserMessages || sending;
     return (
         <div className="ai-assistant-page h-[calc(100vh-132px)] overflow-hidden rounded-xl border border-border bg-card shadow-[0_24px_80px_rgba(0,0,0,0.3)]">
             <div className="flex h-full">
-                <div className="relative z-30 hidden h-full w-[72px] shrink-0 lg:block">
-                <aside className="ai-assistant-rail group/assistant-rail absolute inset-y-0 left-0 z-30 flex h-full w-[72px] flex-col border-r border-border bg-sidebar transition-[width,box-shadow] duration-300 ease-out hover:w-[292px] hover:shadow-[18px_0_48px_rgba(93,112,145,0.20)] focus-within:w-[292px] focus-within:shadow-[18px_0_48px_rgba(93,112,145,0.20)]">
-                    <div className="flex h-20 items-center gap-3 px-4">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-green text-main shadow-[0_0_24px_rgba(38,211,86,0.22)]">
-                            <PanelLeft size={19} />
-                        </div>
-                        <div className="min-w-0 opacity-0 transition-opacity duration-200 group-hover/assistant-rail:opacity-100 group-focus-within/assistant-rail:opacity-100">
-                            <div className="truncate text-sm font-black text-text-light">AI Assistant</div>
-                        </div>
-                    </div>
-
-                    <div className="flex min-h-0 flex-1 flex-col gap-1 px-2">
-                        {chatItems.map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => setActiveMenu(item.id)}
-                                className={`ai-assistant-rail-item group/item flex h-12 w-full items-center gap-3 rounded-lg px-3 text-left transition-all ${
-                                    item.active
-                                        ? 'bg-primary-green text-main shadow-[0_0_22px_rgba(38,211,86,0.16)]'
-                                        : 'text-text-medium hover:bg-card hover:text-text-light'
-                                }`}
-                                title={item.title}
-                            >
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center">{item.icon}</span>
-                                <span className="min-w-0 flex-1 opacity-0 transition-opacity duration-200 group-hover/assistant-rail:opacity-100 group-focus-within/assistant-rail:opacity-100">
-                                    <span className="block truncate text-sm font-bold">{item.title}</span>
-                                    <span className={`block truncate text-[11px] ${item.active ? 'text-main/70' : 'text-text-dark'}`}>{item.subtitle}</span>
-                                </span>
-                                {item.unread ? (
-                                    <span className={`flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-black opacity-0 transition-opacity duration-200 group-hover/assistant-rail:opacity-100 group-focus-within/assistant-rail:opacity-100 ${item.active ? 'bg-main text-primary-green' : 'bg-primary-green text-main'}`}>
-                                        {item.unread}
-                                    </span>
-                                ) : null}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="border-t border-border p-2">
-                        <button
-                            type="button"
-                            onClick={loadNotifications}
-                            className="ai-assistant-rail-item flex h-12 w-full items-center gap-3 rounded-lg px-3 text-text-medium transition-colors hover:bg-card hover:text-text-light"
-                            title="Refresh"
-                        >
-                            <RefreshCw size={18} className={loadingNotifications ? 'animate-spin' : ''} />
-                            <span className="truncate text-sm font-bold opacity-0 transition-opacity duration-200 group-hover/assistant-rail:opacity-100 group-focus-within/assistant-rail:opacity-100">Refresh feed</span>
-                        </button>
-                    </div>
-                </aside>
-                </div>
-
                 <section className="ai-assistant-stage relative flex min-w-0 flex-1 flex-col overflow-hidden bg-main">
-                    <header className="ai-assistant-mobile-header shrink-0 border-b border-border bg-card/95 px-3 py-3 backdrop-blur-md lg:hidden">
-                        <div className="custom-scrollbar flex items-center gap-2 overflow-x-auto">
-                            {chatItems.map((item) => (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => setActiveMenu(item.id)}
-                                    className={`flex h-11 shrink-0 items-center gap-2 rounded-full border px-3 transition-colors ${
-                                        item.active ? 'border-primary-green/40 bg-primary-green text-main' : 'border-border bg-main text-text-medium'
-                                    }`}
-                                    aria-label={item.title}
-                                >
-                                    <span className="flex h-5 w-5 items-center justify-center">{item.icon}</span>
-                                    <span className="text-xs font-black">{item.title}</span>
-                                </button>
-                            ))}
-                            <button
-                                type="button"
-                                onClick={startNewChat}
-                                className="flex h-11 shrink-0 items-center gap-2 rounded-full border border-border bg-main px-3 text-text-medium transition-colors hover:border-primary-green/50 hover:text-primary-green"
-                                aria-label="New assistant chat"
-                            >
-                                <Plus size={16} />
-                                <span className="text-xs font-black">New chat</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={loadNotifications}
-                                className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-main text-text-medium"
-                                aria-label="Refresh assistant feed"
-                            >
-                                <RefreshCw size={16} className={loadingNotifications ? 'animate-spin' : ''} />
-                            </button>
-                        </div>
-                    </header>
-
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-                        {activeMenu === 'announcements' ? (
-                            <div className="mx-auto max-w-4xl">
-                                <div className="mb-5 flex items-center justify-between gap-3">
-                                    <div>
-                                        <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-lg border border-primary-green/25 bg-primary-green/10 text-primary-green">
-                                            <Megaphone size={20} />
-                                        </div>
-                                        <h3 className="text-2xl font-black text-text-light">Announcements</h3>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={loadNotifications}
-                                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-text-medium transition-colors hover:border-primary-green/50 hover:text-primary-green"
-                                        aria-label="Refresh announcements"
-                                    >
-                                        <RefreshCw size={16} className={loadingNotifications ? 'animate-spin' : ''} />
-                                    </button>
-                                </div>
-                                {notificationError && (
-                                    <div className="rounded-lg border border-primary-red/30 bg-primary-red/10 p-4 text-sm font-semibold text-primary-red">
-                                        {notificationError}
-                                    </div>
-                                )}
-                                {!notificationError && loadingNotifications && (
-                                    <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-4 text-sm font-semibold text-text-medium">
-                                        <Loader2 size={16} className="animate-spin" /> Loading announcements
-                                    </div>
-                                )}
-                                {!notificationError && !loadingNotifications && notifications.length === 0 && (
-                                    <div className="rounded-lg border border-border bg-card p-5 text-sm font-semibold text-text-medium">
-                                        No announcements have been published yet.
-                                    </div>
-                                )}
-                                <div className="grid gap-3">
-                                    {!notificationError && !loadingNotifications && notifications.map((item) => (
-                                        <button
-                                            key={item.id}
-                                            type="button"
-                                            onClick={() => item.href && goToAction(item.href)}
-                                            className="rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary-green/50 hover:bg-card-hover"
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <div className="text-sm font-bold text-text-light">{item.title}</div>
-                                                    <div className={`mt-2 text-sm font-semibold leading-relaxed ${notificationToneClass(item.tone)}`}>{item.body}</div>
-                                                </div>
-                                                <div className="shrink-0 text-[11px] font-mono text-text-dark">{formatRelative(item.timestamp)}</div>
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className={`mx-auto flex min-h-full w-full max-w-4xl flex-col ${conversationMode ? 'justify-end gap-3 pb-2' : 'justify-center pb-12'}`}>
+                            <div className={`ai-assistant-chat-column mx-auto flex min-h-full w-full flex-col ${conversationMode ? 'justify-end gap-3 pb-2' : 'justify-center pb-12'}`}>
                                 {!conversationMode ? (
                                     <div className="mx-auto w-full max-w-3xl text-center">
                                         <img
@@ -718,11 +500,10 @@ export const AiAssistantPage: React.FC = () => {
                                     </>
                                 )}
                             </div>
-                        )}
                     </div>
 
-                    {activeMenu === 'assistant' && conversationMode && <div className="shrink-0 border-t border-border bg-card/90 p-4 backdrop-blur">
-                        <div className="mx-auto max-w-4xl">
+                    {conversationMode && <div className="shrink-0 border-t border-border bg-card/90 p-4 backdrop-blur">
+                        <div className="ai-assistant-chat-column mx-auto">
                             <form
                                 onSubmit={(event) => {
                                     event.preventDefault();
