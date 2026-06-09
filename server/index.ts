@@ -8,6 +8,7 @@ import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
 import { startOverviewIngestionScheduler } from './overview/database';
 import { OverviewRoutes } from './overview/routes';
+import { SmartAlertRoutes } from './smart-alerts/routes';
 import { SmartMoneyRoutes } from './smart-money/routes';
 import { WalletRoutes } from './wallet/routes';
 
@@ -18,6 +19,7 @@ const port = Number(readEnv('API_PORT', 'PORT') || 3101);
 const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
 const insightXRoutes = new InsightXRoutes();
 const overviewRoutes = new OverviewRoutes();
+const smartAlertRoutes = new SmartAlertRoutes();
 const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
 const clientRoot = resolve(process.cwd(), 'dist');
@@ -107,6 +109,11 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (requestUrl.pathname.startsWith('/api/smart-alerts')) {
+      await smartAlertRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
     if (requestUrl.pathname.startsWith('/api/wallet')) {
       await walletRoutes.handle(request, response, requestUrl);
       return;
@@ -127,5 +134,6 @@ const server = createServer(async (request, response) => {
 
 server.listen(port, host, () => {
   startOverviewIngestionScheduler();
+  smartAlertRoutes.start();
   console.log(`Atlaix API listening on http://${host}:${port}`);
 });

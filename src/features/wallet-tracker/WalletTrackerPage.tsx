@@ -36,6 +36,41 @@ function timeFilterLabel(value: WalletTimeFilter) {
   return '> 30d';
 }
 
+const TOKEN_DETAILS_CHAINS: Partial<Record<WalletChain, string>> = {
+  Ethereum: 'ethereum',
+  Solana: 'solana',
+  Base: 'base',
+  BSC: 'bsc',
+  Arbitrum: 'arbitrum',
+  Optimism: 'optimism',
+  Polygon: 'polygon',
+  Avalanche: 'avalanche'
+};
+
+const NATIVE_TOKEN_ADDRESSES: Partial<Record<WalletChain, string>> = {
+  Ethereum: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
+  Base: '0x4200000000000000000000000000000000000006',
+  BSC: '0xbb4CdB9CBd36B01dCbaEBF2De08d9173bc095c',
+  Arbitrum: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
+  Optimism: '0x4200000000000000000000000000000000000006',
+  Polygon: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270',
+  Avalanche: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7'
+};
+
+function tokenDetailsPath(asset: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number]) {
+  const chain = asset.chain || 'All Chains';
+  const tokenChain = TOKEN_DETAILS_CHAINS[chain];
+  if (!tokenChain) return '';
+
+  const address = asset.address.includes(':native')
+    ? NATIVE_TOKEN_ADDRESSES[chain]
+    : asset.address;
+  if (!address) return '';
+
+  const params = new URLSearchParams({ chain: tokenChain });
+  return `/token/${encodeURIComponent(address)}?${params.toString()}`;
+}
+
 export function WalletTrackerPage() {
   const { address } = useParams();
   return address ? <WalletProfile address={address} /> : <WalletDashboard />;
@@ -82,8 +117,6 @@ function WalletDashboard() {
   }
 
   function openWallet(nextAddress: string, chain: WalletChain) {
-    WalletStorage.ensure(nextAddress, chain);
-    reloadWallets();
     navigate(`/wallet/${nextAddress}?chain=${encodeURIComponent(chain)}`);
   }
 
@@ -168,7 +201,7 @@ function WalletProfile({ address }: { address: string }) {
   const detectedChain = getDefaultChain(validation.type);
   const [chain, setChain] = useState<WalletChain>(() => normalizeWalletChain(searchParams.get('chain')) || detectedChain);
   const [timeFilter, setTimeFilter] = useState<WalletTimeFilter>('ALL');
-  const [savedWallet, setSavedWallet] = useState<SavedWallet | null>(() => validation.isValid ? WalletStorage.ensure(address, chain) : null);
+  const [savedWallet, setSavedWallet] = useState<SavedWallet | null>(() => validation.isValid ? WalletStorage.get(address) || null : null);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(savedWallet?.name || walletNameFor(address));
   const [categories, setCategories] = useState<WalletCategory[]>(savedWallet?.categories || []);
@@ -183,10 +216,10 @@ function WalletProfile({ address }: { address: string }) {
       return;
     }
 
-    const nextWallet = WalletStorage.ensure(address, compatibleChain);
+    const nextWallet = WalletStorage.get(address) || null;
     setSavedWallet(nextWallet);
-    setName(nextWallet.name);
-    setCategories(nextWallet.categories);
+    setName(nextWallet?.name || walletNameFor(address));
+    setCategories(nextWallet?.categories || []);
     setSearchParams({ chain: compatibleChain });
   }, [address, chain, detectedChain, setSearchParams, validation.isValid, validation.type]);
 
@@ -427,11 +460,7 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
               {rows.map((asset) => (
                 <tr key={`${asset.chain || 'chain'}:${asset.address}`}>
                   <td>
-                    <Link to={`/token/${asset.address}`}>
-                      {asset.logo ? <img src={asset.logo} alt="" /> : <span>{asset.symbol.slice(0, 1)}</span>}
-                      <strong>{asset.symbol}</strong>
-                      <small>{asset.chain || 'Unknown'}</small>
-                    </Link>
+                    <TokenAssetLink asset={asset} />
                   </td>
                   <td>{asset.balance}</td>
                   <td>{asset.value}</td>
@@ -451,6 +480,19 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
       )}
     </section>
   );
+}
+
+function TokenAssetLink({ asset }: { asset: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number] }) {
+  const content = (
+    <>
+      {asset.logo ? <img src={asset.logo} alt="" /> : <span>{asset.symbol.slice(0, 1)}</span>}
+      <strong>{asset.symbol}</strong>
+      <small>{asset.chain || 'Unknown'}</small>
+    </>
+  );
+  const path = tokenDetailsPath(asset);
+
+  return path ? <Link to={path}>{content}</Link> : <span>{content}</span>;
 }
 
 function ChainSelectionModal({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (chain: WalletChain) => void }) {

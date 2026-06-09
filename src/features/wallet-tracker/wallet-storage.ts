@@ -76,12 +76,6 @@ export const WalletStorage = {
     return next;
   },
 
-  ensure(address: string, chain: WalletChain) {
-    const existing = WalletStorage.get(address);
-    if (existing) return existing;
-    return WalletStorage.save(address, walletNameFor(address), [], chain);
-  },
-
   updateStats(address: string, stats: { balance: string; winRate: string; pnl: string; qualification?: SavedWallet['qualification'] }) {
     const wallets = readWallets();
     const index = wallets.findIndex((wallet) => wallet.addr.toLowerCase() === address.toLowerCase());

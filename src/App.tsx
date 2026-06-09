@@ -4,6 +4,7 @@ import { Layout } from './app/Layout';
 import { OverviewPage } from './features/overview/OverviewPage';
 import { SafeScanPage } from './features/safe-scan/SafeScanPage';
 import { SmartMoneyPage } from './features/smart-money/SmartMoneyPage';
+import { SmartAlerts } from './features/smart-alerts/SmartAlertsPage';
 import { TokenDetailsPage } from './features/token-details/TokenDetailsPage';
 import { WalletTrackerPage } from './features/wallet-tracker/WalletTrackerPage';
 
@@ -22,7 +23,7 @@ export default function App() {
         <Route path="/safe-scan" element={<SafeScanPage />} />
         <Route path="/wallet" element={<WalletTrackerPage />} />
         <Route path="/wallet/:address" element={<WalletTrackerPage />} />
-        <Route path="/smart-alerts" element={<ComingSoonPage title="Smart Alerts" />} />
+        <Route path="/smart-alerts" element={<SmartAlerts />} />
         <Route path="/ai-assistant" element={<ComingSoonPage title="AI Assistant" />} />
         <Route path="/settings" element={<ComingSoonPage title="Settings" />} />
         <Route path="*" element={<ComingSoonPage title="Page not found" />} />

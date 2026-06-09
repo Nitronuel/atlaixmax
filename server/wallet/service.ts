@@ -12,12 +12,14 @@ type WalletAsset = {
   price: string;
   currentPrice: number;
   rawValue: number;
+  rawBalance?: number;
   logo?: string;
   chain?: WalletChain;
   chainLogo?: string;
   pnl?: string;
   pnlPercent?: number;
   buyTime?: number;
+  avgBuy?: string;
 };
 
 export type WalletPortfolioResponse = {
@@ -153,6 +155,17 @@ const evmChainMap: Record<EvmWalletChain, { moralis: string; alchemy?: string; l
 };
 
 const evmAggregateChains: EvmWalletChain[] = ['Ethereum', 'Base', 'BSC', 'Arbitrum', 'Optimism', 'Polygon', 'Avalanche'];
+const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'USDS']);
+const dexScreenerChainMap: Partial<Record<WalletChain, string>> = {
+  Ethereum: 'ethereum',
+  Solana: 'solana',
+  Base: 'base',
+  BSC: 'bsc',
+  Arbitrum: 'arbitrum',
+  Optimism: 'optimism',
+  Polygon: 'polygon',
+  Avalanche: 'avalanche'
+};
 
 function getMoralisKey() {
   return readEnv('MORALIS_API_KEY', 'VITE_MORALIS_KEY', 'VITE_MORALIS_API_KEY');
@@ -166,8 +179,8 @@ function getHeliusKey() {
   return readEnv('HELIUS_API_KEY', 'VITE_HELIUS_KEY', 'VITE_HELIUS_API_KEY');
 }
 
-function formatUsd(value: number) {
-  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+function formatUsd(value: number, maximumFractionDigits = 2) {
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits });
 }
 
 function formatTokenAmount(value: number) {
@@ -271,20 +284,236 @@ function portfolioFromAssets(assets: WalletAsset[], message?: string): WalletPor
   };
 }
 
-async function fetchMoralisPrice(address: string, chain: WalletChain) {
+async function priceMissingAssets(assets: WalletAsset[]) {
+  const byChain = new Map<WalletChain, WalletAsset[]>();
+  assets
+    .filter((asset) => asset.rawBalance && asset.rawBalance > 0 && asset.currentPrice <= 0 && asset.address && !asset.address.includes(':native'))
+    .slice(0, 300)
+    .forEach((asset) => {
+      const chain = asset.chain || 'All Chains';
+      byChain.set(chain, [...(byChain.get(chain) || []), asset]);
+    });
+
+  for (const [chain, chainAssets] of byChain) {
+    const prices = await fetchDexScreenerPrices(chain, chainAssets.map((asset) => asset.address));
+    chainAssets.forEach((asset) => {
+      const priced = prices.get(asset.address.toLowerCase());
+      if (!priced || !asset.rawBalance) return;
+      const isStable = STABLE_SYMBOLS.has(asset.symbol.toUpperCase());
+      const price = isStable && (priced.price < 0.8 || priced.price > 1.2) ? 1 : priced.price;
+      const value = asset.rawBalance * price;
+      asset.currentPrice = price;
+      asset.price = formatUsd(price, price >= 1 ? 4 : 8);
+      asset.rawValue = value;
+      asset.value = formatUsd(value);
+      if (priced.logo && !asset.logo) asset.logo = priced.logo;
+      if (asset.rawValue > 1 && (!asset.pnl || asset.pnl === 'N/A')) asset.pnl = 'Loading...';
+    });
+  }
+}
+
+function nativeCostBasisToken(chain: WalletChain) {
+  return chain === 'Solana' ? SOLANA_NATIVE_MINT : evmChainMap[chain as EvmWalletChain]?.wrappedNative || '';
+}
+
+async function fetchEvmBlockTimestamp(chain: EvmWalletChain, blockNumberHex: string) {
+  const network = evmChainMap[chain].alchemy;
+  if (!network || !getAlchemyKey()) return 0;
+  try {
+    const block = await alchemyRpc<{ timestamp?: string }>(network, 'eth_getBlockByNumber', [blockNumberHex, false]);
+    return block?.timestamp ? Number.parseInt(block.timestamp, 16) * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function estimateEvmCostBasis(walletAddress: string, asset: WalletAsset) {
+  const chain = asset.chain as EvmWalletChain;
+  if (!chain || !(chain in evmChainMap)) return { price: 0, timestamp: 0 };
+
+  const isNative = asset.address.includes(':native');
+  const tokenAddress = isNative ? nativeCostBasisToken(chain) : asset.address;
+
+  if (getAlchemyKey() && evmChainMap[chain].alchemy) {
+    try {
+      const params: Record<string, unknown> = {
+        fromBlock: '0x0',
+        toBlock: 'latest',
+        toAddress: walletAddress,
+        category: isNative ? ['external', 'internal'] : ['erc20'],
+        maxCount: '0x32',
+        order: 'desc'
+      };
+      if (!isNative) params.contractAddresses = [asset.address];
+      const response = await alchemyRpc<{ transfers?: Array<{ value?: number | string; blockNum?: string }> }>(
+        evmChainMap[chain].alchemy!,
+        'alchemy_getAssetTransfers',
+        [params]
+      );
+      const transfers = (response.transfers || []).filter((transfer) => Number(transfer.value) > 0);
+      const largest = transfers.sort((left, right) => Number(right.value || 0) - Number(left.value || 0))[0];
+      if (largest?.blockNum) {
+        const block = BigInt(largest.blockNum).toString();
+        const [price, timestamp] = await Promise.all([
+          fetchMoralisPrice(tokenAddress, chain, block),
+          fetchEvmBlockTimestamp(chain, largest.blockNum)
+        ]);
+        if (price > 0 || timestamp > 0) return { price, timestamp };
+      }
+    } catch {
+      // Fall through to Moralis transfers.
+    }
+  }
+
+  if (!getMoralisKey()) return { price: 0, timestamp: 0 };
+  try {
+    const hexChain = evmChainMap[chain].moralis;
+    const url = isNative
+      ? new URL(`${MORALIS_EVM_BASE_URL}/${walletAddress}`)
+      : new URL(`${MORALIS_EVM_BASE_URL}/${walletAddress}/erc20/transfers`);
+    url.searchParams.set('chain', hexChain);
+    url.searchParams.set('order', 'DESC');
+    url.searchParams.set('limit', '50');
+    if (!isNative) url.searchParams.set('contract_addresses[0]', asset.address);
+    const data = await moralisJson<{ result?: Array<{ to_address?: string; value?: string; block_number?: string; block_timestamp?: string }> }>(url.toString());
+    const incoming = (data.result || [])
+      .filter((transfer) => String(transfer.to_address || '').toLowerCase() === walletAddress.toLowerCase())
+      .filter((transfer) => Number(transfer.value) > 0);
+    const largest = incoming.sort((left, right) => Number(right.value || 0) - Number(left.value || 0))[0];
+    if (!largest) return { price: 0, timestamp: 0 };
+    const timestamp = largest.block_timestamp ? new Date(largest.block_timestamp).getTime() : 0;
+    const price = largest.block_number ? await fetchMoralisPrice(tokenAddress, chain, largest.block_number) : 0;
+    return { price, timestamp };
+  } catch {
+    return { price: 0, timestamp: 0 };
+  }
+}
+
+async function estimateAssetPerformance(walletAddress: string, asset: WalletAsset, period: string) {
+  if (!asset.rawValue || asset.rawValue <= 1 || asset.currentPrice <= 0) return;
+  const chain = asset.chain || 'All Chains';
+  let entry = { price: 0, timestamp: 0 };
+
+  if (chain !== 'Solana') {
+    entry = await estimateEvmCostBasis(walletAddress, asset);
+  }
+
+  let referencePrice = entry.price;
+  if (period !== 'ALL') {
+    const lookbackMs = period === '1D' ? 86_400_000
+      : period === '1W' ? 7 * 86_400_000
+        : period === '1M' || period === '>1M' ? 30 * 86_400_000
+          : 0;
+    const startSeconds = Math.floor((Date.now() - lookbackMs) / 1000);
+    if (lookbackMs > 0 && (!entry.timestamp || entry.timestamp < startSeconds * 1000)) {
+      if (chain === 'Solana') {
+        referencePrice = await fetchMoralisPrice(asset.address, chain, undefined, startSeconds);
+      } else if (chain !== 'All Chains') {
+        const block = await fetchMoralisDateToBlock(chain as EvmWalletChain, startSeconds);
+        referencePrice = block ? await fetchMoralisPrice(asset.address.includes(':native') ? nativeCostBasisToken(chain) : asset.address, chain, block) : referencePrice;
+      }
+    }
+  }
+
+  if (referencePrice > 0) {
+    const pnlPercent = ((asset.currentPrice - referencePrice) / referencePrice) * 100;
+    asset.pnlPercent = pnlPercent;
+    asset.pnl = `${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%`;
+    asset.avgBuy = formatUsd(referencePrice, referencePrice >= 1 ? 4 : 8);
+  } else {
+    asset.pnl = 'N/A';
+  }
+  if (entry.timestamp > 0) asset.buyTime = entry.timestamp;
+}
+
+async function enrichAssets(walletAddress: string, assets: WalletAsset[], period: string) {
+  await priceMissingAssets(assets);
+  const candidates = assets
+    .filter((asset) => asset.rawValue > 1 && asset.currentPrice > 0)
+    .sort((left, right) => right.rawValue - left.rawValue)
+    .slice(0, 30);
+  await Promise.all(candidates.map((asset) => estimateAssetPerformance(walletAddress, asset, period)));
+}
+
+async function fetchMoralisPrice(address: string, chain: WalletChain, block?: string, timestamp?: number) {
   if (!getMoralisKey()) return 0;
 
   const isSolana = chain === 'Solana';
-  const url = isSolana
+  const url = new URL(isSolana
     ? `${MORALIS_SOLANA_BASE_URL}/token/mainnet/${address}/price`
-    : `${MORALIS_EVM_BASE_URL}/erc20/${address}/price?chain=${evmChainMap[chain as EvmWalletChain].moralis}`;
+    : `${MORALIS_EVM_BASE_URL}/erc20/${address}/price`);
+  if (!isSolana) url.searchParams.set('chain', evmChainMap[chain as EvmWalletChain].moralis);
+  if (block && !isSolana) url.searchParams.set('to_block', block);
+  if (timestamp && isSolana) url.searchParams.set('toDate', new Date(timestamp * 1000).toISOString());
 
   try {
-    const data = await moralisJson<{ usdPrice?: number; usd_price?: number }>(url);
+    const data = await moralisJson<{ usdPrice?: number; usd_price?: number }>(url.toString());
     return parseNumber(data.usdPrice ?? data.usd_price);
   } catch {
     return 0;
   }
+}
+
+async function fetchMoralisDateToBlock(chain: EvmWalletChain, timestampSeconds: number) {
+  if (!getMoralisKey()) return null;
+  const url = new URL(`${MORALIS_EVM_BASE_URL}/dateToBlock`);
+  url.searchParams.set('chain', evmChainMap[chain].moralis);
+  url.searchParams.set('date', new Date(timestampSeconds * 1000).toISOString());
+  try {
+    const data = await moralisJson<{ block?: number }>(url.toString());
+    return Number.isFinite(Number(data.block)) ? String(data.block) : null;
+  } catch {
+    return null;
+  }
+}
+
+type DexScreenerPair = {
+  chainId?: string;
+  baseToken?: { address?: string; symbol?: string };
+  quoteToken?: { address?: string; symbol?: string };
+  priceUsd?: string | number;
+  liquidity?: { usd?: string | number };
+  info?: { imageUrl?: string };
+};
+
+async function fetchDexScreenerPrices(chain: WalletChain, tokenAddresses: string[]) {
+  const chainId = dexScreenerChainMap[chain];
+  const addresses = [...new Set(tokenAddresses.map((address) => address.trim().toLowerCase()).filter((address) => /^0x[a-f0-9]{40}$/i.test(address) || /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address)))];
+  const prices = new Map<string, { price: number; logo?: string }>();
+  if (!chainId || !addresses.length) return prices;
+
+  for (let index = 0; index < addresses.length; index += 30) {
+    const chunk = addresses.slice(index, index + 30);
+    try {
+      const response = await fetch(`https://api.dexscreener.com/tokens/v1/${encodeURIComponent(chainId)}/${chunk.map(encodeURIComponent).join(',')}`, {
+        headers: { Accept: 'application/json' }
+      });
+      if (!response.ok) continue;
+      const pairs = await response.json().catch(() => []) as DexScreenerPair[];
+      const bestByAddress = new Map<string, DexScreenerPair>();
+      for (const pair of Array.isArray(pairs) ? pairs : []) {
+        const pairChain = String(pair.chainId || '').toLowerCase();
+        if (pairChain && pairChain !== chainId.toLowerCase()) continue;
+        const candidates = [pair.baseToken?.address, pair.quoteToken?.address]
+          .map((value) => String(value || '').toLowerCase())
+          .filter((value) => chunk.includes(value));
+        for (const address of candidates) {
+          const current = bestByAddress.get(address);
+          if (!current || Number(pair.liquidity?.usd || 0) > Number(current.liquidity?.usd || 0)) {
+            bestByAddress.set(address, pair);
+          }
+        }
+      }
+      bestByAddress.forEach((pair, address) => {
+        const price = parseNumber(pair.priceUsd);
+        if (price > 0) prices.set(address, { price, logo: pair.info?.imageUrl });
+      });
+    } catch {
+      // Long-tail token pricing is a best-effort enhancement.
+    }
+  }
+
+  return prices;
 }
 
 async function fetchMoralisEvmNativeBalance(address: string, chain: EvmWalletChain) {
@@ -304,6 +533,7 @@ async function fetchMoralisEvmNativeBalance(address: string, chain: EvmWalletCha
     price: price > 0 ? formatUsd(price) : 'N/A',
     currentPrice: price,
     rawValue: value,
+    rawBalance: balance,
     logo: chainConfig.logo,
     chain,
     chainLogo: chainConfig.logo,
@@ -349,6 +579,7 @@ async function fetchMoralisEvmTokens(address: string, chain: EvmWalletChain) {
         price: price > 0 ? formatUsd(price) : 'N/A',
         currentPrice: price,
         rawValue: value,
+        rawBalance: balance,
         logo: token.logo || token.thumbnail,
         chain,
         chainLogo: chainConfig.logo,
@@ -411,6 +642,7 @@ async function fetchAlchemyEvmChain(address: string, chain: EvmWalletChain) {
     price: 'N/A',
     currentPrice: 0,
     rawValue: 0,
+    rawBalance: nativeBalance,
     logo: chainConfig.logo,
     chain,
     chainLogo: chainConfig.logo,
@@ -431,6 +663,7 @@ async function fetchAlchemyEvmChain(address: string, chain: EvmWalletChain) {
       price: 'N/A',
       currentPrice: 0,
       rawValue: 0,
+      rawBalance: balance,
       logo: meta.logo,
       chain,
       chainLogo: chainConfig.logo,
@@ -469,6 +702,7 @@ async function fetchHeliusNativeSol(address: string) {
     price: price > 0 ? formatUsd(price) : 'N/A',
     currentPrice: price,
     rawValue: value,
+    rawBalance: balance,
     logo: SOLANA_LOGO,
     chain: 'Solana',
     chainLogo: SOLANA_LOGO,
@@ -507,6 +741,7 @@ async function fetchMoralisSolanaTokens(address: string) {
         price: price > 0 ? formatUsd(price) : 'N/A',
         currentPrice: price,
         rawValue: value,
+        rawBalance: amount,
         logo: token.logo || token.thumbnail,
         chain: 'Solana',
         chainLogo: SOLANA_LOGO,
@@ -515,7 +750,7 @@ async function fetchMoralisSolanaTokens(address: string) {
     }));
 }
 
-async function fetchSolanaPortfolio(address: string) {
+async function fetchSolanaPortfolio(address: string, period: string) {
   if (!getMoralisKey() && !getHeliusKey()) {
     return providerMissing('Add MORALIS_API_KEY and HELIUS_API_KEY to .env to load Solana wallet holdings.');
   }
@@ -527,18 +762,20 @@ async function fetchSolanaPortfolio(address: string) {
 
   const native = nativeResult.status === 'fulfilled' ? nativeResult.value : null;
   let tokens: WalletAsset[] = tokenResult.status === 'fulfilled' ? tokenResult.value : [];
+  const assets = [native, ...tokens].filter(Boolean) as WalletAsset[];
+  await enrichAssets(address, assets, period);
 
   return portfolioFromAssets(
-    [native, ...tokens].filter(Boolean) as WalletAsset[],
+    assets,
     'No visible Solana holdings found.'
   );
 }
 
-async function loadPortfolio(address: string, chain: WalletChain): Promise<WalletPortfolioResponse> {
+async function loadPortfolio(address: string, chain: WalletChain, period: string): Promise<WalletPortfolioResponse> {
   const isSolanaAddress = !address.startsWith('0x');
-  if (isSolanaAddress && (chain === 'All Chains' || chain === 'Solana')) return fetchSolanaPortfolio(address);
+  if (isSolanaAddress && (chain === 'All Chains' || chain === 'Solana')) return fetchSolanaPortfolio(address, period);
 
-  if (chain === 'Solana') return fetchSolanaPortfolio(address);
+  if (chain === 'Solana') return fetchSolanaPortfolio(address, period);
 
   if (!getMoralisKey() && !getAlchemyKey()) {
     return providerMissing('Add MORALIS_API_KEY or ALCHEMY_API_KEY to .env to load EVM wallet holdings.');
@@ -550,6 +787,7 @@ async function loadPortfolio(address: string, chain: WalletChain): Promise<Walle
     if (!assets.length) {
       return providerMissing('No EVM balances returned for this wallet.');
     }
+    await enrichAssets(address, assets, period);
     return portfolioFromAssets(assets);
   }
 
@@ -558,6 +796,7 @@ async function loadPortfolio(address: string, chain: WalletChain): Promise<Walle
     return providerMissing('No EVM balances returned for this wallet.');
   }
 
+  await enrichAssets(address, assets, period);
   return portfolioFromAssets(assets);
 }
 
@@ -570,7 +809,7 @@ export class WalletPortfolioService {
     const existing = pending.get(key);
     if (existing) return existing;
 
-    const request = loadPortfolio(address, chain)
+    const request = loadPortfolio(address, chain, period)
       .then((portfolio) => {
         cache.set(key, portfolio, WALLET_CACHE_TTL_MS, portfolio.generatedAt);
         return portfolio;
