@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { ComingSoonPage } from './app/ComingSoonPage';
 import { Layout } from './app/Layout';
+import { AiAssistantPage } from './features/ai-assistant/AiAssistantPage';
 import { OverviewPage } from './features/overview/OverviewPage';
 import { SafeScanPage } from './features/safe-scan/SafeScanPage';
 import { SmartMoneyPage } from './features/smart-money/SmartMoneyPage';
@@ -24,7 +25,7 @@ export default function App() {
         <Route path="/wallet" element={<WalletTrackerPage />} />
         <Route path="/wallet/:address" element={<WalletTrackerPage />} />
         <Route path="/smart-alerts" element={<SmartAlerts />} />
-        <Route path="/ai-assistant" element={<ComingSoonPage title="AI Assistant" />} />
+        <Route path="/ai-assistant" element={<AiAssistantPage />} />
         <Route path="/settings" element={<ComingSoonPage title="Settings" />} />
         <Route path="*" element={<ComingSoonPage title="Page not found" />} />
       </Routes>

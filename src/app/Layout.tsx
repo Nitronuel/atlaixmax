@@ -1,6 +1,7 @@
 import { Activity, Bell, LayoutDashboard, LogIn, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { GlobalAiAssistant } from '../components/assistant/GlobalAiAssistant';
 
 const navItems = [
   { path: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={19} />, group: 'overview' },
@@ -109,6 +110,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main>{children}</main>
+      <GlobalAiAssistant />
     </div>
   );
 }

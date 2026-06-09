@@ -4,6 +4,7 @@ import { createReadStream, existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { loadEnvFile, readEnv } from './env';
+import { AiAssistantRoutes } from './ai-assistant/routes';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
 import { startOverviewIngestionScheduler } from './overview/database';
@@ -20,6 +21,7 @@ const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
 const insightXRoutes = new InsightXRoutes();
 const overviewRoutes = new OverviewRoutes();
 const smartAlertRoutes = new SmartAlertRoutes();
+const aiAssistantRoutes = new AiAssistantRoutes(smartAlertRoutes);
 const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
 const clientRoot = resolve(process.cwd(), 'dist');
@@ -111,6 +113,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/smart-alerts')) {
       await smartAlertRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/ai-assistant')) {
+      await aiAssistantRoutes.handle(request, response, requestUrl);
       return;
     }
 
