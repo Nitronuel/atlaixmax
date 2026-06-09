@@ -2793,6 +2793,81 @@ main {
   font-weight: 700;
 }
 
+.overview-token-chain-logo {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-card-hover);
+  color: var(--primary-green);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.overview-token-chain-logo svg {
+  width: 15px;
+  height: 15px;
+}
+
+.overview-token-chain-logo svg path,
+.overview-token-chain-logo svg circle {
+  fill: currentColor;
+}
+
+.overview-token-chain-logo.chain-solana {
+  background: #111315;
+  color: #7bf5c6;
+}
+
+.overview-token-chain-logo.chain-ethereum {
+  background: #f3f6fb;
+  color: #454a75;
+}
+
+.overview-token-chain-logo.chain-base {
+  background: #2151f5;
+  color: #ffffff;
+}
+
+.overview-token-chain-logo.chain-bsc {
+  background: #f3ba2f;
+  color: #111315;
+}
+
+.overview-token-chain-logo.chain-ton {
+  background: #0098ea;
+  color: #ffffff;
+}
+
+.overview-token-chain-logo.chain-abstract {
+  background: #f5f7f8;
+  color: #111315;
+}
+
+.overview-token-chain-logo.chain-polygon {
+  background: #8247e5;
+  color: #ffffff;
+}
+
+.overview-token-chain-logo.chain-arbitrum {
+  background: #213147;
+  color: #28a0f0;
+}
+
+.overview-token-chain-logo.chain-optimism {
+  background: #ff0420;
+  color: #ffffff;
+}
+
+.overview-token-chain-logo.chain-avalanche {
+  background: #e84142;
+  color: #ffffff;
+}
+
 .overview-token-logo img {
   width: 100%;
   height: 100%;
@@ -4281,6 +4356,7 @@ main {
 
 .dark-preview .analysis-icon,
 .dark-preview .token-logo,
+.dark-preview .overview-token-chain-logo,
 .dark-preview .overview-token-logo {
   border-color: #2a2e33;
   background: #111315;
@@ -5929,7 +6005,6 @@ main {
 .smart-alerts-page .pb-4 { padding-bottom: 1rem; }
 .smart-alerts-page .pb-10 { padding-bottom: 2.5rem; }
 .smart-alerts-page.pb-10 { padding-bottom: 2.5rem; }
-.smart-alerts-page .pt-4 { padding-top: 1rem; }
 .smart-alerts-page .pr-10 { padding-right: 2.5rem; }
 .smart-alerts-page .rounded { border-radius: 0.25rem; }
 .smart-alerts-page .rounded-md { border-radius: 0.375rem; }
@@ -6075,11 +6150,7 @@ main {
   .smart-alerts-page .sm\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .smart-alerts-page .sm\:col-span-2 { grid-column: span 2 / span 2; }
   .smart-alerts-page .sm\:flex-row { flex-direction: row; }
-  .smart-alerts-page .sm\:items-center { align-items: center; }
-  .smart-alerts-page .sm\:justify-between { justify-content: space-between; }
   .smart-alerts-page .sm\:justify-end { justify-content: flex-end; }
-  .smart-alerts-page .sm\:flex-none { flex: none; }
-  .smart-alerts-page .sm\:w-auto { width: auto; }
 }
 
 @media (min-width: 768px) {
@@ -6091,7 +6162,6 @@ main {
 
 @media (min-width: 1024px) {
   .smart-alerts-page .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .smart-alerts-page .lg\:grid-cols-\[1fr_auto\] { grid-template-columns: minmax(0, 1fr) auto; }
   .smart-alerts-page .lg\:col-span-2 { grid-column: span 2 / span 2; }
 }
 
@@ -6596,11 +6666,8 @@ main {
 .ai-assistant-page .relative, .global-ai-assistant .relative { position: relative; }
 .ai-assistant-page .absolute, .global-ai-assistant .absolute { position: absolute; }
 .global-ai-assistant.fixed { position: fixed; }
-.ai-assistant-page .inset-y-0 { top: 0; bottom: 0; }
-.ai-assistant-page .left-0 { left: 0; }
 .global-ai-assistant.bottom-5 { bottom: 1.25rem; }
 .global-ai-assistant.right-5 { right: 1.25rem; }
-.ai-assistant-page .z-30 { z-index: 30; }
 .global-ai-assistant.z-\[70\] { z-index: 70; }
 .ai-assistant-page .mx-auto { margin-left: auto; margin-right: auto; }
 .ai-assistant-page .ml-auto { margin-left: auto; }
@@ -6610,7 +6677,6 @@ main {
 .ai-assistant-page .mt-7 { margin-top: 1.75rem; }
 .ai-assistant-page .mb-2, .global-ai-assistant .mb-2 { margin-bottom: 0.5rem; }
 .global-ai-assistant .mb-4 { margin-bottom: 1rem; }
-.ai-assistant-page .mb-5 { margin-bottom: 1.25rem; }
 .ai-assistant-page .mb-6 { margin-bottom: 1.5rem; }
 .ai-assistant-page .mr-2, .global-ai-assistant .mr-2 { margin-right: 0.5rem; }
 .ai-assistant-page .flex-col, .global-ai-assistant .flex-col { flex-direction: column; }
@@ -6622,6 +6688,7 @@ main {
 .global-ai-assistant .items-end { align-items: flex-end; }
 .ai-assistant-page .justify-center { justify-content: center; }
 .ai-assistant-page .justify-end { justify-content: flex-end; }
+.global-ai-assistant .justify-start { justify-content: flex-start; }
 .ai-assistant-page .justify-start { justify-content: flex-start; }
 .ai-assistant-page .justify-between, .global-ai-assistant .justify-between { justify-content: space-between; }
 .ai-assistant-page .place-items-center, .global-ai-assistant .place-items-center { place-items: center; }
@@ -6636,8 +6703,9 @@ main {
 .ai-assistant-page .h-4, .global-ai-assistant .h-4 { height: 1rem; }
 .ai-assistant-page .h-5 { height: 1.25rem; }
 .ai-assistant-page .h-6 { height: 1.5rem; }
-.ai-assistant-page .h-8 { height: 2rem; }
-.ai-assistant-page .h-10 { height: 2.5rem; }
+.ai-assistant-page .h-8, .global-ai-assistant .h-8 { height: 2rem; }
+.global-ai-assistant .h-9 { height: 2.25rem; }
+.ai-assistant-page .h-10, .global-ai-assistant .h-10 { height: 2.5rem; }
 .ai-assistant-page .h-11, .global-ai-assistant .h-11 { height: 2.75rem; }
 .ai-assistant-page .h-12 { height: 3rem; }
 .global-ai-assistant .h-14 { height: 3.5rem; }
@@ -6647,15 +6715,14 @@ main {
 .ai-assistant-page .w-4, .global-ai-assistant .w-4 { width: 1rem; }
 .ai-assistant-page .w-5 { width: 1.25rem; }
 .ai-assistant-page .w-6 { width: 1.5rem; }
-.ai-assistant-page .w-8 { width: 2rem; }
-.ai-assistant-page .w-10 { width: 2.5rem; }
+.ai-assistant-page .w-8, .global-ai-assistant .w-8 { width: 2rem; }
+.global-ai-assistant .w-9 { width: 2.25rem; }
+.ai-assistant-page .w-10, .global-ai-assistant .w-10 { width: 2.5rem; }
 .ai-assistant-page .w-11, .global-ai-assistant .w-11 { width: 2.75rem; }
 .ai-assistant-page .w-12 { width: 3rem; }
 .ai-assistant-page .w-16 { width: 4rem; }
-.ai-assistant-page .w-\[72px\] { width: 72px; }
 .ai-assistant-page .max-w-2xl { max-width: 42rem; }
 .ai-assistant-page .max-w-3xl { max-width: 48rem; }
-.ai-assistant-page .max-w-4xl { max-width: 56rem; }
 .ai-assistant-page .max-w-\[86\%\] { max-width: 86%; }
 .global-ai-assistant .max-w-\[88\%\] { max-width: 88%; }
 .global-ai-assistant .max-w-full { max-width: 100%; }
@@ -6669,14 +6736,13 @@ main {
 .ai-assistant-page .max-h-32 { max-height: 8rem; }
 .global-ai-assistant .max-h-28 { max-height: 7rem; }
 .ai-assistant-page .grid-cols-2, .global-ai-assistant .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.ai-assistant-page .gap-1 { gap: 0.25rem; }
+.ai-assistant-page .gap-1, .global-ai-assistant .gap-1 { gap: 0.25rem; }
 .ai-assistant-page .gap-2, .global-ai-assistant .gap-2 { gap: 0.5rem; }
 .ai-assistant-page .gap-3, .global-ai-assistant .gap-3 { gap: 0.75rem; }
 .ai-assistant-page .space-y-2 > * + *, .global-ai-assistant .space-y-2 > * + * { margin-top: 0.5rem; }
 .global-ai-assistant .space-y-3 > * + * { margin-top: 0.75rem; }
 .ai-assistant-page .overflow-hidden, .global-ai-assistant .overflow-hidden { overflow: hidden; }
 .ai-assistant-page .overflow-y-auto, .global-ai-assistant .overflow-y-auto { overflow-y: auto; }
-.ai-assistant-page .overflow-x-auto { overflow-x: auto; }
 .ai-assistant-page .truncate, .global-ai-assistant .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-assistant-page .resize-none, .global-ai-assistant .resize-none { resize: none; }
 .ai-assistant-page .p-2, .global-ai-assistant .p-2 { padding: 0.5rem; }
@@ -6685,6 +6751,7 @@ main {
 .ai-assistant-page .p-5 { padding: 1.25rem; }
 .ai-assistant-page .px-1 { padding-left: 0.25rem; padding-right: 0.25rem; }
 .ai-assistant-page .px-1\.5 { padding-left: 0.375rem; padding-right: 0.375rem; }
+.global-ai-assistant .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
 .ai-assistant-page .px-3, .global-ai-assistant .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
 .ai-assistant-page .px-4, .global-ai-assistant .px-4, .global-ai-assistant.px-4 { padding-left: 1rem; padding-right: 1rem; }
 .ai-assistant-page .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
@@ -6699,9 +6766,7 @@ main {
 .ai-assistant-page .border, .global-ai-assistant .border { border: 1px solid var(--border-color); }
 .ai-assistant-page .border-b, .global-ai-assistant .border-b { border-bottom: 1px solid var(--border-color); }
 .ai-assistant-page .border-t, .global-ai-assistant .border-t { border-top: 1px solid var(--border-color); }
-.ai-assistant-page .border-r { border-right: 1px solid var(--border-color); }
 .ai-assistant-page .border-border, .global-ai-assistant .border-border { border-color: var(--border-color); }
-.ai-assistant-page .border-primary-green\/25,
 .ai-assistant-page .border-primary-green\/30,
 .ai-assistant-page .border-primary-green\/35,
 .ai-assistant-page .border-primary-green\/40,
@@ -6720,10 +6785,10 @@ main {
 .ai-assistant-page .bg-card\/90 { background: color-mix(in srgb, var(--bg-card-solid) 90%, transparent); }
 .ai-assistant-page .bg-card\/95 { background: color-mix(in srgb, var(--bg-card-solid) 95%, transparent); }
 .ai-assistant-page .bg-main, .global-ai-assistant .bg-main { background: var(--bg-main); }
+.global-ai-assistant .bg-transparent { background: transparent; }
 .ai-assistant-page .bg-main\/95 { background: color-mix(in srgb, var(--bg-main) 95%, transparent); }
 .global-ai-assistant .bg-main\/72 { background: color-mix(in srgb, var(--bg-main) 72%, transparent); }
 .global-ai-assistant .bg-main\/76 { background: color-mix(in srgb, var(--bg-main) 76%, transparent); }
-.ai-assistant-page .bg-sidebar { background: var(--bg-card-solid); }
 .ai-assistant-page .bg-primary-green, .global-ai-assistant .bg-primary-green, .global-ai-assistant.bg-primary-green { background: var(--primary-green); }
 .ai-assistant-page .bg-primary-green\/10, .global-ai-assistant .bg-primary-green\/10 { background: color-mix(in srgb, var(--primary-green) 14%, transparent); }
 .ai-assistant-page .bg-primary-red\/10 { background: color-mix(in srgb, var(--primary-red) 14%, transparent); }
@@ -6737,7 +6802,6 @@ main {
 .ai-assistant-page .text-xs, .global-ai-assistant .text-xs { font-size: 12px; line-height: 1rem; }
 .ai-assistant-page .text-sm, .global-ai-assistant .text-sm { font-size: 14px; line-height: 1.25rem; }
 .ai-assistant-page .text-base { font-size: 16px; line-height: 1.5rem; }
-.ai-assistant-page .text-2xl { font-size: 24px; line-height: 1.2; }
 .ai-assistant-page .text-3xl { font-size: 30px; line-height: 1.15; }
 .ai-assistant-page .font-medium, .global-ai-assistant .font-medium { font-weight: 500; }
 .ai-assistant-page .font-semibold, .global-ai-assistant .font-semibold { font-weight: 600; }
@@ -6757,23 +6821,22 @@ main {
 .ai-assistant-page .text-primary-yellow { color: var(--primary-yellow); }
 .ai-assistant-page .text-main, .global-ai-assistant .text-main { color: var(--bg-main); }
 .global-ai-assistant.text-white, .global-ai-assistant .text-white { color: #fff; }
-.ai-assistant-page .text-main\/70 { color: color-mix(in srgb, var(--bg-main) 70%, transparent); }
 .ai-assistant-page .text-main\/60 { color: color-mix(in srgb, var(--bg-main) 60%, transparent); }
 .global-ai-assistant .text-white\/70 { color: rgba(255, 255, 255, 0.7); }
 .ai-assistant-page .object-contain, .global-ai-assistant .object-contain { object-fit: contain; }
-.ai-assistant-page .opacity-0 { opacity: 0; }
 .global-ai-assistant .opacity-80 { opacity: 0.8; }
 .ai-assistant-page .outline-none, .global-ai-assistant .outline-none { outline: none; }
 .ai-assistant-page .transition-colors, .global-ai-assistant .transition-colors { transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease; }
 .ai-assistant-page .transition-all { transition: all 180ms ease; }
-.ai-assistant-page .transition-opacity { transition: opacity 180ms ease; }
 .global-ai-assistant.transition-transform { transition: transform 160ms ease; }
 .ai-assistant-page .shadow-sm, .global-ai-assistant .shadow-sm { box-shadow: var(--shadow-subtle); }
 .global-ai-assistant .shadow-\[18px_24px_70px_rgba\(73\,119\,88\,0\.24\)\] { box-shadow: 18px 24px 70px rgba(73,119,88,0.24); }
 .global-ai-assistant.shadow-\[0_18px_44px_rgba\(63\,163\,77\,0\.34\)\] { box-shadow: 0 18px 44px rgba(63,163,77,0.34); }
-.ai-assistant-page .backdrop-blur, .ai-assistant-page .backdrop-blur-md, .global-ai-assistant .backdrop-blur-2xl { backdrop-filter: blur(18px); }
+.ai-assistant-page .backdrop-blur, .global-ai-assistant .backdrop-blur-2xl { backdrop-filter: blur(18px); }
 .ai-assistant-page .break-words, .global-ai-assistant .break-words { overflow-wrap: anywhere; word-break: break-word; }
-.global-ai-assistant .ring-1 { box-shadow: 0 0 0 1px var(--border-color); }
+.global-ai-assistant .ring-1,
+.global-ai-assistant .ring-border { box-shadow: 0 0 0 1px var(--border-color); }
+.global-ai-assistant .shadow-\[0_14px_34px_rgba\(63\,163\,77\,0\.22\)\] { box-shadow: 0 14px 34px rgba(63, 163, 77, 0.22); }
 .ai-assistant-page .animate-spin, .global-ai-assistant .animate-spin { animation: spin 1s linear infinite; }
 .global-ai-assistant .animate-fade-in { animation: smartAlertsFadeIn 180ms ease-out; }
 
@@ -6868,11 +6931,6 @@ main {
   .global-ai-assistant .sm\:block { display: block; }
 }
 
-@media (min-width: 1024px) {
-  .ai-assistant-page .lg\:block { display: block; }
-  .ai-assistant-page .lg\:hidden { display: none; }
-}
-
 @media (min-width: 1280px) {
   .ai-assistant-page .xl\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
@@ -6904,6 +6962,44 @@ main {
 
 .ai-assistant-page .ai-assistant-chat-column {
   max-width: min(1280px, 100%);
+}
+
+.ai-assistant-page .ai-assistant-composer {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text-light);
+  box-shadow: var(--shadow-subtle);
+  padding: 0 8px 0 16px;
+}
+
+.ai-assistant-page .ai-assistant-hero-composer.ai-assistant-composer {
+  min-height: 50px;
+  align-items: center;
+  flex-direction: row;
+  padding: 0 8px 0 16px;
+}
+
+.ai-assistant-page .ai-assistant-composer-actions {
+  gap: 10px;
+}
+
+.ai-assistant-page .ai-assistant-composer-actions button {
+  width: 52px;
+  height: 52px;
+  min-height: 52px;
+  border: 0;
+  border-radius: 18px;
+  outline: 0;
+  box-shadow: none;
+}
+
+.ai-assistant-page .ai-assistant-composer-actions button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(63, 163, 77, 0.22);
 }
 
 .ai-assistant-page .bg-card\/90,
@@ -6947,12 +7043,6 @@ main {
 .ai-assistant-page .sm\:text-4xl {
   font-size: 28px;
   line-height: 1.14;
-  font-weight: 900;
-}
-
-.ai-assistant-page .text-2xl {
-  font-size: 24px;
-  line-height: 1.12;
   font-weight: 900;
 }
 
@@ -7027,20 +7117,38 @@ main {
 
 .ai-assistant-page .ai-assistant-textarea,
 .global-ai-assistant textarea {
-  background: rgba(255, 255, 255, 0.72);
+  min-width: 0;
+  min-height: 50px;
+  border: 0;
+  background: transparent;
   color: var(--text-light);
-  border-color: var(--border-color);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.4;
   box-shadow: none;
+  outline: 0;
+  padding: 14px 0 12px;
 }
 
 .ai-assistant-page .ai-assistant-hero-composer .ai-assistant-textarea {
   background: transparent;
+  min-height: 50px;
+  padding: 14px 0 12px;
 }
 
 .ai-assistant-page .ai-assistant-textarea:focus,
 .global-ai-assistant textarea:focus {
+  box-shadow: none;
+}
+
+.ai-assistant-page .ai-assistant-composer:focus-within {
   border-color: rgba(63, 163, 77, 0.58);
-  box-shadow: 0 0 0 3px rgba(63, 163, 77, 0.10);
+  box-shadow: 0 0 0 3px rgba(63, 163, 77, 0.10), var(--shadow-subtle);
+}
+
+.ai-assistant-page .ai-assistant-textarea::placeholder {
+  color: var(--text-dark);
+  opacity: 1;
 }
 
 .ai-assistant-page button.bg-primary-green,
@@ -7070,6 +7178,7 @@ main {
 }
 
 .app-shell.dark-preview .ai-assistant-hero-composer,
+.app-shell.dark-preview .ai-assistant-composer,
 .app-shell.dark-preview .ai-assistant-prompt-chip,
 .app-shell.dark-preview .ai-assistant-message:not(.bg-primary-green),
 .app-shell.dark-preview .global-ai-assistant > div:first-child,
@@ -7081,9 +7190,23 @@ main {
 
 .app-shell.dark-preview .ai-assistant-textarea,
 .app-shell.dark-preview .global-ai-assistant textarea {
-  background: #111315;
-  border-color: #2a2e33;
+  background: transparent;
   color: var(--text-light);
+}
+
+.app-shell.dark-preview .ai-assistant-composer {
+  border-color: #2a2e33;
+  background: rgba(17, 19, 21, 0.68);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.app-shell.dark-preview .ai-assistant-composer:focus-within {
+  border-color: rgba(114, 229, 132, 0.48);
+  box-shadow: 0 0 0 3px rgba(38, 211, 86, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.app-shell.dark-preview .ai-assistant-textarea::placeholder {
+  color: rgba(170, 178, 191, 0.68);
 }
 
 @media (max-width: 640px) {

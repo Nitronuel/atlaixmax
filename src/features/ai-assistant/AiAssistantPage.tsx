@@ -63,7 +63,7 @@ type AssistantHandoff = {
 const createWelcomeMessage = (): ChatMessage => ({
     id: 'welcome',
     role: 'assistant',
-    text: 'I am online. Ask about tokens, wallets, risk, alerts, or market activity and I will turn the conversation into an Atlaix workflow when it helps.',
+    text: 'Ask about a token, wallet, alert, risk signal, or market move. I can open the right Atlaix workflow when there is enough context.',
     tool: 'conversation',
     createdAt: Date.now()
 });
@@ -362,7 +362,7 @@ export const AiAssistantPage: React.FC = () => {
                                                     event.preventDefault();
                                                     sendMessage();
                                                 }}
-                                                className="ai-assistant-hero-composer rounded-2xl border border-primary-green/25 bg-main/95 p-3 text-left shadow-[0_20px_70px_rgba(0,0,0,0.35)]"
+                                                className="ai-assistant-composer ai-assistant-hero-composer rounded-2xl border border-primary-green/25 bg-main/95 p-3 text-left shadow-[0_20px_70px_rgba(0,0,0,0.35)]"
                                             >
                                                 <textarea
                                                     value={draft}
@@ -376,7 +376,7 @@ export const AiAssistantPage: React.FC = () => {
                                                     placeholder="Ask Atlaix AI"
                                                     className="ai-assistant-textarea max-h-32 min-h-[48px] w-full resize-none bg-transparent px-1 py-1 text-base font-medium text-text-light outline-none placeholder:text-text-dark"
                                                 />
-                                                <div className="flex items-center justify-end gap-2">
+                                                <div className="ai-assistant-composer-actions flex items-center justify-end gap-2">
                                                     <button
                                                         type="submit"
                                                         disabled={!draft.trim() || sending}
@@ -510,7 +510,7 @@ export const AiAssistantPage: React.FC = () => {
                                     sendMessage();
                                 }}
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="ai-assistant-composer flex items-center gap-3">
                                     <textarea
                                         value={draft}
                                         onChange={(event) => setDraft(event.target.value)}
@@ -523,7 +523,7 @@ export const AiAssistantPage: React.FC = () => {
                                         placeholder="Message Atlaix AI"
                                         className="ai-assistant-textarea max-h-32 min-h-[52px] flex-1 resize-none rounded-2xl border border-border bg-main px-4 py-[14px] text-sm font-medium text-text-light outline-none transition-colors placeholder:text-text-dark focus:border-primary-green/60"
                                     />
-                                    <div className="flex shrink-0 items-center gap-3 self-center">
+                                    <div className="ai-assistant-composer-actions flex shrink-0 items-center gap-3 self-center">
                                         <button
                                             type="submit"
                                             disabled={!draft.trim() || sending}

@@ -110,7 +110,7 @@ const MARKET_HISTORY_MAX_AGE_MS = 2 * 60 * 1000;
 const createWelcomeMessage = (title = 'Atlaix AI'): FloatingMessage => ({
     id: 'global-welcome',
     role: 'assistant',
-    text: `I am here with you on ${title}. Ask a question or use a quick action and I will turn it into the right Atlaix workflow when it helps.`,
+    text: `${title} context is ready. Ask a question or use a quick action to open the right Atlaix workflow.`,
     tool: 'conversation',
     createdAt: Date.now()
 });

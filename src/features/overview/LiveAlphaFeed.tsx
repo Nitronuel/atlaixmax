@@ -17,7 +17,28 @@ import {
 } from './overview-utils';
 
 const PAGE_SIZE = 24;
-const columns: Array<{ label: string; key: OverviewSortKey; className?: string; width: number; align?: 'right' }> = [
+const chainLabels: Record<string, string> = {
+  abstract: 'Abstract',
+  arbitrum: 'Arbitrum',
+  avalanche: 'Avalanche',
+  base: 'Base',
+  bsc: 'BNB Chain',
+  ethereum: 'Ethereum',
+  optimism: 'Optimism',
+  polygon: 'Polygon',
+  solana: 'Solana',
+  ton: 'TON'
+};
+
+type FeedColumn = {
+  label: string;
+  key: OverviewSortKey;
+  className?: string;
+  width: number;
+  align?: 'right';
+};
+
+const columns: FeedColumn[] = [
   { label: 'Chain Token', key: 'symbol', className: 'token-col', width: 230 },
   { label: 'Price', key: 'priceUsd', width: 122, align: 'right' },
   { label: 'Chg 24h', key: 'change24h', width: 116, align: 'right' },
@@ -53,15 +74,16 @@ function HeaderRow({ sortConfig, onSort }: { sortConfig: SortConfig; onSort: (ke
   return (
     <tr>
       {columns.map((column) => {
-        const active = sortConfig?.key === column.key;
+        const key = column.key;
+        const active = sortConfig?.key === key;
         const direction = active ? sortConfig?.direction : undefined;
         return (
           <th
-            key={column.key}
+            key={key}
             className={[column.className || '', column.align === 'right' ? 'metric-col' : ''].filter(Boolean).join(' ')}
             aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
           >
-            <button type="button" onClick={() => onSort(column.key)} className={active ? 'active' : ''}>
+            <button type="button" onClick={() => onSort(key)} className={active ? 'active' : ''}>
               {['Price', 'MCap', 'DEX Volume', 'Liquidity', 'DEX Buys', 'DEX Sells'].includes(column.label) ? <Info size={12} /> : null}
               {column.label}
               <SortGlyph direction={direction} />
@@ -86,6 +108,81 @@ function FlowBar({ value, max }: { value: number; max: number }) {
 
 function signedClass(value: number) {
   return value >= 0 ? 'positive' : 'negative';
+}
+
+function normalizeChainKey(chain: string) {
+  const normalized = chain.trim().toLowerCase();
+  if (['eth', 'ethereum'].includes(normalized)) return 'ethereum';
+  if (['bnb', 'bsc', 'binance', 'binance smart chain'].includes(normalized)) return 'bsc';
+  if (['sol', 'solana'].includes(normalized)) return 'solana';
+  if (['poly', 'polygon'].includes(normalized)) return 'polygon';
+  if (['arb', 'arbitrum'].includes(normalized)) return 'arbitrum';
+  if (['op', 'optimism'].includes(normalized)) return 'optimism';
+  if (['avax', 'avalanche'].includes(normalized)) return 'avalanche';
+  return normalized || 'unknown';
+}
+
+function ChainLogo({ chain }: { chain: string }) {
+  const key = normalizeChainKey(chain);
+  const label = chainLabels[key] || chain || 'Unknown chain';
+  return (
+    <span className={`overview-token-chain-logo chain-${key}`} title={label} aria-label={`${label} chain`}>
+      {key === 'solana' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 7.4h12.5l1.5-2.1H6.5L5 7.4Z" />
+          <path d="M19 10.9H6.5L5 13h12.5l1.5-2.1Z" />
+          <path d="M5 18.7h12.5l1.5-2.1H6.5L5 18.7Z" />
+        </svg>
+      )}
+      {key === 'ethereum' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 5.6 12.2 12 16l6.4-3.8L12 2Z" />
+          <path d="M12 17.2 5.6 13.4 12 22l6.4-8.6-6.4 3.8Z" />
+        </svg>
+      )}
+      {key === 'base' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="7.5" />
+        </svg>
+      )}
+      {key === 'bsc' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 4 16 8l-2.2 2.2L12 8.4l-1.8 1.8L8 8l4-4Zm-6 8 2.2-2.2L10.4 12l-2.2 2.2L6 12Zm6 3.6 1.8-1.8L16 16l-4 4-4-4 2.2-2.2 1.8 1.8Zm1.6-3.6L16 9.6l2.4 2.4-2.4 2.4-2.4-2.4Zm-3.1 0L12 10.5l1.5 1.5-1.5 1.5-1.5-1.5Z" />
+        </svg>
+      )}
+      {key === 'ton' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4.5 6.5h15L12 18 4.5 6.5Zm2.9 1.8L12 15.5l4.6-7.2H7.4Z" />
+        </svg>
+      )}
+      {key === 'abstract' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 7.5h5.2v3.2H6V7.5Zm6.8 0H18v3.2h-5.2V7.5ZM6 13.3h5.2v3.2H6v-3.2Zm6.8 0H18v3.2h-5.2v-3.2Z" />
+        </svg>
+      )}
+      {key === 'polygon' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m16.2 8.2-3.5 2v4l3.5 2 3.5-2v-4l-3.5-2Zm-8.4 0-3.5 2v4l3.5 2 3.5-2v-4l-3.5-2Zm8.4 2.5 1.3.8v1.4l-1.3.8-1.3-.8v-1.4l1.3-.8Zm-8.4 0 1.3.8v1.4l-1.3.8-1.3-.8v-1.4l1.3-.8Z" />
+        </svg>
+      )}
+      {key === 'arbitrum' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3 19.5 7.2v9.6L12 21l-7.5-4.2V7.2L12 3Zm-1.7 13.7 5.4-9.5-1.9-1.1-5.4 9.5 1.9 1.1Zm3.2 1.1 3.3-5.8-1.8-1.1-3.4 5.8 1.9 1.1Z" />
+        </svg>
+      )}
+      {key === 'optimism' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M7.8 8h3.7c2.3 0 3.7 1.2 3.7 3.1 0 2.4-1.8 4.9-5 4.9H6.5L7.8 8Zm2.4 2-0.7 4h0.9c1.4 0 2.3-1.4 2.3-2.6 0-0.9-0.5-1.4-1.5-1.4h-1Z" />
+        </svg>
+      )}
+      {key === 'avalanche' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m12 4 6.7 12H15l-3-5.2L9 16H5.3L12 4Zm3.4 12h3.3l-2.2-3.9-1.1 1.9Z" />
+        </svg>
+      )}
+      {!chainLabels[key] && <span>{chain.slice(0, 2).toUpperCase()}</span>}
+    </span>
+  );
 }
 
 export function LiveAlphaFeed({
@@ -213,10 +310,11 @@ export function LiveAlphaFeed({
               {pageRows.map((token) => (
                 <tr key={token.id} onClick={() => openToken(token)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openToken(token)}>
                   <td className="token-col">
+                    <ChainLogo chain={token.chain} />
                     <span className="overview-token-logo">{token.logo ? <img src={token.logo} alt="" /> : token.symbol.slice(0, 2)}</span>
                     <span>
                       <strong>{token.symbol}</strong>
-                      <small>{token.chain} / {token.name}</small>
+                      <small>{token.name}</small>
                     </span>
                   </td>
                   <td className="metric-col">{formatPrice(token.priceUsd)}</td>
