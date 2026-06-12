@@ -5,6 +5,7 @@ import { stat } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { loadEnvFile, readEnv } from './env';
 import { AiAssistantRoutes } from './ai-assistant/routes';
+import { DetectionRoutes } from './detection/routes';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { InsightXRoutes } from './insightx/routes';
 import { startOverviewIngestionScheduler } from './overview/database';
@@ -24,6 +25,7 @@ const smartAlertRoutes = new SmartAlertRoutes();
 const aiAssistantRoutes = new AiAssistantRoutes(smartAlertRoutes);
 const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
+const detectionRoutes = new DetectionRoutes();
 const clientRoot = resolve(process.cwd(), 'dist');
 
 const contentTypes: Record<string, string> = {
@@ -106,6 +108,11 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (requestUrl.pathname.startsWith('/api/detection')) {
+      await detectionRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
     if (requestUrl.pathname.startsWith('/api/smart-money')) {
       await smartMoneyRoutes.handle(request, response, requestUrl);
       return;
@@ -142,5 +149,6 @@ const server = createServer(async (request, response) => {
 server.listen(port, host, () => {
   startOverviewIngestionScheduler();
   smartAlertRoutes.start();
+  detectionRoutes.start();
   console.log(`Atlaix API listening on http://${host}:${port}`);
 });

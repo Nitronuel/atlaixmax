@@ -2,6 +2,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ComingSoonPage } from './app/ComingSoonPage';
 import { Layout } from './app/Layout';
 import { AiAssistantPage } from './features/ai-assistant/AiAssistantPage';
+import { DetectionPage } from './features/detection/DetectionPage';
+import { DetectionTokenPage } from './features/detection/DetectionTokenPage';
 import { OverviewPage } from './features/overview/OverviewPage';
 import { SafeScanPage } from './features/safe-scan/SafeScanPage';
 import { SmartMoneyPage } from './features/smart-money/SmartMoneyPage';
@@ -16,7 +18,8 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<OverviewPage />} />
         <Route path="/token/:address" element={<TokenDetailsPage />} />
-        <Route path="/detection/*" element={<ComingSoonPage title="Detection Engine" />} />
+        <Route path="/detection/token/:chain/:address" element={<DetectionTokenPage />} />
+        <Route path="/detection/*" element={<DetectionPage />} />
         <Route path="/sentiment" element={<ComingSoonPage title="Narrative Intelligence" />} />
         <Route path="/smart-money" element={<SmartMoneyPage />} />
         <Route path="/smart-money/:address" element={<SmartMoneyPage />} />
