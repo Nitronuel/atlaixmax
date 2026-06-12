@@ -102,7 +102,6 @@ type DetectionEngineSnapshot = {
 
 const GLOBAL_ASSISTANT_CACHE_KEY = 'atlaix-global-ai-assistant-v2';
 const GLOBAL_ASSISTANT_HANDOFF_KEY = 'atlaix-ai-assistant-handoff-v1';
-const GLOBAL_ASSISTANT_TTL_MS = 60 * 60 * 1000;
 const LIVE_ALPHA_FEED_SNAPSHOT_MAX_AGE_MS = 60 * 1000;
 const DETECTION_ENGINE_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 1000;
 const MARKET_HISTORY_MAX_AGE_MS = 2 * 60 * 1000;
@@ -116,49 +115,6 @@ const createWelcomeMessage = (title = 'Atlaix AI'): FloatingMessage => ({
 });
 
 const canUseLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
-
-const loadCachedMessages = () => {
-    if (!canUseLocalStorage()) return null;
-
-    try {
-        const raw = window.localStorage.getItem(GLOBAL_ASSISTANT_CACHE_KEY);
-        if (!raw) return null;
-
-        const parsed = JSON.parse(raw) as {
-            messages?: FloatingMessage[];
-            draft?: string;
-            provider?: AiAssistantProvider | null;
-            savedAt?: number;
-        };
-        if (!parsed.savedAt || Date.now() - parsed.savedAt > GLOBAL_ASSISTANT_TTL_MS) {
-            window.localStorage.removeItem(GLOBAL_ASSISTANT_CACHE_KEY);
-            return null;
-        }
-
-        return {
-            messages: Array.isArray(parsed.messages) ? parsed.messages.filter((item) => item?.id && item?.role && item?.text).slice(-24) : [],
-            draft: typeof parsed.draft === 'string' ? parsed.draft : '',
-            provider: parsed.provider || null
-        };
-    } catch {
-        return null;
-    }
-};
-
-const saveCachedMessages = (messages: FloatingMessage[], draft: string, provider: AiAssistantProvider | null) => {
-    if (!canUseLocalStorage()) return;
-
-    try {
-        window.localStorage.setItem(GLOBAL_ASSISTANT_CACHE_KEY, JSON.stringify({
-            messages: messages.slice(-24),
-            draft,
-            provider,
-            savedAt: Date.now()
-        }));
-    } catch {
-        // Local persistence should never block the assistant.
-    }
-};
 
 const toConversationHistory = (messages: FloatingMessage[]): AiAssistantConversationMessage[] =>
     messages

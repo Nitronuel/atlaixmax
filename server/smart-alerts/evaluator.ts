@@ -164,7 +164,7 @@ const getNumericObserved = (rule: SmartAlertRuleSnapshot, snapshot: SmartAlertMa
     }
 };
 
-const formatObserved = (rule: SmartAlertRuleSnapshot, observed: number | null, textObserved?: string | null) => {
+const formatObserved = (observed: number | null, textObserved?: string | null) => {
     if (textObserved) return textObserved;
     if (observed === null) return null;
     return formatUsd(observed);
@@ -181,7 +181,7 @@ export const evaluateSmartAlertRule = (
     const tokenLabel = snapshot.tokenLabel ? ` on ${snapshot.tokenLabel}` : '';
 
     let matched = false;
-    let observedValue: string | null = formatObserved(rule, observedNumber);
+    let observedValue: string | null = formatObserved(observedNumber);
     let nextBaselineValue: number | null = null;
     let lastError: string | null = null;
 
@@ -190,7 +190,7 @@ export const evaluateSmartAlertRule = (
             lastError = 'No numeric market value was available for percentage evaluation.';
         } else if (!Number.isFinite(Number(rule.baseline_value)) || Number(rule.baseline_value) === 0) {
             nextBaselineValue = Number(observedNumber);
-            observedValue = formatObserved(rule, observedNumber);
+            observedValue = formatObserved(observedNumber);
             return {
                 shouldTrigger: false,
                 observedValue,
@@ -203,7 +203,7 @@ export const evaluateSmartAlertRule = (
         } else {
             const { matched: percentMatched, change } = matchesPercentChange(observedNumber, rule.baseline_value, rule.threshold);
             matched = percentMatched;
-            observedValue = change === null ? formatObserved(rule, observedNumber) : formatPercent(change);
+            observedValue = change === null ? formatObserved(observedNumber) : formatPercent(change);
             if (matched) nextBaselineValue = Number(observedNumber);
         }
     } else {

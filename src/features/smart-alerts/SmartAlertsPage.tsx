@@ -152,19 +152,6 @@ const TIME_WINDOW_OPTIONS = [
 
 const LOCAL_ALERT_USER_ID = 'local-smart-alerts-user';
 
-const formatCompactUsd = (value: number | null | undefined) => {
-    if (!Number.isFinite(Number(value))) return 'N/A';
-    return `$${Number(value).toLocaleString(undefined, {
-        maximumFractionDigits: Number(value) >= 1 ? 2 : 8
-    })}`;
-};
-
-const formatChange = (value: number | null | undefined) => {
-    if (!Number.isFinite(Number(value))) return 'N/A';
-    const numeric = Number(value);
-    return `${numeric > 0 ? '+' : ''}${numeric.toFixed(Math.abs(numeric) >= 10 ? 1 : 2)}%`;
-};
-
 const shortenAddress = (value: string | null | undefined) => {
     if (!value) return 'No address';
     if (value.length <= 14) return value;
@@ -319,20 +306,9 @@ export const SmartAlerts: React.FC = () => {
     const [setupTokenLookupError, setSetupTokenLookupError] = useState<string | null>(null);
     const [loadingAlerts, setLoadingAlerts] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [backendStatus, setBackendStatus] = useState<BackendStatus | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
     const [authPrompt, setAuthPrompt] = useState<string | null>(null);
-
-    const loadBackendStatus = useCallback(async () => {
-        try {
-            const response = await fetch(apiUrl('/api/smart-alerts/status'));
-            if (!response.ok) return;
-            setBackendStatus(await response.json());
-        } catch {
-            setBackendStatus(null);
-        }
-    }, []);
 
     const loadUserAlerts = useCallback(async (attempt = 0) => {
         if (!user) {
@@ -347,7 +323,6 @@ export const SmartAlerts: React.FC = () => {
                 SmartAlertService.listRules(user.id),
                 SmartAlertService.listTriggers(user.id, 50)
             ]);
-            void loadBackendStatus();
 
             if (rulesResult.status === 'fulfilled') setRules(rulesResult.value);
             if (triggersResult.status === 'fulfilled') setTriggers(triggersResult.value);
@@ -373,15 +348,11 @@ export const SmartAlerts: React.FC = () => {
         } finally {
             setLoadingAlerts(false);
         }
-    }, [loadBackendStatus, user]);
+    }, [user]);
 
     useEffect(() => {
         if (!authLoading) loadUserAlerts();
     }, [authLoading, loadUserAlerts]);
-
-    useEffect(() => {
-        loadBackendStatus();
-    }, [loadBackendStatus]);
 
     useEffect(() => {
         if (authLoading || !user) return;
@@ -692,14 +663,12 @@ export const SmartAlerts: React.FC = () => {
             const response = await fetch(apiUrl('/api/smart-alerts/run'), { method: 'POST' });
             if (!response.ok) return;
             let status = await response.json() as BackendStatus;
-            setBackendStatus(status);
 
             for (let attempt = 0; attempt < 8 && status.running; attempt += 1) {
                 await sleep(1_500);
                 const statusResponse = await fetch(apiUrl('/api/smart-alerts/status'));
                 if (!statusResponse.ok) break;
                 status = await statusResponse.json() as BackendStatus;
-                setBackendStatus(status);
             }
 
             await loadUserAlerts();

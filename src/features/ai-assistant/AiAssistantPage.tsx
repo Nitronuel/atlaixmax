@@ -8,7 +8,6 @@ import {
     CheckCircle2,
     ExternalLink,
     Loader2,
-    MessageSquare,
     Plus,
     Radar,
     Send,
