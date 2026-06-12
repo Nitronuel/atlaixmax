@@ -1,4 +1,4 @@
-import { ArrowLeft, ExternalLink, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Copy, ShieldCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { DetectionTokenDetailResponse } from '../../shared/detection';
@@ -26,6 +26,12 @@ function formatPercent(value: unknown) {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) return '0.00%';
   return `${numberValue > 0 ? '+' : ''}${numberValue.toFixed(2)}%`;
+}
+
+function shortAddress(value?: string | null) {
+  if (!value) return 'No address';
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}...${value.slice(-6)}`;
 }
 
 function asClassification(value: unknown): LooseClassification | null {
@@ -60,6 +66,14 @@ export function DetectionTokenPage() {
   const snapshot = (detail?.latestSnapshot || {}) as Record<string, unknown>;
   const token = detail?.token;
   const riskReasons = importantRiskReasons(classification);
+  const tokenSymbol = token?.tokenSymbol || token?.tokenName || 'Unknown';
+  const tokenName = token?.tokenName && token?.tokenSymbol && token.tokenName !== token.tokenSymbol ? token.tokenName : tokenSymbol;
+  const chainDex = [token?.chain, token?.dexId].filter(Boolean).join(' / ');
+
+  function copyValue(value?: string | null) {
+    if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
+    void navigator.clipboard.writeText(value);
+  }
 
   if (loading) {
     return (
@@ -83,25 +97,40 @@ export function DetectionTokenPage() {
       <Link className="detection-back-link" to="/detection"><ArrowLeft size={17} />Back to Detection</Link>
 
       <header className="detection-token-hero">
-        <div>
-          <span className="detection-token-kicker"><ShieldCheck size={16} />Detection Profile</span>
-          <h2>{token.tokenSymbol || token.tokenName || 'Unknown token'}</h2>
-          <p>{classification?.reason || 'The engine has not produced a detailed verdict for this token yet.'}</p>
+        <div className="detection-token-profile">
+          <div className="detection-token-logo-large">
+            {token.logo ? <img src={token.logo} alt="" /> : <span>{tokenSymbol.slice(0, 2).toUpperCase()}</span>}
+          </div>
+          <div className="detection-token-profile-copy">
+            <span className="detection-token-kicker"><ShieldCheck size={16} />Detection Profile</span>
+            <h2>{tokenName} <small>({tokenSymbol})</small></h2>
+            {chainDex ? <p className="detection-token-network">{chainDex}</p> : null}
+            <div className="detection-token-meta-row">
+              <button type="button" onClick={() => copyValue(token.tokenAddress)} aria-label="Copy token address">
+                {shortAddress(token.tokenAddress)} <Copy size={14} />
+              </button>
+              {token.pairAddress ? (
+                <button type="button" onClick={() => copyValue(token.pairAddress)} aria-label="Copy pair address">
+                  Pair {shortAddress(token.pairAddress)} <Copy size={14} />
+                </button>
+              ) : null}
+            </div>
+            <p className="detection-token-reason">{classification?.reason || 'The engine has not produced a detailed verdict for this token yet.'}</p>
+          </div>
         </div>
+
+        <section className="detection-token-metrics" aria-label="Latest market metrics">
+          <div><span>24h Volume</span><strong>{formatUsd((snapshot as { volume24h?: unknown }).volume24h)}</strong></div>
+          <div><span>Liquidity</span><strong>{formatUsd((snapshot as { liquidityUsd?: unknown }).liquidityUsd)}</strong></div>
+          <div><span>Market Cap</span><strong>{formatUsd((snapshot as { marketCap?: unknown }).marketCap)}</strong></div>
+          <div><span>24h Change</span><strong>{formatPercent((snapshot as { priceChange24h?: unknown }).priceChange24h)}</strong></div>
+        </section>
       </header>
 
       <div className="detection-token-actions">
         <Link to={`/token/${encodeURIComponent(token.tokenAddress)}?chain=${encodeURIComponent(token.chain)}&pair=${encodeURIComponent(token.pairAddress)}`}>Token Details</Link>
         <Link to="/safe-scan">Safe Scan</Link>
-        {token.pairUrl ? <a href={token.pairUrl} target="_blank" rel="noreferrer">DexScreener <ExternalLink size={15} /></a> : null}
       </div>
-
-      <section className="detection-token-metrics">
-        <div><span>24h Volume</span><strong>{formatUsd((snapshot as { volume24h?: unknown }).volume24h)}</strong></div>
-        <div><span>Liquidity</span><strong>{formatUsd((snapshot as { liquidityUsd?: unknown }).liquidityUsd)}</strong></div>
-        <div><span>Market Cap</span><strong>{formatUsd((snapshot as { marketCap?: unknown }).marketCap)}</strong></div>
-        <div><span>24h Change</span><strong>{formatPercent((snapshot as { priceChange24h?: unknown }).priceChange24h)}</strong></div>
-      </section>
 
       <div className="detection-token-grid">
         <article className="detection-detail-panel">
