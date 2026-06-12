@@ -2,6 +2,7 @@ import { calculateDataQuality } from "./dataQuality";
 import { LABEL_PRIORITY, displayLabelFor, resolveAlertPriority, resolveMarketPhase } from "./classifierLabels";
 import { triggerToSignal } from "./classifierSignals";
 import { clamp, formatPercent, riskLevelFor, unique } from "./classifierUtils";
+import { isMeaningfulLiquidityShock } from "./features";
 import type {
   ActiveRegime,
   BehaviorLabel,
@@ -12,6 +13,7 @@ import type {
   FinalClassification,
   LowerTimeframeTrigger,
   ManipulationRisk,
+  PairReliability,
   PrimaryLabel,
   RiskAssessment,
   RiskLevel,
@@ -24,7 +26,7 @@ import type {
   TrendChange
 } from "./types";
 
-export const RULE_VERSION = "v3.0.0";
+export const RULE_VERSION = "v3.1.0";
 
 interface ClassificationInput {
   snapshot: TokenSnapshot;
@@ -40,23 +42,35 @@ interface Context {
   previousClassification: FinalClassification | null;
   dataQuality: DataQuality;
   timeframes: Record<"m5" | "h1" | "h6" | "h24", TimeframeAnalysis>;
+  regimeWeights: Record<"m5" | "h1" | "h6" | "h24", number>;
+  tokenAgeMinutes: number | null;
+  pairReliability: PairReliability | null;
   structuralRegime: StructuralRegime;
   lowerTimeframeTrigger: LowerTimeframeTrigger;
   timeframeAlignment: TimeframeAlignment;
   trendChange: TrendChange;
 }
 
+type TimeframeKey = "m5" | "h1" | "h6" | "h24";
+type TimeframeWeights = Record<TimeframeKey, number>;
+
 export function classifyToken(input: ClassificationInput): FinalClassification {
   const dataQuality = calculateDataQuality(input.snapshot, input.features, input.history);
+  const tokenAgeMinutes = estimateTokenAgeMinutes(input.snapshot, input.history);
   const timeframes = calculateTimeframes(input.snapshot, input.history, input.features);
-  const structuralRegime = calculateStructuralRegime(timeframes);
+  const regimeWeights = getRegimeWeights(tokenAgeMinutes, dataQuality.score);
+  const pairReliability = getPairReliability(input.snapshot);
+  const structuralRegime = calculateStructuralRegime(timeframes, regimeWeights);
   const lowerTimeframeTrigger = detectLowerTimeframeTrigger(input.snapshot, input.features, dataQuality);
-  const timeframeAlignment = calculateTimeframeAlignment(timeframes, structuralRegime);
+  const timeframeAlignment = calculateTimeframeAlignment(timeframes, structuralRegime, regimeWeights);
   const trendChange = calculateTrendChange(input.snapshot, input.history[0] ?? null);
   const context: Context = {
     ...input,
     dataQuality,
     timeframes,
+    regimeWeights,
+    tokenAgeMinutes,
+    pairReliability,
     structuralRegime,
     lowerTimeframeTrigger,
     timeframeAlignment,
@@ -114,16 +128,20 @@ export function classifyToken(input: ClassificationInput): FinalClassification {
     evidence,
     detectorScores: buildDetectorScores(context, primaryLabel, confidence, risk.level),
     dataQuality,
-    ruleVersion: RULE_VERSION
+    ruleVersion: RULE_VERSION,
+    tokenAgeMinutes,
+    regimeWeights,
+    pairReliability
   };
 }
 
 function calculateTimeframes(snapshot: TokenSnapshot, history: TokenSnapshot[], features: TokenFeatures): Context["timeframes"] {
+  const deoverlapped = calculateDeoverlappedChanges(snapshot, history);
   return {
-    m5: analyzeTimeframe("5m", snapshot.priceChange5m, baseline(history, "priceChange5m"), features),
-    h1: analyzeTimeframe("1h", snapshot.priceChange1h, baseline(history, "priceChange1h"), features),
-    h6: analyzeTimeframe("6h", snapshot.priceChange6h, baseline(history, "priceChange6h"), features),
-    h24: analyzeTimeframe("24h", snapshot.priceChange24h, baseline(history, "priceChange24h"), features)
+    m5: analyzeTimeframe("5m", snapshot.priceChange5m, baseline(history, "priceChange5m"), features, deoverlapped.m5),
+    h1: analyzeTimeframe("1h", snapshot.priceChange1h, baseline(history, "priceChange1h"), features, deoverlapped.h1),
+    h6: analyzeTimeframe("6h", snapshot.priceChange6h, baseline(history, "priceChange6h"), features, deoverlapped.h6),
+    h24: analyzeTimeframe("24h", snapshot.priceChange24h, baseline(history, "priceChange24h"), features, deoverlapped.h24)
   };
 }
 
@@ -131,20 +149,23 @@ function analyzeTimeframe(
   timeframe: TimeframeAnalysis["timeframe"],
   rawPriceChange: number,
   normalMove: number,
-  features: TokenFeatures
+  features: TokenFeatures,
+  deoverlappedPriceChange: number | null
 ): TimeframeAnalysis {
-  const normalizedMove = rawPriceChange / Math.max(normalMove, 1);
+  const effectivePriceChange = deoverlappedPriceChange ?? rawPriceChange;
+  const normalizedMove = effectivePriceChange / Math.max(normalMove, 1);
   const directionScore = directionScoreFor(normalizedMove);
   return {
     timeframe,
     rawPriceChange,
+    deoverlappedPriceChange,
     normalizedMove,
     direction: directionForScore(directionScore),
     directionScore,
     momentumScore: clamp(Math.round(directionScore * 0.7 + normalizedMove * 6), -100, 100),
-    volumeConfirmation: getVolumeConfirmation(rawPriceChange, features),
+    volumeConfirmation: getVolumeConfirmation(effectivePriceChange, features),
     liquidityConfirmation: getLiquidityConfirmation(features),
-    reliability: getTimeframeReliability(rawPriceChange, features)
+    reliability: getTimeframeReliability(effectivePriceChange, features)
   };
 }
 
@@ -166,8 +187,79 @@ function directionForScore(score: number): TimeframeAnalysis["direction"] {
   return "neutral";
 }
 
-function calculateStructuralRegime(timeframes: Context["timeframes"]): StructuralRegime {
-  const score = timeframes.h1.directionScore * 0.3 + timeframes.h6.directionScore * 0.45 + timeframes.h24.directionScore * 0.25;
+function calculateDeoverlappedChanges(snapshot: TokenSnapshot, history: TokenSnapshot[]): Record<TimeframeKey, number | null> {
+  const currentMs = Date.parse(snapshot.timestamp);
+  if (!Number.isFinite(currentMs)) return { m5: null, h1: null, h6: null, h24: null };
+
+  return {
+    m5: null,
+    h1: segmentPriceChange(history, currentMs, 60, 5, 20),
+    h6: segmentPriceChange(history, currentMs, 360, 60, 90),
+    h24: segmentPriceChange(history, currentMs, 1_440, 360, 240)
+  };
+}
+
+function segmentPriceChange(history: TokenSnapshot[], currentMs: number, startAgoMinutes: number, endAgoMinutes: number, toleranceMinutes: number) {
+  const start = closestSnapshot(history, currentMs - startAgoMinutes * 60_000, toleranceMinutes * 60_000);
+  const end = closestSnapshot(history, currentMs - endAgoMinutes * 60_000, toleranceMinutes * 60_000);
+  if (!start?.priceUsd || !end?.priceUsd) return null;
+  return ((end.priceUsd - start.priceUsd) / start.priceUsd) * 100;
+}
+
+function closestSnapshot(history: TokenSnapshot[], targetMs: number, toleranceMs: number) {
+  let closest: TokenSnapshot | null = null;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (const snapshot of history) {
+    const timestamp = Date.parse(snapshot.timestamp);
+    if (!Number.isFinite(timestamp)) continue;
+    const distance = Math.abs(timestamp - targetMs);
+    if (distance < closestDistance && distance <= toleranceMs) {
+      closest = snapshot;
+      closestDistance = distance;
+    }
+  }
+  return closest;
+}
+
+function estimateTokenAgeMinutes(snapshot: TokenSnapshot, history: TokenSnapshot[]): number | null {
+  const raw = snapshot.raw as { pair?: { pairCreatedAt?: number | null }; overview?: { pairCreatedAt?: number | null } } | null;
+  const createdAt = normalizeEpochMs(snapshot.pairCreatedAt ?? raw?.pair?.pairCreatedAt ?? raw?.overview?.pairCreatedAt ?? null);
+  const currentMs = Date.parse(snapshot.timestamp);
+  if (createdAt && Number.isFinite(currentMs) && currentMs > createdAt) return Math.round((currentMs - createdAt) / 60_000);
+  const oldest = history.at(-1);
+  const oldestMs = oldest ? Date.parse(oldest.timestamp) : NaN;
+  if (Number.isFinite(currentMs) && Number.isFinite(oldestMs) && currentMs > oldestMs) return Math.round((currentMs - oldestMs) / 60_000);
+  return null;
+}
+
+function normalizeEpochMs(value: number | null | undefined) {
+  if (!value || !Number.isFinite(value)) return null;
+  return value < 10_000_000_000 ? value * 1_000 : value;
+}
+
+function getRegimeWeights(tokenAgeMinutes: number | null, dataQualityScore: number): TimeframeWeights {
+  if (dataQualityScore < 55) return { m5: 0.35, h1: 0.4, h6: 0.25, h24: 0 };
+  if (tokenAgeMinutes !== null && tokenAgeMinutes < 120) return { m5: 0.45, h1: 0.35, h6: 0.2, h24: 0 };
+  if (tokenAgeMinutes !== null && tokenAgeMinutes < 360) return { m5: 0.3, h1: 0.4, h6: 0.3, h24: 0 };
+  if (tokenAgeMinutes !== null && tokenAgeMinutes < 1_440) return { m5: 0.15, h1: 0.35, h6: 0.35, h24: 0.15 };
+  return { m5: 0, h1: 0.3, h6: 0.45, h24: 0.25 };
+}
+
+function structuralScoreFor(timeframes: Context["timeframes"], weights: TimeframeWeights) {
+  return timeframes.m5.directionScore * weights.m5 +
+    timeframes.h1.directionScore * weights.h1 +
+    timeframes.h6.directionScore * weights.h6 +
+    timeframes.h24.directionScore * weights.h24;
+}
+
+function getPairReliability(snapshot: TokenSnapshot): PairReliability | null {
+  if (snapshot.pairReliability) return snapshot.pairReliability;
+  const raw = snapshot.raw as { pairReliability?: PairReliability | null } | null;
+  return raw?.pairReliability || null;
+}
+
+function calculateStructuralRegime(timeframes: Context["timeframes"], weights: TimeframeWeights): StructuralRegime {
+  const score = structuralScoreFor(timeframes, weights);
   if (score >= 60) return "STRONG_BULLISH";
   if (score >= 25) return "BULLISH";
   if (score <= -60) return "STRONG_BEARISH";
@@ -177,13 +269,13 @@ function calculateStructuralRegime(timeframes: Context["timeframes"]): Structura
 }
 
 function detectLowerTimeframeTrigger(snapshot: TokenSnapshot, features: TokenFeatures, dataQuality: DataQuality): LowerTimeframeTrigger {
-  if (dataQuality.score < 45) return "LOW_ACTIVITY_MOVE";
   if (features.liquidityRegime === "LOW_LIQUIDITY" || features.liquidityRegime === "FRAGILE_LIQUIDITY") {
     if (snapshot.priceChange5m >= 8) return "LOW_LIQUIDITY_PRICE_SPIKE";
     if (snapshot.priceChange5m <= -8) return "LOW_LIQUIDITY_SELL_OFF";
   }
-  if (features.liquidityState === "sudden_drop" && (features.liquidityChangeUsd ?? 0) <= -1_000) return "5M_LIQUIDITY_DROP";
+  if (isMeaningfulLiquidityShock(snapshot.liquidityUsd, features.liquidityChangePercentage, features.liquidityChangeUsd) && (features.liquidityChangeUsd ?? 0) < 0) return "5M_LIQUIDITY_DROP";
   if (features.liquidityState === "sudden_increase" && (features.liquidityChangeUsd ?? 0) >= 1_000) return "5M_LIQUIDITY_INCREASE";
+  if (dataQuality.score < 45) return "LOW_ACTIVITY_MOVE";
   if (snapshot.priceChange5m >= 12 || (snapshot.priceChange5m >= 8 && features.volumeQualityScore >= 55)) return "SHARP_5M_PUMP";
   if (snapshot.priceChange5m <= -12 || (snapshot.priceChange5m <= -8 && features.volumeQualityScore >= 55)) return "SHARP_5M_DUMP";
   if (features.volumeSpikeScore >= 1.8) return "5M_VOLUME_SPIKE";
@@ -192,9 +284,9 @@ function detectLowerTimeframeTrigger(snapshot: TokenSnapshot, features: TokenFea
   return "NONE";
 }
 
-function calculateTimeframeAlignment(timeframes: Context["timeframes"], structuralRegime: StructuralRegime): TimeframeAlignment {
+function calculateTimeframeAlignment(timeframes: Context["timeframes"], structuralRegime: StructuralRegime, weights: TimeframeWeights): TimeframeAlignment {
   const triggerScore = timeframes.m5.directionScore;
-  const structuralScore = timeframes.h1.directionScore * 0.3 + timeframes.h6.directionScore * 0.45 + timeframes.h24.directionScore * 0.25;
+  const structuralScore = structuralScoreFor(timeframes, weights);
   const conflict = Math.abs(triggerScore - structuralScore);
   if (triggerScore >= 25 && structuralScore >= 25) return { status: "aligned_bullish", score: 100 - Math.round(conflict / 2), conflictSeverity: "none" };
   if (triggerScore <= -25 && structuralScore <= -25) return { status: "aligned_bearish", score: 100 - Math.round(conflict / 2), conflictSeverity: "none" };
@@ -219,9 +311,10 @@ function calculateTrendChange(current: TokenSnapshot, previous: TokenSnapshot | 
 
 function resolveContextualLabel(context: Context): PrimaryLabel {
   const { snapshot, features, dataQuality, structuralRegime, lowerTimeframeTrigger, trendChange } = context;
+  const criticalSafetyLabel = detectCriticalSafetyLabel(context);
+  if (criticalSafetyLabel) return criticalSafetyLabel;
   if (dataQuality.score < 45) return "INSUFFICIENT_DATA";
   if (!dataQuality.hasMinimumActivity && Math.abs(snapshot.priceChange5m) <= 2 && Math.abs(snapshot.priceChange1h) <= 5) return "LOW_ACTIVITY";
-  if (features.liquidityState === "sudden_drop" && (features.liquidityChangeUsd ?? 0) <= -1_000) return "LIQUIDITY_DRAIN";
   if (lowerTimeframeTrigger === "LOW_LIQUIDITY_PRICE_SPIKE") return "LOW_LIQUIDITY_PRICE_SPIKE";
   if (lowerTimeframeTrigger === "LOW_LIQUIDITY_SELL_OFF") return "LOW_LIQUIDITY_SELL_OFF";
   if (lowerTimeframeTrigger === "5M_LIQUIDITY_INCREASE") return "LIQUIDITY_ADDED";
@@ -246,6 +339,20 @@ function resolveContextualLabel(context: Context): PrimaryLabel {
   if (isDistribution(context)) return "DISTRIBUTION";
   if (isConsolidation(context)) return "CONSOLIDATION";
   return "UNKNOWN";
+}
+
+function detectCriticalSafetyLabel(context: Context): PrimaryLabel | null {
+  const { snapshot, features } = context;
+  const isThinPool = features.liquidityRegime === "LOW_LIQUIDITY" || features.liquidityRegime === "FRAGILE_LIQUIDITY";
+  const isMeaningfulDrain = isMeaningfulLiquidityShock(snapshot.liquidityUsd, features.liquidityChangePercentage, features.liquidityChangeUsd) &&
+    (features.liquidityChangeUsd ?? 0) < 0;
+
+  if (isMeaningfulDrain) return "LIQUIDITY_DRAIN";
+  if (isThinPool && snapshot.priceChange5m >= 8) return "LOW_LIQUIDITY_PRICE_SPIKE";
+  if (isThinPool && snapshot.priceChange5m <= -8) return "LOW_LIQUIDITY_SELL_OFF";
+  if (features.volumeToLiquidityRatio >= 1 && snapshot.priceChange5m >= 8) return "LOW_LIQUIDITY_PRICE_SPIKE";
+  if (features.volumeToLiquidityRatio >= 1 && snapshot.priceChange5m <= -8) return "LOW_LIQUIDITY_SELL_OFF";
+  return null;
 }
 
 function applyHysteresis(candidate: PrimaryLabel, context: Context): PrimaryLabel {
@@ -303,11 +410,12 @@ function getContradictorySignals(context: Context, label: PrimaryLabel): SignalL
 
 function calculateConfidence(context: Context, label: PrimaryLabel, contradictions: SignalLabel[], signals: SignalLabel[]): ConfidenceBreakdown {
   const triggerConfidence = calculateTriggerConfidence(context);
-  const regimeConfidence = clamp(Math.round(Math.abs(context.timeframes.h1.directionScore * 0.3 + context.timeframes.h6.directionScore * 0.45 + context.timeframes.h24.directionScore * 0.25)), 25, 96);
+  const regimeConfidence = clamp(Math.round(Math.abs(structuralScoreFor(context.timeframes, context.regimeWeights))), 25, 96);
   let interpretationConfidence = Math.round((triggerConfidence + regimeConfidence) / 2);
   if (context.timeframeAlignment.status.startsWith("aligned")) interpretationConfidence += 8;
   if (context.features.volumeQualityScore >= 61) interpretationConfidence += 6;
   if (context.features.liquidityRegime === "HEALTHY_LIQUIDITY" || context.features.liquidityRegime === "LIQUIDITY_EXPANDING") interpretationConfidence += 5;
+  if (context.pairReliability?.tier === "low") interpretationConfidence -= 8;
   interpretationConfidence -= contradictions.length * 8;
   if (label === "LOW_LIQUIDITY_PRICE_SPIKE" || label === "LOW_LIQUIDITY_SELL_OFF") interpretationConfidence -= 8;
   const dataConfidence = context.dataQuality.score;
@@ -355,6 +463,10 @@ function calculateRisk(context: Context, label: PrimaryLabel, contradictions: Si
   if (context.dataQuality.score < 60) {
     score += 10;
     reasons.push("Data quality is weak.");
+  }
+  if (context.pairReliability?.tier === "low") {
+    score += 8;
+    reasons.push("The selected DexScreener pair has weak reliability.");
   }
   return { score: clamp(score, 0, 100), level: riskLevelFor(score), reasons: reasons.length ? reasons : ["No major risk driver detected."] };
 }
@@ -410,6 +522,7 @@ function buildWarnings(context: Context, label: PrimaryLabel, contradictions: Si
   if (label === "BULLISH_PULLBACK") warnings.push("The 5m move is bearish, but higher timeframes remain bullish.");
   if (label === "BEARISH_REVERSAL_ATTEMPT") warnings.push("Reversal is not confirmed until higher timeframes improve.");
   if (label === "LOW_LIQUIDITY_PRICE_SPIKE") warnings.push("Price moved sharply, but liquidity and activity are too thin for a clean pump label.");
+  if (context.pairReliability?.tier === "low") warnings.push("The selected DexScreener pair has weak reliability.");
   if (contradictions.length > 0) warnings.push(`Contradictory signals detected: ${contradictions.join(", ")}.`);
   if (risk.level === "high" || risk.level === "critical") warnings.push(...risk.reasons);
   if (manipulationRisk.level === "high" || manipulationRisk.level === "critical") warnings.push(...manipulationRisk.reasons);

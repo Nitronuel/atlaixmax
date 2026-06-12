@@ -1,5 +1,5 @@
 import type { OverviewToken } from '../../src/shared/overview';
-import type { ChainId, Token, TokenRecord, TokenSnapshot } from './types';
+import type { ChainId, PairReliability, Token, TokenRecord, TokenSnapshot } from './types';
 
 const BASE_URL = 'https://api.dexscreener.com';
 const REQUEST_TIMEOUT_MS = 12_000;
@@ -24,6 +24,7 @@ type DexPair = {
   liquidity?: { usd?: number };
   fdv?: number;
   marketCap?: number;
+  pairCreatedAt?: number;
   info?: { imageUrl?: string };
 };
 
@@ -50,7 +51,9 @@ function selectBestPair(pairs: DexPair[], preferredPairAddress = '') {
 }
 
 function scorePair(pair: DexPair) {
-  return Number(pair.volume?.m5 || 0) * 2 + Number(pair.volume?.h1 || 0) + Number(pair.liquidity?.usd || 0) * 0.05;
+  const reliability = calculatePairReliability(pair);
+  const baseScore = Number(pair.volume?.m5 || 0) * 2 + Number(pair.volume?.h1 || 0) + Number(pair.liquidity?.usd || 0) * 0.05;
+  return baseScore * (0.65 + reliability.score / 200);
 }
 
 function toRecord(pair: DexPair, candidate: DetectionCandidate, chain: ChainId): TokenRecord {
@@ -62,6 +65,7 @@ function toRecord(pair: DexPair, candidate: DetectionCandidate, chain: ChainId):
   const timestamp = new Date().toISOString();
   const buys5m = Number(pair.txns?.m5?.buys || 0);
   const sells5m = Number(pair.txns?.m5?.sells || 0);
+  const pairReliability = calculatePairReliability(pair);
 
   const token: Token = {
     tokenId,
@@ -91,14 +95,64 @@ function toRecord(pair: DexPair, candidate: DetectionCandidate, chain: ChainId):
     priceChange1h: Number(pair.priceChange?.h1 || 0),
     priceChange6h: Number(pair.priceChange?.h6 || 0),
     priceChange24h: Number(pair.priceChange?.h24 ?? candidate.change24h ?? 0),
+    pairCreatedAt: pair.pairCreatedAt ?? candidate.pairCreatedAt ?? null,
+    pairReliability,
     raw: {
       pair,
       overview: candidate,
+      pairReliability,
       logo: pair.info?.imageUrl || candidate.logo || null
     }
   };
 
   return { token, snapshot };
+}
+
+function calculatePairReliability(pair: DexPair): PairReliability {
+  const liquidity = Number(pair.liquidity?.usd || 0);
+  const volume24h = Number(pair.volume?.h24 || 0);
+  const volume1h = Number(pair.volume?.h1 || 0);
+  const totalTxns24h = Number(pair.txns?.h24?.buys || 0) + Number(pair.txns?.h24?.sells || 0);
+  const ageHours = pair.pairCreatedAt ? (Date.now() - normalizeEpochMs(pair.pairCreatedAt)) / 3_600_000 : null;
+  const volumeLiquidityRatio = liquidity > 0 ? volume24h / liquidity : 0;
+  const reasons: string[] = [];
+
+  let score = 35;
+  score += Math.min(25, liquidity / 20_000);
+  score += Math.min(20, totalTxns24h / 25);
+  score += Math.min(15, volume1h / 20_000);
+  if (ageHours === null) score += 5;
+  else if (ageHours >= 24) score += 15;
+  else if (ageHours >= 6) score += 10;
+  else score += 4;
+
+  if (liquidity < 2_000) {
+    score -= 18;
+    reasons.push('Very low pair liquidity.');
+  }
+  if (volumeLiquidityRatio >= 8) {
+    score -= 16;
+    reasons.push('24h volume is extreme compared with liquidity.');
+  }
+  if (totalTxns24h > 0 && totalTxns24h < 20) {
+    score -= 8;
+    reasons.push('Pair has limited transaction depth.');
+  }
+  if (ageHours !== null && ageHours < 2) {
+    score -= 8;
+    reasons.push('Pair is very new.');
+  }
+
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  return {
+    score: finalScore,
+    tier: finalScore >= 70 ? 'high' : finalScore >= 45 ? 'medium' : 'low',
+    reasons
+  };
+}
+
+function normalizeEpochMs(value: number) {
+  return value < 10_000_000_000 ? value * 1_000 : value;
 }
 
 export function getDexScreenerChainId(chain: string | undefined): string {

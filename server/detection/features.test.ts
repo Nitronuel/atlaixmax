@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateFeatures } from './features';
+import { calculateFeatures, getLiquidityShockThreshold, isMeaningfulLiquidityShock } from './features';
 import type { TokenSnapshot } from './types';
 
 describe('detection feature calculation', () => {
@@ -9,6 +9,12 @@ describe('detection feature calculation', () => {
     expect(features.liquidityChangePercentage).toBeNull();
     expect(features.liquidityChangeUsd).toBeNull();
     expect(features.volumeSpikeScore).toBe(1);
+  });
+
+  it('uses pool-size-aware liquidity shock thresholds', () => {
+    expect(getLiquidityShockThreshold(150_000)).toEqual({ percent: 15, usd: 10_000 });
+    expect(isMeaningfulLiquidityShock(150_000, -18, -20_000)).toBe(true);
+    expect(isMeaningfulLiquidityShock(75, -25, -25)).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 import type { DetectionEvent } from '../../src/shared/detection';
-import type { FinalClassification, RiskLevel, TokenRecord } from './types';
+import type { FinalClassification, PrimaryLabel, RiskLevel, TokenRecord } from './types';
 
 const QUIET_LABELS = new Set(['LOW_ACTIVITY', 'INSUFFICIENT_DATA', 'UNKNOWN', 'CONSOLIDATION']);
 
@@ -10,7 +10,13 @@ export function shouldCreateDetectionEvent(classification: FinalClassification, 
   if (classification.riskLevel === 'critical' || classification.riskLevel === 'high') return true;
   if (classification.eventStatus === 'new' && classification.finalConfidence >= 60) return true;
   if (classification.eventStatus === 'strengthening' && classification.finalConfidence >= 55) return true;
-  return previous?.primaryLabel !== classification.primaryLabel && classification.finalConfidence >= 65;
+  if (!previous) return false;
+  if (previous.primaryLabel !== classification.primaryLabel) return classification.finalConfidence >= 65;
+  if (previous.riskLevel !== classification.riskLevel) return true;
+  if (previous.eventStatus !== classification.eventStatus) return true;
+  if (Math.abs(classification.finalConfidence - previous.finalConfidence) >= 12) return true;
+  if (Math.abs((classification.risk?.score || 0) - (previous.risk?.score || 0)) >= 15) return true;
+  return false;
 }
 
 export function buildDetectionEvent(record: TokenRecord, classification: FinalClassification, classificationId: string): DetectionEvent {
@@ -43,28 +49,53 @@ export function buildDetectionEvent(record: TokenRecord, classification: FinalCl
       netFlow: record.snapshot.buys5m - record.snapshot.sells5m
     },
     classificationId,
-    dedupeKey: dedupeKeyFor(record.token.tokenId, classification)
+    dedupeKey: dedupeKeyFor(record.token.tokenId, classification),
+    lifecycleId: lifecycleIdFor(record.token.tokenId, classification),
+    lifecycleStatus: classification.eventStatus,
+    eventVersion: 1,
+    lastUpdatedAt: Date.parse(classification.timestamp) || Date.now(),
+    previousScore: null,
+    scoreDelta: null,
+    riskDelta: null
   };
 }
 
 export function dedupeKeyFor(tokenId: string, classification: FinalClassification) {
-  return [
-    tokenId,
-    classification.primaryLabel,
-    classification.riskLevel,
-    classification.eventStatus
-  ].join(':');
+  return lifecycleIdFor(tokenId, classification);
 }
 
-function sentimentForLabel(label: string): DetectionEvent['sentiment'] {
-  if (label.includes('BULLISH') || label.includes('PUMP') || label.includes('ACCUMULATION') || label === 'LIQUIDITY_ADDED' || label === 'BUY_RECOVERY') {
-    return 'bullish';
-  }
-  if (label.includes('BEARISH') || label.includes('DUMP') || label.includes('DRAIN') || label.includes('SELL') || label === 'DISTRIBUTION') {
-    return 'bearish';
-  }
-  return 'neutral';
+export function lifecycleIdFor(tokenId: string, classification: FinalClassification) {
+  return [tokenId, classification.primaryLabel].join(':');
 }
+
+function sentimentForLabel(label: PrimaryLabel): DetectionEvent['sentiment'] {
+  return SENTIMENT_BY_LABEL[label] || 'neutral';
+}
+
+const SENTIMENT_BY_LABEL: Record<PrimaryLabel, DetectionEvent['sentiment']> = {
+  BULLISH_CONTINUATION_PUMP: 'bullish',
+  BEARISH_CONTINUATION_DUMP: 'bearish',
+  BEARISH_RELIEF_BOUNCE: 'neutral',
+  BULLISH_PULLBACK: 'neutral',
+  BEARISH_REVERSAL_ATTEMPT: 'bullish',
+  BULLISH_BREAKDOWN_ATTEMPT: 'bearish',
+  RANGE_BREAKOUT_ATTEMPT: 'bullish',
+  RANGE_BREAKDOWN_ATTEMPT: 'bearish',
+  LOW_LIQUIDITY_PRICE_SPIKE: 'neutral',
+  LOW_LIQUIDITY_SELL_OFF: 'bearish',
+  LIQUIDITY_DRAIN: 'bearish',
+  LIQUIDITY_ADDED: 'bullish',
+  PUMP: 'bullish',
+  DUMP: 'bearish',
+  BUY_RECOVERY: 'bullish',
+  SELL_OFF: 'bearish',
+  ACCUMULATION: 'bullish',
+  DISTRIBUTION: 'bearish',
+  CONSOLIDATION: 'neutral',
+  LOW_ACTIVITY: 'neutral',
+  INSUFFICIENT_DATA: 'neutral',
+  UNKNOWN: 'neutral'
+};
 
 export function severityScore(severity: RiskLevel) {
   if (severity === 'critical') return 4;

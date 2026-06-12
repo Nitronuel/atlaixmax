@@ -146,6 +146,39 @@ on public.detection_events (severity);
 create index if not exists detection_events_sentiment_idx
 on public.detection_events (sentiment);
 
+alter table public.detection_tokens
+add column if not exists scan_tier text default 'cold',
+add column if not exists next_detection_check_at timestamptz,
+add column if not exists detection_priority_score numeric,
+add column if not exists failed_hydration_count integer not null default 0,
+add column if not exists last_primary_label text,
+add column if not exists last_risk_level text,
+add column if not exists last_event_status text,
+add column if not exists consecutive_quiet_count integer not null default 0;
+
+create index if not exists detection_tokens_next_check_idx
+on public.detection_tokens (next_detection_check_at nulls first);
+
+create index if not exists detection_tokens_scan_tier_idx
+on public.detection_tokens (scan_tier);
+
+alter table public.detection_classifications
+add column if not exists token_age_minutes numeric,
+add column if not exists regime_weights jsonb,
+add column if not exists pair_reliability jsonb;
+
+alter table public.detection_events
+add column if not exists lifecycle_id text,
+add column if not exists lifecycle_status text,
+add column if not exists event_version integer not null default 1,
+add column if not exists last_updated_at timestamptz,
+add column if not exists previous_score integer,
+add column if not exists score_delta integer,
+add column if not exists risk_delta integer;
+
+create index if not exists detection_events_lifecycle_idx
+on public.detection_events (lifecycle_id);
+
 create table if not exists public.detection_runs (
     id uuid primary key default gen_random_uuid(),
     started_at timestamptz not null,

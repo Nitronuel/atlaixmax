@@ -71,12 +71,26 @@ function getLiquidityRegime(
   volumeToLiquidityRatio: number
 ): TokenFeatures["liquidityRegime"] {
   const liquidity = snapshot.liquidityUsd ?? 0;
-  if (changePercent !== null && changeUsd !== null && Math.abs(changePercent) >= 25 && Math.abs(changeUsd) >= 1_000) return "LIQUIDITY_SHOCK";
+  if (isMeaningfulLiquidityShock(liquidity, changePercent, changeUsd)) return "LIQUIDITY_SHOCK";
   if (liquidity > 0 && liquidity < 1_000) return "LOW_LIQUIDITY";
   if (liquidity < 5_000 && volumeToLiquidityRatio >= 0.5) return "FRAGILE_LIQUIDITY";
   if ((changePercent ?? 0) >= 10 && (changeUsd ?? 0) >= 1_000) return "LIQUIDITY_EXPANDING";
   if ((changePercent ?? 0) <= -10 && (changeUsd ?? 0) <= -1_000) return "LIQUIDITY_DRAINING";
   return "HEALTHY_LIQUIDITY";
+}
+
+export function getLiquidityShockThreshold(liquidityUsd: number | null | undefined) {
+  const liquidity = liquidityUsd ?? 0;
+  if (liquidity < 2_000) return { percent: 35, usd: 300 };
+  if (liquidity < 10_000) return { percent: 25, usd: 750 };
+  if (liquidity < 100_000) return { percent: 20, usd: 2_500 };
+  return { percent: 15, usd: 10_000 };
+}
+
+export function isMeaningfulLiquidityShock(liquidityUsd: number | null | undefined, changePercent: number | null, changeUsd: number | null) {
+  if (changePercent === null || changeUsd === null) return false;
+  const threshold = getLiquidityShockThreshold(liquidityUsd);
+  return Math.abs(changePercent) >= threshold.percent && Math.abs(changeUsd) >= threshold.usd;
 }
 
 function getVolumeQualityScore(

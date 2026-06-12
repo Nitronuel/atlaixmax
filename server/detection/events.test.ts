@@ -7,18 +7,31 @@ describe('detection event mapping', () => {
     const classification = makeClassification({ primaryLabel: 'LIQUIDITY_DRAIN', riskLevel: 'critical', alertPriority: 'critical' });
 
     expect(shouldCreateDetectionEvent(classification, null)).toBe(true);
-    expect(dedupeKeyFor('solana:pair', classification)).toBe('solana:pair:LIQUIDITY_DRAIN:critical:new');
+    expect(dedupeKeyFor('solana:pair', classification)).toBe('solana:pair:LIQUIDITY_DRAIN');
 
     const event = buildDetectionEvent(makeRecord(), classification, 'classification-id');
     expect(event.eventType).toBe('Liquidity Drain');
     expect(event.sentiment).toBe('bearish');
     expect(event.severity).toBe('critical');
     expect(event.token.ticker).toBe('TEST');
+    expect(event.lifecycleId).toBe('solana:pair:LIQUIDITY_DRAIN');
   });
 
   it('keeps quiet labels out of the feed', () => {
     expect(shouldCreateDetectionEvent(makeClassification({ primaryLabel: 'LOW_ACTIVITY', alertPriority: 'none' }), null)).toBe(false);
     expect(shouldCreateDetectionEvent(makeClassification({ primaryLabel: 'UNKNOWN', alertPriority: 'none' }), null)).toBe(false);
+  });
+
+  it('maps contextual direction labels without keyword confusion', () => {
+    expect(buildDetectionEvent(makeRecord(), makeClassification({
+      primaryLabel: 'BULLISH_BREAKDOWN_ATTEMPT',
+      displayLabel: 'Bullish Breakdown Attempt'
+    }), 'breakdown-id').sentiment).toBe('bearish');
+
+    expect(buildDetectionEvent(makeRecord(), makeClassification({
+      primaryLabel: 'BEARISH_REVERSAL_ATTEMPT',
+      displayLabel: 'Bearish Reversal Attempt'
+    }), 'reversal-id').sentiment).toBe('bullish');
   });
 });
 

@@ -3,14 +3,22 @@ import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import type { DetectionEvent, DetectionEventsResponse, DetectionSeverity, DetectionSentiment, DetectionTokenDetailResponse } from '../../src/shared/detection';
 import { readEnv } from '../env';
-import type { FinalClassification, Token, TokenFeatures, TokenSnapshot } from './types';
+import type { EventStatus, FinalClassification, PrimaryLabel, RiskLevel, ScanTier, Token, TokenFeatures, TokenSchedulePatch, TokenSnapshot } from './types';
 
-type StoredToken = Token & {
+export type StoredToken = Token & {
   logo?: string | null;
   overviewEvent?: string | null;
   overviewVolume24h?: number | null;
   overviewLiquidity?: number | null;
   lastDetectionCheckedAt?: string | null;
+  scanTier?: ScanTier | null;
+  nextDetectionCheckAt?: string | null;
+  detectionPriorityScore?: number | null;
+  failedHydrationCount?: number | null;
+  lastPrimaryLabel?: PrimaryLabel | null;
+  lastRiskLevel?: RiskLevel | null;
+  lastEventStatus?: EventStatus | null;
+  consecutiveQuietCount?: number | null;
 };
 
 type StoredClassification = FinalClassification & { classificationId: string };
@@ -45,10 +53,12 @@ export type DetectionEventFilters = {
 };
 
 const TOKEN_COLUMNS = 'token_id,token_name,token_symbol,token_address,chain,pair_address,dex_id,pair_url,logo_url,overview_event,overview_volume_24h,overview_liquidity,last_detection_checked_at,created_at,updated_at';
-const EVENT_COLUMNS = 'id,token_id,classification_id,event_type,summary,sentiment,severity,score,detected_at,token,metrics,dedupe_key,created_at';
+const TOKEN_QUEUE_COLUMNS = `${TOKEN_COLUMNS},scan_tier,next_detection_check_at,detection_priority_score,failed_hydration_count,last_primary_label,last_risk_level,last_event_status,consecutive_quiet_count`;
+const EVENT_BASE_COLUMNS = 'id,token_id,classification_id,event_type,summary,sentiment,severity,score,detected_at,token,metrics,dedupe_key,created_at';
+const EVENT_COLUMNS = `${EVENT_BASE_COLUMNS},lifecycle_id,lifecycle_status,event_version,last_updated_at,previous_score,score_delta,risk_delta`;
 const SNAPSHOT_COLUMNS = 'snapshot_id,token_id,timestamp,price_usd,market_cap,liquidity_usd,volume_5m,volume_1h,volume_6h,volume_24h,buys_5m,sells_5m,traders_5m,price_change_5m,price_change_1h,price_change_6h,price_change_24h,raw';
 const FEATURE_COLUMNS = 'feature_id,token_id,timestamp,total_txns_5m,buy_sell_ratio,buy_txn_dominance,sell_txn_dominance,net_txn_pressure,liquidity_change_percentage,liquidity_change_usd,volume_to_liquidity_ratio,volume_spike_score,volume_spike_persisted_snapshots,volume_quality_score,volume_quality_level,liquidity_regime,price_momentum_score,volatility_score,consecutive_green_snapshots,consecutive_red_snapshots,consecutive_buy_dominant_snapshots,consecutive_sell_dominant_snapshots,trend_direction,liquidity_state,pressure_state';
-const CLASSIFICATION_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label,market_phase,structural_regime,active_regime,dominant_timeframe,dominant_reason,lower_timeframe_trigger,timeframe_alignment,trend_change,event_status,confidence_breakdown,risk,manipulation_risk,timeframe_scores,liquidity_regime,volume_quality,alert_priority,secondary_signals,contradictory_signals,warnings,evidence,detector_scores,data_quality,rule_version';
+const CLASSIFICATION_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label,market_phase,structural_regime,active_regime,dominant_timeframe,dominant_reason,lower_timeframe_trigger,timeframe_alignment,trend_change,event_status,confidence_breakdown,risk,manipulation_risk,timeframe_scores,liquidity_regime,volume_quality,alert_priority,secondary_signals,contradictory_signals,warnings,evidence,detector_scores,data_quality,rule_version,token_age_minutes,regime_weights,pair_reliability';
 
 function getSupabaseConfig() {
   const url = readEnv('SUPABASE_URL').replace(/\/$/, '');
@@ -130,7 +140,15 @@ function tokenFromRow(row: Record<string, any>): StoredToken {
     overviewEvent: row.overview_event || null,
     overviewVolume24h: toNumber(row.overview_volume_24h),
     overviewLiquidity: toNumber(row.overview_liquidity),
-    lastDetectionCheckedAt: row.last_detection_checked_at || null
+    lastDetectionCheckedAt: row.last_detection_checked_at || null,
+    scanTier: row.scan_tier || null,
+    nextDetectionCheckAt: row.next_detection_check_at || null,
+    detectionPriorityScore: toNumber(row.detection_priority_score),
+    failedHydrationCount: row.failed_hydration_count === undefined ? null : Number(row.failed_hydration_count || 0),
+    lastPrimaryLabel: row.last_primary_label || null,
+    lastRiskLevel: row.last_risk_level || null,
+    lastEventStatus: row.last_event_status || null,
+    consecutiveQuietCount: row.consecutive_quiet_count === undefined ? null : Number(row.consecutive_quiet_count || 0)
   };
 }
 
@@ -152,6 +170,8 @@ function snapshotFromRow(row: Record<string, any>): TokenSnapshot {
     priceChange1h: toNumber(row.price_change_1h) || 0,
     priceChange6h: toNumber(row.price_change_6h) || 0,
     priceChange24h: toNumber(row.price_change_24h) || 0,
+    pairCreatedAt: toNumber(row.raw?.pair?.pairCreatedAt) ?? toNumber(row.raw?.overview?.pairCreatedAt),
+    pairReliability: row.raw?.pairReliability || null,
     raw: row.raw
   };
 }
@@ -257,7 +277,10 @@ function classificationFromRow(row: Record<string, any>): StoredClassification {
     evidence: row.evidence || (row.reason ? [row.reason] : []),
     detectorScores: row.detector_scores || [],
     dataQuality,
-    ruleVersion: row.rule_version || 'v3.0.0'
+    ruleVersion: row.rule_version || 'v3.0.0',
+    tokenAgeMinutes: toNumber(row.token_age_minutes),
+    regimeWeights: row.regime_weights || undefined,
+    pairReliability: row.pair_reliability || null
   };
 }
 
@@ -286,7 +309,14 @@ function eventFromRow(row: Record<string, any>): DetectionEvent {
       netFlow: Number(row.metrics?.netFlow || 0)
     },
     classificationId: String(row.classification_id || ''),
-    dedupeKey: String(row.dedupe_key || '')
+    dedupeKey: String(row.dedupe_key || ''),
+    lifecycleId: row.lifecycle_id || undefined,
+    lifecycleStatus: row.lifecycle_status || undefined,
+    eventVersion: row.event_version === undefined ? undefined : Number(row.event_version || 1),
+    lastUpdatedAt: row.last_updated_at ? (Date.parse(row.last_updated_at) || undefined) : undefined,
+    previousScore: row.previous_score === undefined ? undefined : toNumber(row.previous_score),
+    scoreDelta: row.score_delta === undefined ? undefined : toNumber(row.score_delta),
+    riskDelta: row.risk_delta === undefined ? undefined : toNumber(row.risk_delta)
   };
 }
 
@@ -308,6 +338,13 @@ function eventMatches(event: DetectionEvent, filters: DetectionEventFilters) {
   if (filters.severity && filters.severity !== 'all' && event.severity !== filters.severity) return false;
   if (filters.sentiment && filters.sentiment !== 'all' && event.sentiment !== filters.sentiment) return false;
   return true;
+}
+
+function severityRank(severity: DetectionSeverity) {
+  if (severity === 'critical') return 4;
+  if (severity === 'high') return 3;
+  if (severity === 'medium') return 2;
+  return 1;
 }
 
 function tokenLogoFromSnapshot(snapshot: TokenSnapshot) {
@@ -356,7 +393,7 @@ export class DetectionStore {
     return readLocalState().classifications[tokenId]?.at(-1) || null;
   }
 
-  async upsertToken(token: Token, snapshot?: TokenSnapshot): Promise<void> {
+  async upsertToken(token: Token, snapshot?: TokenSnapshot, schedule?: TokenSchedulePatch): Promise<void> {
     const logo = snapshot ? tokenLogoFromSnapshot(snapshot) : null;
     const raw = snapshot?.raw as { overview?: { event?: string; volume24hUsd?: number; liquidityUsd?: number } } | undefined;
     const row = {
@@ -372,7 +409,17 @@ export class DetectionStore {
       overview_event: raw?.overview?.event || null,
       overview_volume_24h: raw?.overview?.volume24hUsd || null,
       overview_liquidity: raw?.overview?.liquidityUsd || null,
-      last_detection_checked_at: new Date().toISOString()
+      last_detection_checked_at: new Date().toISOString(),
+      ...(schedule ? {
+        scan_tier: schedule.scanTier,
+        next_detection_check_at: schedule.nextDetectionCheckAt,
+        detection_priority_score: schedule.detectionPriorityScore,
+        failed_hydration_count: schedule.failedHydrationCount || 0,
+        last_primary_label: schedule.lastPrimaryLabel || null,
+        last_risk_level: schedule.lastRiskLevel || null,
+        last_event_status: schedule.lastEventStatus || null,
+        consecutive_quiet_count: schedule.consecutiveQuietCount || 0
+      } : {})
     };
 
     if (!this.useLocalOnly) {
@@ -384,7 +431,35 @@ export class DetectionStore {
         });
         return;
       } catch {
-        this.useLocalOnly = true;
+        if (schedule) {
+          try {
+            const baseRow = {
+              token_id: row.token_id,
+              token_name: row.token_name,
+              token_symbol: row.token_symbol,
+              token_address: row.token_address,
+              chain: row.chain,
+              pair_address: row.pair_address,
+              dex_id: row.dex_id,
+              pair_url: row.pair_url,
+              logo_url: row.logo_url,
+              overview_event: row.overview_event,
+              overview_volume_24h: row.overview_volume_24h,
+              overview_liquidity: row.overview_liquidity,
+              last_detection_checked_at: row.last_detection_checked_at
+            };
+            await supabaseFetch(`detection_tokens?on_conflict=token_id`, {
+              method: 'POST',
+              headers: { Prefer: 'resolution=merge-duplicates' },
+              body: JSON.stringify(baseRow)
+            });
+            return;
+          } catch {
+            this.useLocalOnly = true;
+          }
+        } else {
+          this.useLocalOnly = true;
+        }
       }
     }
 
@@ -395,9 +470,34 @@ export class DetectionStore {
       overviewEvent: row.overview_event,
       overviewVolume24h: row.overview_volume_24h,
       overviewLiquidity: row.overview_liquidity,
-      lastDetectionCheckedAt: row.last_detection_checked_at
+      lastDetectionCheckedAt: row.last_detection_checked_at,
+      scanTier: schedule?.scanTier || state.tokens[token.tokenId]?.scanTier || null,
+      nextDetectionCheckAt: schedule?.nextDetectionCheckAt || state.tokens[token.tokenId]?.nextDetectionCheckAt || null,
+      detectionPriorityScore: schedule?.detectionPriorityScore ?? state.tokens[token.tokenId]?.detectionPriorityScore ?? null,
+      failedHydrationCount: schedule?.failedHydrationCount ?? state.tokens[token.tokenId]?.failedHydrationCount ?? 0,
+      lastPrimaryLabel: schedule?.lastPrimaryLabel ?? state.tokens[token.tokenId]?.lastPrimaryLabel ?? null,
+      lastRiskLevel: schedule?.lastRiskLevel ?? state.tokens[token.tokenId]?.lastRiskLevel ?? null,
+      lastEventStatus: schedule?.lastEventStatus ?? state.tokens[token.tokenId]?.lastEventStatus ?? null,
+      consecutiveQuietCount: schedule?.consecutiveQuietCount ?? state.tokens[token.tokenId]?.consecutiveQuietCount ?? 0
     };
     writeLocalState(state);
+  }
+
+  async listTokenQueueState(limit = 5_000): Promise<StoredToken[]> {
+    if (!this.useLocalOnly) {
+      try {
+        const params = new URLSearchParams({
+          select: TOKEN_QUEUE_COLUMNS,
+          limit: String(limit)
+        });
+        const rows = await supabaseFetch<any[]>(`detection_tokens?${params.toString()}`);
+        return Array.isArray(rows) ? rows.map(tokenFromRow) : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return Object.values(readLocalState().tokens).slice(0, limit);
   }
 
   async saveSnapshot(snapshot: TokenSnapshot): Promise<void> {
@@ -517,7 +617,10 @@ export class DetectionStore {
       evidence: classification.evidence,
       detector_scores: classification.detectorScores,
       data_quality: classification.dataQuality,
-      rule_version: classification.ruleVersion
+      rule_version: classification.ruleVersion,
+      token_age_minutes: classification.tokenAgeMinutes ?? null,
+      regime_weights: classification.regimeWeights || null,
+      pair_reliability: classification.pairReliability || null
     };
 
     if (!this.useLocalOnly) {
@@ -525,7 +628,48 @@ export class DetectionStore {
         await supabaseFetch('detection_classifications', { method: 'POST', body: JSON.stringify(row) });
         return classificationId;
       } catch {
-        this.useLocalOnly = true;
+        try {
+          const baseRow = {
+            classification_id: row.classification_id,
+            token_id: row.token_id,
+            timestamp: row.timestamp,
+            rule_label: row.rule_label,
+            rule_confidence: row.rule_confidence,
+            final_label: row.final_label,
+            final_confidence: row.final_confidence,
+            risk_level: row.risk_level,
+            reason: row.reason,
+            primary_label: row.primary_label,
+            display_label: row.display_label,
+            market_phase: row.market_phase,
+            structural_regime: row.structural_regime,
+            active_regime: row.active_regime,
+            dominant_timeframe: row.dominant_timeframe,
+            dominant_reason: row.dominant_reason,
+            lower_timeframe_trigger: row.lower_timeframe_trigger,
+            timeframe_alignment: row.timeframe_alignment,
+            trend_change: row.trend_change,
+            event_status: row.event_status,
+            confidence_breakdown: row.confidence_breakdown,
+            risk: row.risk,
+            manipulation_risk: row.manipulation_risk,
+            timeframe_scores: row.timeframe_scores,
+            liquidity_regime: row.liquidity_regime,
+            volume_quality: row.volume_quality,
+            alert_priority: row.alert_priority,
+            secondary_signals: row.secondary_signals,
+            contradictory_signals: row.contradictory_signals,
+            warnings: row.warnings,
+            evidence: row.evidence,
+            detector_scores: row.detector_scores,
+            data_quality: row.data_quality,
+            rule_version: row.rule_version
+          };
+          await supabaseFetch('detection_classifications', { method: 'POST', body: JSON.stringify(baseRow) });
+          return classificationId;
+        } catch {
+          this.useLocalOnly = true;
+        }
       }
     }
 
@@ -554,24 +698,85 @@ export class DetectionStore {
       detected_at: new Date(event.detectedAt).toISOString(),
       token: event.token,
       metrics: event.metrics,
-      dedupe_key: event.dedupeKey
+      dedupe_key: event.dedupeKey,
+      lifecycle_id: event.lifecycleId || event.dedupeKey,
+      lifecycle_status: event.lifecycleStatus || null,
+      event_version: event.eventVersion || 1,
+      last_updated_at: new Date(event.lastUpdatedAt || event.detectedAt).toISOString(),
+      previous_score: event.previousScore ?? null,
+      score_delta: event.scoreDelta ?? null,
+      risk_delta: event.riskDelta ?? null
     };
 
     if (!this.useLocalOnly) {
       try {
-        const rows = await supabaseFetch<any[]>('detection_events?on_conflict=dedupe_key&select=id', {
+        const params = new URLSearchParams({
+          select: EVENT_COLUMNS,
+          dedupe_key: `eq.${event.dedupeKey}`,
+          limit: '1'
+        });
+        let existingRows: any[];
+        try {
+          existingRows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        } catch {
+          params.set('select', EVENT_BASE_COLUMNS);
+          existingRows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        }
+        const existing = Array.isArray(existingRows) && existingRows[0] ? eventFromRow(existingRows[0]) : null;
+        if (existing) {
+          const update = {
+            classification_id: row.classification_id,
+            event_type: row.event_type,
+            summary: row.summary,
+            sentiment: row.sentiment,
+            severity: row.severity,
+            score: row.score,
+            detected_at: row.detected_at,
+            token: row.token,
+            metrics: row.metrics,
+            lifecycle_status: row.lifecycle_status,
+            event_version: (existing.eventVersion || 1) + 1,
+            last_updated_at: row.last_updated_at,
+            previous_score: existing.score,
+            score_delta: row.score - existing.score,
+            risk_delta: severityRank(row.severity) - severityRank(existing.severity)
+          };
+          await supabaseFetch(`detection_events?id=eq.${existing.id}`, {
+            method: 'PATCH',
+            headers: { Prefer: 'return=minimal' },
+            body: JSON.stringify(update)
+          });
+          return false;
+        }
+
+        await supabaseFetch('detection_events', {
           method: 'POST',
-          headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
           body: JSON.stringify(row)
         });
-        return Array.isArray(rows) && rows.length > 0;
+        return true;
       } catch {
         this.useLocalOnly = true;
       }
     }
 
     const state = readLocalState();
-    if (state.events.some((existing) => existing.dedupeKey === event.dedupeKey)) return false;
+    const existingIndex = state.events.findIndex((existing) => existing.dedupeKey === event.dedupeKey);
+    if (existingIndex >= 0) {
+      const existing = state.events[existingIndex];
+      state.events.splice(existingIndex, 1);
+      state.events.unshift({
+        ...event,
+        id: existing.id,
+        eventVersion: (existing.eventVersion || 1) + 1,
+        previousScore: existing.score,
+        scoreDelta: event.score - existing.score,
+        riskDelta: severityRank(event.severity) - severityRank(existing.severity),
+        lastUpdatedAt: event.lastUpdatedAt || event.detectedAt
+      });
+      state.events = state.events.slice(0, 500);
+      writeLocalState(state);
+      return false;
+    }
     state.events.unshift(event);
     state.events = state.events.slice(0, 500);
     writeLocalState(state);
@@ -592,7 +797,13 @@ export class DetectionStore {
         if (filters.chain && filters.chain !== 'all') params.set('token->>chain', `eq.${filters.chain}`);
         if (filters.severity && filters.severity !== 'all') params.set('severity', `eq.${filters.severity}`);
         if (filters.sentiment && filters.sentiment !== 'all') params.set('sentiment', `eq.${filters.sentiment}`);
-        const rows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        let rows: any[];
+        try {
+          rows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        } catch {
+          params.set('select', EVENT_BASE_COLUMNS);
+          rows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        }
         events = Array.isArray(rows) ? rows.map(eventFromRow) : [];
       } catch {
         this.useLocalOnly = true;

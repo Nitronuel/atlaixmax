@@ -8,6 +8,7 @@ import { buildDetectionEvent, severityScore, shouldCreateDetectionEvent } from '
 import { calculateFeatures } from './features';
 import { hydrateDetectionCandidate } from './dexscreener';
 import { DetectionStore } from './store';
+import type { FinalClassification, ScanTier, TokenSchedulePatch } from './types';
 
 type DetectionRunnerStatus = {
   enabled: boolean;
@@ -30,6 +31,19 @@ const DEFAULT_INTERVAL_MS = 120_000;
 const DEFAULT_BATCH_SIZE = 75;
 const DEFAULT_CONCURRENCY = 4;
 const START_DELAY_MS = 15_000;
+const QUIET_LABELS = new Set(['LOW_ACTIVITY', 'INSUFFICIENT_DATA', 'UNKNOWN', 'CONSOLIDATION']);
+const TIER_INTERVAL_MS: Record<ScanTier, number> = {
+  hot: 2 * 60_000,
+  warm: 5 * 60_000,
+  cold: 20 * 60_000,
+  dormant: 60 * 60_000
+};
+
+type QueueTokenState = {
+  scanTier?: ScanTier | null;
+  nextDetectionCheckAt?: string | null;
+  detectionPriorityScore?: number | null;
+};
 
 function readNumberEnv(key: string, fallback: number) {
   const value = Number(readEnv(key));
@@ -59,6 +73,54 @@ function candidateScore(token: OverviewToken) {
     + Math.min(40, Math.abs(token.change24h || 0));
 }
 
+function queueKey(chain: string, address: string) {
+  return `${chain.trim().toLowerCase()}:${address.trim().toLowerCase()}`;
+}
+
+function queueStateFor(candidate: OverviewToken, states: Map<string, QueueTokenState>) {
+  const chain = candidate.chain.trim().toLowerCase();
+  return states.get(queueKey(chain, candidate.address)) || states.get(queueKey(chain, candidate.pairAddress || '')) || null;
+}
+
+function queueTierScore(tier: ScanTier | null | undefined) {
+  if (tier === 'hot') return 400;
+  if (tier === 'warm') return 240;
+  if (tier === 'dormant') return 20;
+  return 100;
+}
+
+export function selectDetectionBatch(tokens: OverviewToken[], states: Map<string, QueueTokenState>, batchSize: number, cursor: number, now = Date.now()) {
+  const candidates = tokens
+    .filter((token) => token.address)
+    .map((token) => {
+      const state = queueStateFor(token, states);
+      const nextCheckAt = state?.nextDetectionCheckAt ? Date.parse(state.nextDetectionCheckAt) : 0;
+      const due = !nextCheckAt || !Number.isFinite(nextCheckAt) || nextCheckAt <= now;
+      const staleMinutes = due && nextCheckAt ? Math.min(240, Math.max(0, (now - nextCheckAt) / 60_000)) : 0;
+      const score = candidateScore(token);
+      return {
+        token,
+        due,
+        rank: (due ? 1_000 : 0) + queueTierScore(state?.scanTier) + (state?.detectionPriorityScore ?? score) + staleMinutes
+      };
+    })
+    .sort((left, right) => right.rank - left.rank);
+
+  const due = candidates.filter((candidate) => candidate.due).slice(0, batchSize);
+  const selected = [...due];
+  if (selected.length < batchSize) {
+    const selectedIds = new Set(selected.map((candidate) => candidate.token.id));
+    const fallback = candidates.filter((candidate) => !selectedIds.has(candidate.token.id));
+    if (fallback.length) {
+      const start = cursor % fallback.length;
+      const remaining = batchSize - selected.length;
+      selected.push(...[...fallback.slice(start), ...fallback.slice(0, start)].slice(0, remaining));
+    }
+  }
+
+  return selected.map((candidate) => candidate.token);
+}
+
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = [];
   let index = 0;
@@ -73,6 +135,76 @@ async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper:
 
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
   return results;
+}
+
+export function resolveScanSchedule(
+  classification: FinalClassification,
+  previousClassification: FinalClassification | null,
+  eventCreated: boolean,
+  now = Date.now()
+): TokenSchedulePatch {
+  const tier = resolveScanTier(classification, eventCreated);
+  return {
+    scanTier: tier,
+    nextDetectionCheckAt: new Date(now + TIER_INTERVAL_MS[tier]).toISOString(),
+    detectionPriorityScore: detectionPriorityScore(classification, eventCreated),
+    failedHydrationCount: 0,
+    lastPrimaryLabel: classification.primaryLabel,
+    lastRiskLevel: classification.riskLevel,
+    lastEventStatus: classification.eventStatus,
+    consecutiveQuietCount: QUIET_LABELS.has(classification.primaryLabel)
+      ? ((previousClassification && QUIET_LABELS.has(previousClassification.primaryLabel)) ? 2 : 1)
+      : 0
+  };
+}
+
+function resolveScanTier(classification: FinalClassification, eventCreated: boolean): ScanTier {
+  if (
+    QUIET_LABELS.has(classification.primaryLabel) ||
+    (!classification.dataQuality.hasMinimumActivity && classification.riskLevel === 'low' && classification.alertPriority === 'none')
+  ) {
+    return 'dormant';
+  }
+  if (
+    eventCreated ||
+    classification.riskLevel === 'critical' ||
+    classification.riskLevel === 'high' ||
+    classification.alertPriority === 'critical' ||
+    classification.alertPriority === 'high' ||
+    classification.eventStatus === 'new' ||
+    classification.eventStatus === 'strengthening'
+  ) {
+    return 'hot';
+  }
+  if (
+    classification.alertPriority === 'medium' ||
+    classification.alertPriority === 'low' ||
+    classification.riskLevel === 'medium' ||
+    classification.volumeQuality.score >= 31
+  ) {
+    return 'warm';
+  }
+  return 'cold';
+}
+
+function detectionPriorityScore(classification: FinalClassification, eventCreated: boolean) {
+  const riskBoost = classification.riskLevel === 'critical' ? 160
+    : classification.riskLevel === 'high' ? 120
+      : classification.riskLevel === 'medium' ? 70
+        : 20;
+  const alertBoost = classification.alertPriority === 'critical' ? 160
+    : classification.alertPriority === 'high' ? 120
+      : classification.alertPriority === 'medium' ? 80
+        : classification.alertPriority === 'low' ? 40
+          : 0;
+  return Math.round(
+    riskBoost +
+    alertBoost +
+    classification.finalConfidence +
+    classification.volumeQuality.score * 0.4 +
+    Math.min(100, classification.risk.score) +
+    (eventCreated ? 80 : 0)
+  );
 }
 
 export class DetectionRunner {
@@ -185,14 +317,16 @@ export class DetectionRunner {
 
   private async runCycle() {
     const feed = await getOverviewFeed();
-    const ordered = feed.tokens
-      .filter((token) => token.address)
-      .sort((left, right) => candidateScore(right) - candidateScore(left));
-    if (!ordered.length) return { scanned: 0, classified: 0, failed: 0, eventsCreated: 0, firstError: '' };
+    const queueStates = await this.store.listTokenQueueState();
+    const stateMap = new Map<string, QueueTokenState>();
+    for (const token of queueStates) {
+      stateMap.set(queueKey(token.chain, token.tokenAddress), token);
+      stateMap.set(queueKey(token.chain, token.pairAddress), token);
+    }
+    const batch = selectDetectionBatch(feed.tokens, stateMap, this.status.batchSize, this.cursor);
+    if (!batch.length) return { scanned: 0, classified: 0, failed: 0, eventsCreated: 0, firstError: '' };
 
-    const start = this.cursor % ordered.length;
-    const batch = [...ordered.slice(start), ...ordered.slice(0, start)].slice(0, this.status.batchSize);
-    this.cursor = (start + batch.length) % ordered.length;
+    this.cursor = (this.cursor + batch.length) % Math.max(1, feed.tokens.length);
     const concurrency = readNumberEnv('DETECTION_DEX_CONCURRENCY', DEFAULT_CONCURRENCY);
     let classified = 0;
     let eventsCreated = 0;
@@ -236,11 +370,13 @@ export class DetectionRunner {
     const classificationId = await this.store.saveClassification(classification);
 
     if (!shouldCreateDetectionEvent(classification, previousClassification)) {
+      await this.store.upsertToken(record.token, record.snapshot, resolveScanSchedule(classification, previousClassification, false));
       return { classified: true, eventCreated: false };
     }
 
     const event = buildDetectionEvent(record, classification, classificationId);
     const eventCreated = await this.store.saveEvent(event, record.token.tokenId);
+    await this.store.upsertToken(record.token, record.snapshot, resolveScanSchedule(classification, previousClassification, eventCreated));
     return { classified: true, eventCreated };
   }
 }

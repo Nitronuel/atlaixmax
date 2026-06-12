@@ -75,6 +75,7 @@ export type DetectorLabel = PrimaryLabel | SignalLabel;
 
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type AlertPriority = "none" | "low" | "medium" | "high" | "critical";
+export type ScanTier = "hot" | "warm" | "cold" | "dormant";
 export type MarketPhase = "EXPANSION" | "CONTRACTION" | "ACCUMULATION" | "DISTRIBUTION" | "STABLE" | "LOW_ACTIVITY" | "DANGER" | "UNKNOWN";
 export type StructuralRegime = "STRONG_BULLISH" | "BULLISH" | "SIDEWAYS" | "BEARISH" | "STRONG_BEARISH" | "MIXED";
 export type ActiveRegime = "CONTINUATION" | "COUNTER_TREND_BOUNCE" | "PULLBACK" | "BREAKOUT_ATTEMPT" | "BREAKDOWN_ATTEMPT" | "REVERSAL_ATTEMPT" | "DANGER" | "LOW_ACTIVITY" | "UNKNOWN";
@@ -96,6 +97,24 @@ export type EventStatus = "new" | "active" | "strengthening" | "weakening" | "co
 export type DominantTimeframe = "5m" | "1h" | "6h" | "24h" | "mixed";
 export type LiquidityRegime = "HEALTHY_LIQUIDITY" | "LOW_LIQUIDITY" | "FRAGILE_LIQUIDITY" | "LIQUIDITY_EXPANDING" | "LIQUIDITY_DRAINING" | "LIQUIDITY_SHOCK";
 export type VolumeQualityLevel = "poor" | "moderate" | "good" | "strong";
+export type PairReliabilityTier = "high" | "medium" | "low";
+
+export interface PairReliability {
+  score: number;
+  tier: PairReliabilityTier;
+  reasons: string[];
+}
+
+export interface TokenSchedulePatch {
+  scanTier: ScanTier;
+  nextDetectionCheckAt: string;
+  detectionPriorityScore: number;
+  failedHydrationCount?: number;
+  lastPrimaryLabel?: PrimaryLabel | null;
+  lastRiskLevel?: RiskLevel | null;
+  lastEventStatus?: EventStatus | null;
+  consecutiveQuietCount?: number;
+}
 
 export interface Token {
   tokenId: string;
@@ -125,6 +144,8 @@ export interface TokenSnapshot {
   priceChange1h: number;
   priceChange6h: number;
   priceChange24h: number;
+  pairCreatedAt?: number | null;
+  pairReliability?: PairReliability | null;
   raw: unknown;
 }
 
@@ -186,6 +207,7 @@ export interface DetectorResult {
 export interface TimeframeAnalysis {
   timeframe: "5m" | "1h" | "6h" | "24h";
   rawPriceChange: number;
+  deoverlappedPriceChange?: number | null;
   normalizedMove: number;
   direction: "strong_bullish" | "bullish" | "neutral" | "bearish" | "strong_bearish";
   directionScore: number;
@@ -258,6 +280,9 @@ export interface FinalClassification {
   detectorScores: Array<Pick<DetectorResult, "label" | "category" | "score" | "confidence" | "risk">>;
   dataQuality: DataQuality;
   ruleVersion: string;
+  tokenAgeMinutes?: number | null;
+  regimeWeights?: Record<"m5" | "h1" | "h6" | "h24", number>;
+  pairReliability?: PairReliability | null;
 }
 
 export interface Alert {
@@ -278,9 +303,9 @@ export interface TokenRecord {
 export interface Store {
   getRecentSnapshots(tokenId: string, limit: number): Promise<TokenSnapshot[]>;
   getLatestClassification(tokenId: string): Promise<FinalClassification | null>;
-  upsertToken(token: Token): Promise<void>;
+  upsertToken(token: Token, snapshot?: TokenSnapshot, schedule?: TokenSchedulePatch): Promise<void>;
   saveSnapshot(snapshot: TokenSnapshot): Promise<void>;
   saveFeatures(features: TokenFeatures): Promise<void>;
-  saveClassification(classification: FinalClassification): Promise<void>;
+  saveClassification(classification: FinalClassification): Promise<string>;
   saveAlert(alert: Alert): Promise<boolean>;
 }

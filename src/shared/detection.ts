@@ -1,5 +1,6 @@
 export type DetectionSentiment = 'bullish' | 'bearish' | 'neutral';
 export type DetectionSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type DetectionLifecycleStatus = 'new' | 'active' | 'strengthening' | 'weakening' | 'confirmed' | 'failed' | 'expired';
 
 export type DetectionEvent = {
   id: string;
@@ -26,6 +27,13 @@ export type DetectionEvent = {
   };
   classificationId: string;
   dedupeKey: string;
+  lifecycleId?: string;
+  lifecycleStatus?: DetectionLifecycleStatus;
+  eventVersion?: number;
+  lastUpdatedAt?: number;
+  previousScore?: number | null;
+  scoreDelta?: number | null;
+  riskDelta?: number | null;
 };
 
 export type DetectionEventsResponse = {

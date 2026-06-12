@@ -97,6 +97,24 @@ describe("v3 hierarchical classifier", () => {
     expect(classification.riskLevel).toBe("critical");
   });
 
+  it("keeps critical thin-liquidity sell-offs above insufficient-data suppression", () => {
+    const snapshot = makeSnapshot({
+      liquidityUsd: 700,
+      volume5m: 600,
+      buys5m: 1,
+      sells5m: 4,
+      traders5m: 5,
+      priceChange5m: -18,
+      priceChange1h: -20
+    });
+    const history = [makeSnapshot({ liquidityUsd: 800, volume5m: 300, buys5m: 1, sells5m: 1, traders5m: 2 })];
+    const features = calculateFeatures(snapshot, history);
+    const classification = classifyToken({ snapshot, features, history, previousClassification: null });
+
+    expect(classification.primaryLabel).toBe("LOW_LIQUIDITY_SELL_OFF");
+    expect(classification.primaryLabel).not.toBe("INSUFFICIENT_DATA");
+  });
+
   it("does not treat dead tokens as consolidation", () => {
     const snapshot = makeSnapshot({
       volume5m: 0,
