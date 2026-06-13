@@ -137,13 +137,66 @@ describe("v3 hierarchical classifier", () => {
       buys5m: 70,
       sells5m: 35,
       priceChange5m: 1.5,
-      priceChange1h: 5
+      priceChange1h: 5,
+      priceChange6h: 6
     });
     const history = Array.from({ length: 4 }, () => makeSnapshot({ volume5m: 12_000, buys5m: 64, sells5m: 36, priceChange5m: 1 }));
     const features = calculateFeatures(snapshot, history);
     const classification = classifyToken({ snapshot, features, history, previousClassification: null });
 
     expect(classification.primaryLabel).toBe("ACCUMULATION");
+    expect(classification.confirmationStatus).toBe("confirmed");
+  });
+
+  it("does not classify tiny 1h and 6h lift as accumulation", () => {
+    const snapshot = makeSnapshot({
+      volume5m: 15_000,
+      buys5m: 70,
+      sells5m: 35,
+      priceChange5m: 0.25,
+      priceChange1h: 0.12,
+      priceChange6h: 0.23,
+      priceChange24h: -2.68
+    });
+    const history = Array.from({ length: 4 }, () => makeSnapshot({
+      volume5m: 12_000,
+      buys5m: 64,
+      sells5m: 36,
+      priceChange5m: 0.2,
+      priceChange1h: 0.1,
+      priceChange6h: 0.2
+    }));
+    const features = calculateFeatures(snapshot, history);
+    const classification = classifyToken({ snapshot, features, history, previousClassification: null });
+
+    expect(classification.primaryLabel).not.toBe("ACCUMULATION");
+    expect(classification.classificationBasis).toBe("quiet_context");
+  });
+
+  it("keeps unconfirmed 5m breakouts on watch", () => {
+    const snapshot = makeSnapshot({
+      volume5m: 30_000,
+      buys5m: 50,
+      sells5m: 30,
+      priceChange5m: 14,
+      priceChange1h: 0.5,
+      priceChange6h: 0.4,
+      priceChange24h: -5
+    });
+    const history = Array.from({ length: 4 }, () => makeSnapshot({
+      volume5m: 10_000,
+      buys5m: 20,
+      sells5m: 20,
+      priceChange5m: 0.2,
+      priceChange1h: 0.1,
+      priceChange6h: 0.2
+    }));
+    const features = calculateFeatures(snapshot, history);
+    const classification = classifyToken({ snapshot, features, history, previousClassification: null });
+
+    expect(classification.primaryLabel).toBe("UNKNOWN");
+    expect(classification.classificationBasis).toBe("short_term_watch");
+    expect(classification.evidence[0]).toContain("flagged Range Breakout Attempt");
   });
 
   it("ignores large liquidity percentages when the dollar move is tiny", () => {

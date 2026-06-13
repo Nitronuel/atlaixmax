@@ -1,14 +1,17 @@
 import { calculateDataQuality } from "./dataQuality";
-import { LABEL_PRIORITY, displayLabelFor, resolveAlertPriority, resolveMarketPhase } from "./classifierLabels";
+import { LABEL_PRIORITY, displayLabelFor, isMarketStructureLabel, isSafetyLabel, resolveAlertPriority, resolveMarketPhase } from "./classifierLabels";
 import { triggerToSignal } from "./classifierSignals";
 import { clamp, formatPercent, riskLevelFor, unique } from "./classifierUtils";
 import { isMeaningfulLiquidityShock } from "./features";
 import type {
   ActiveRegime,
   BehaviorLabel,
+  ClassificationBasis,
   ConfidenceBreakdown,
+  ConfirmationStatus,
   DataQuality,
   DominantTimeframe,
+  EventHorizon,
   EventStatus,
   FinalClassification,
   LowerTimeframeTrigger,
@@ -53,6 +56,13 @@ interface Context {
 
 type TimeframeKey = "m5" | "h1" | "h6" | "h24";
 type TimeframeWeights = Record<TimeframeKey, number>;
+type DirectionBias = "bullish" | "bearish" | "neutral";
+type ConfirmationResult = {
+  eventHorizon: EventHorizon;
+  confirmationStatus: ConfirmationStatus;
+  confirmationScore: number;
+  classificationBasis: ClassificationBasis;
+};
 
 export function classifyToken(input: ClassificationInput): FinalClassification {
   const dataQuality = calculateDataQuality(input.snapshot, input.features, input.history);
@@ -77,8 +87,13 @@ export function classifyToken(input: ClassificationInput): FinalClassification {
     trendChange
   };
 
-  const interpretedLabel = resolveContextualLabel(context);
+  const candidateLabel = resolveContextualLabel(context);
+  const candidateConfirmation = calculateHigherTimeframeConfirmation(context, candidateLabel);
+  const interpretedLabel = applyConfirmationGate(context, candidateLabel, candidateConfirmation);
   const primaryLabel = applyHysteresis(interpretedLabel, context);
+  const confirmation = primaryLabel === candidateLabel
+    ? candidateConfirmation
+    : { ...candidateConfirmation, classificationBasis: "short_term_watch" as const };
   const activeRegime = calculateActiveRegime(context, primaryLabel);
   const dominant = detectDominantTimeframe(timeframes, structuralRegime);
   const secondarySignals = getSecondarySignals(context);
@@ -87,8 +102,8 @@ export function classifyToken(input: ClassificationInput): FinalClassification {
   const risk = calculateRisk(context, primaryLabel, contradictorySignals);
   const manipulationRisk = calculateManipulationRisk(context);
   const eventStatus = calculateEventStatus(context.previousClassification, primaryLabel, confidence.finalConfidence);
-  const evidence = buildEvidence(context, primaryLabel);
-  const warnings = buildWarnings(context, primaryLabel, contradictorySignals, risk, manipulationRisk);
+  const evidence = buildEvidence(context, primaryLabel, candidateLabel, confirmation);
+  const warnings = buildWarnings(context, primaryLabel, candidateLabel, confirmation, contradictorySignals, risk, manipulationRisk);
   const displayLabel = displayLabelFor(primaryLabel);
   const reason = evidence[0] ?? displayLabel;
 
@@ -108,6 +123,10 @@ export function classifyToken(input: ClassificationInput): FinalClassification {
     activeRegime,
     dominantTimeframe: dominant.timeframe,
     dominantReason: dominant.reason,
+    eventHorizon: confirmation.eventHorizon,
+    confirmationStatus: confirmation.confirmationStatus,
+    confirmationScore: confirmation.confirmationScore,
+    classificationBasis: confirmation.classificationBasis,
     lowerTimeframeTrigger,
     timeframeAlignment,
     trendChange,
@@ -121,7 +140,7 @@ export function classifyToken(input: ClassificationInput): FinalClassification {
       score: input.features.volumeQualityScore,
       level: input.features.volumeQualityLevel
     },
-    alertPriority: resolveAlertPriority(primaryLabel, risk.level, confidence.finalConfidence),
+    alertPriority: resolveAlertPriority(primaryLabel, risk.level, confidence.finalConfidence, confirmation.confirmationStatus),
     secondarySignals,
     contradictorySignals,
     warnings,
@@ -307,6 +326,120 @@ function calculateTrendChange(current: TokenSnapshot, previous: TokenSnapshot | 
   if (score <= -15) return "WORSENING_STRONGLY";
   if (score <= -5) return "WORSENING";
   return "UNCHANGED";
+}
+
+function calculateHigherTimeframeConfirmation(context: Context, label: PrimaryLabel): ConfirmationResult {
+  const dominant = detectDominantTimeframe(context.timeframes, context.structuralRegime);
+  if (isSafetyLabel(label)) {
+    return {
+      eventHorizon: "5m",
+      confirmationStatus: "confirmed",
+      confirmationScore: 100,
+      classificationBasis: "safety_override"
+    };
+  }
+
+  if (!isMarketStructureLabel(label)) {
+    return {
+      eventHorizon: dominant.timeframe,
+      confirmationStatus: "confirmed",
+      confirmationScore: context.dataQuality.score,
+      classificationBasis: "quiet_context"
+    };
+  }
+
+  const score = confirmationScoreForMarketLabel(context, label);
+  return {
+    eventHorizon: dominant.timeframe === "5m" ? "1h" : dominant.timeframe,
+    confirmationStatus: confirmationStatusFor(score),
+    confirmationScore: score,
+    classificationBasis: score >= 70 ? "higher_timeframe_confirmed" : "short_term_watch"
+  };
+}
+
+function confirmationScoreForMarketLabel(context: Context, label: PrimaryLabel): number {
+  let score = 0;
+  const bias = directionBiasFor(label);
+  const { features, dataQuality, pairReliability, timeframes } = context;
+  const liquidityIsSupportive = features.liquidityState === "stable" || features.liquidityState === "increasing" || features.liquidityState === "sudden_increase";
+  const liquidityIsDangerous = features.liquidityRegime === "LIQUIDITY_SHOCK" || features.liquidityRegime === "FRAGILE_LIQUIDITY" || features.liquidityRegime === "LOW_LIQUIDITY";
+
+  if (dataQuality.hasMinimumActivity) score += 10;
+  if (dataQuality.hasEnoughHistory) score += 10;
+  if (features.volumeQualityScore >= 31) score += 10;
+  if (liquidityIsSupportive) score += 15;
+  if (liquidityIsDangerous) score -= 30;
+  if (pairReliability?.tier === "low") score -= 10;
+
+  if (label === "ACCUMULATION") {
+    if (context.snapshot.priceChange1h < 1 || context.snapshot.priceChange6h < 1) score -= 35;
+    if (context.snapshot.priceChange1h >= 0) score += 20;
+    if (timeframes.h6.directionScore >= 0) score += 20;
+    if (timeframes.h24.directionScore > -70) score += 10;
+    if (features.consecutiveBuyDominantSnapshots >= 3) score += 20;
+    if (features.volatilityScore < 18) score += 5;
+    if (context.structuralRegime === "STRONG_BEARISH" || context.structuralRegime === "BEARISH") score -= 25;
+    return clamp(score, 0, 100);
+  }
+
+  if (label === "DISTRIBUTION") {
+    if (context.snapshot.priceChange1h > -1 || context.snapshot.priceChange6h > -1) score -= 35;
+    if (context.snapshot.priceChange1h <= 0) score += 20;
+    if (timeframes.h6.directionScore <= 0) score += 20;
+    if (timeframes.h24.directionScore < 70) score += 10;
+    if (features.consecutiveSellDominantSnapshots >= 3) score += 20;
+    if (context.structuralRegime === "STRONG_BULLISH" || context.structuralRegime === "BULLISH") score -= 25;
+    return clamp(score, 0, 100);
+  }
+
+  if (label === "LIQUIDITY_ADDED") {
+    if (features.liquidityState === "sudden_increase" || features.liquidityState === "increasing") score += 30;
+    if (context.snapshot.priceChange1h >= -2) score += 20;
+    if (timeframes.h6.directionScore > -40) score += 15;
+    return clamp(score, 0, 100);
+  }
+
+  if (bias === "bullish") {
+    if (timeframes.h1.directionScore >= 25 || context.snapshot.priceChange1h >= 5) score += 25;
+    if (timeframes.h6.directionScore >= 25 || context.snapshot.priceChange6h >= 8) score += 25;
+    if (timeframes.h24.directionScore > -40) score += 10;
+    if (timeframes.h6.directionScore <= -40 || timeframes.h24.directionScore <= -70) score -= 25;
+  } else if (bias === "bearish") {
+    if (timeframes.h1.directionScore <= -25 || context.snapshot.priceChange1h <= -5) score += 25;
+    if (timeframes.h6.directionScore <= -25 || context.snapshot.priceChange6h <= -8) score += 25;
+    if (timeframes.h24.directionScore < 40) score += 10;
+    if (timeframes.h6.directionScore >= 40 || timeframes.h24.directionScore >= 70) score -= 25;
+  } else {
+    if (timeframes.h1.directionScore >= 0 && timeframes.h6.directionScore >= 0) score += 25;
+    if (timeframes.h1.directionScore <= 0 && timeframes.h6.directionScore <= 0) score += 25;
+  }
+
+  if (label === "BULLISH_PULLBACK" && (context.structuralRegime === "BULLISH" || context.structuralRegime === "STRONG_BULLISH") && timeframes.h6.directionScore >= 25) score += 20;
+  if (label === "BEARISH_RELIEF_BOUNCE" && (context.structuralRegime === "BEARISH" || context.structuralRegime === "STRONG_BEARISH") && timeframes.h6.directionScore <= -25) score += 20;
+  if (label === "BEARISH_REVERSAL_ATTEMPT" && (context.trendChange === "IMPROVING" || context.trendChange === "IMPROVING_STRONGLY")) score += 15;
+  if (label === "BULLISH_BREAKDOWN_ATTEMPT" && (context.trendChange === "WORSENING" || context.trendChange === "WORSENING_STRONGLY")) score += 15;
+
+  return clamp(score, 0, 100);
+}
+
+function confirmationStatusFor(score: number): ConfirmationStatus {
+  if (score >= 70) return "confirmed";
+  if (score >= 50) return "watch";
+  if (score >= 30) return "unconfirmed";
+  return "contradicted";
+}
+
+function applyConfirmationGate(context: Context, label: PrimaryLabel, confirmation: ConfirmationResult): PrimaryLabel {
+  if (!isMarketStructureLabel(label) || confirmation.confirmationStatus === "confirmed") return label;
+  if (isConsolidation(context)) return "CONSOLIDATION";
+  if (!context.dataQuality.hasMinimumActivity) return "LOW_ACTIVITY";
+  return "UNKNOWN";
+}
+
+function directionBiasFor(label: PrimaryLabel): DirectionBias {
+  if (["BULLISH_CONTINUATION_PUMP", "RANGE_BREAKOUT_ATTEMPT", "BEARISH_REVERSAL_ATTEMPT", "ACCUMULATION"].includes(label)) return "bullish";
+  if (["BEARISH_CONTINUATION_DUMP", "RANGE_BREAKDOWN_ATTEMPT", "BULLISH_BREAKDOWN_ATTEMPT", "DISTRIBUTION"].includes(label)) return "bearish";
+  return "neutral";
 }
 
 function resolveContextualLabel(context: Context): PrimaryLabel {
@@ -505,10 +638,14 @@ function calculateEventStatus(previous: FinalClassification | null, label: Prima
   return "active";
 }
 
-function buildEvidence(context: Context, label: PrimaryLabel): string[] {
+function buildEvidence(context: Context, label: PrimaryLabel, candidateLabel: PrimaryLabel, confirmation: ConfirmationResult): string[] {
   const { snapshot, features, structuralRegime, lowerTimeframeTrigger, timeframes } = context;
+  const opening = label === candidateLabel
+    ? `${displayLabelFor(label)} selected from ${lowerTimeframeTrigger.replaceAll("_", " ")} inside ${structuralRegime.replaceAll("_", " ")} structure.`
+    : `${lowerTimeframeTrigger.replaceAll("_", " ")} flagged ${displayLabelFor(candidateLabel)}. 1h/6h confirmation is ${confirmation.confirmationStatus}; final label is ${displayLabelFor(label)}.`;
   return unique([
-    `${displayLabelFor(label)} selected from ${lowerTimeframeTrigger.replaceAll("_", " ")} inside ${structuralRegime.replaceAll("_", " ")} structure.`,
+    opening,
+    `Confirmation score is ${confirmation.confirmationScore}/100; decision horizon is ${confirmation.eventHorizon}.`,
     `5m price change is ${formatPercent(snapshot.priceChange5m)}; 1h is ${formatPercent(snapshot.priceChange1h)}; 6h is ${formatPercent(snapshot.priceChange6h)}; 24h is ${formatPercent(snapshot.priceChange24h)}.`,
     `5m direction score is ${timeframes.m5.directionScore}; structural direction is ${structuralRegime.replaceAll("_", " ")}.`,
     `Volume quality is ${features.volumeQualityLevel} (${features.volumeQualityScore}/100).`,
@@ -516,8 +653,9 @@ function buildEvidence(context: Context, label: PrimaryLabel): string[] {
   ]);
 }
 
-function buildWarnings(context: Context, label: PrimaryLabel, contradictions: SignalLabel[], risk: RiskAssessment, manipulationRisk: ManipulationRisk): string[] {
+function buildWarnings(context: Context, label: PrimaryLabel, candidateLabel: PrimaryLabel, confirmation: ConfirmationResult, contradictions: SignalLabel[], risk: RiskAssessment, manipulationRisk: ManipulationRisk): string[] {
   const warnings: string[] = [...context.dataQuality.warnings];
+  if (label !== candidateLabel && confirmation.classificationBasis === "short_term_watch") warnings.push(`${displayLabelFor(candidateLabel)} needs stronger 1h/6h confirmation before it can become an event.`);
   if (label === "BEARISH_RELIEF_BOUNCE") warnings.push("The 5m move is bullish, but higher timeframes remain bearish.");
   if (label === "BULLISH_PULLBACK") warnings.push("The 5m move is bearish, but higher timeframes remain bullish.");
   if (label === "BEARISH_REVERSAL_ATTEMPT") warnings.push("Reversal is not confirmed until higher timeframes improve.");
@@ -543,8 +681,9 @@ function isAccumulation(context: Context): boolean {
     dataQuality.hasMinimumActivity &&
     snapshot.priceChange5m >= -3 &&
     snapshot.priceChange5m <= 8 &&
-    snapshot.priceChange1h >= 0 &&
+    snapshot.priceChange1h >= 1 &&
     snapshot.priceChange1h <= 15 &&
+    snapshot.priceChange6h >= 1 &&
     features.consecutiveBuyDominantSnapshots >= 3 &&
     features.volatilityScore < 18 &&
     context.structuralRegime !== "STRONG_BEARISH";
@@ -557,7 +696,8 @@ function isDistribution(context: Context): boolean {
     snapshot.priceChange5m >= -8 &&
     snapshot.priceChange5m <= 3 &&
     snapshot.priceChange1h >= -15 &&
-    snapshot.priceChange1h <= 5 &&
+    snapshot.priceChange1h <= -1 &&
+    snapshot.priceChange6h <= -1 &&
     features.consecutiveSellDominantSnapshots >= 3 &&
     context.structuralRegime !== "STRONG_BULLISH";
 }

@@ -22,6 +22,16 @@ describe('detection event mapping', () => {
     expect(shouldCreateDetectionEvent(makeClassification({ primaryLabel: 'UNKNOWN', alertPriority: 'none' }), null)).toBe(false);
   });
 
+  it('blocks unconfirmed market-structure labels from the event feed', () => {
+    expect(shouldCreateDetectionEvent(makeClassification({
+      primaryLabel: 'ACCUMULATION',
+      alertPriority: 'medium',
+      riskLevel: 'medium',
+      confirmationStatus: 'watch',
+      classificationBasis: 'short_term_watch'
+    }), null)).toBe(false);
+  });
+
   it('maps contextual direction labels without keyword confusion', () => {
     expect(buildDetectionEvent(makeRecord(), makeClassification({
       primaryLabel: 'BULLISH_BREAKDOWN_ATTEMPT',
@@ -86,6 +96,10 @@ function makeClassification(overrides: Partial<FinalClassification> = {}): Final
     activeRegime: 'DANGER',
     dominantTimeframe: '5m',
     dominantReason: '5m movement dominated current behavior.',
+    eventHorizon: '5m',
+    confirmationStatus: 'confirmed',
+    confirmationScore: 100,
+    classificationBasis: 'safety_override',
     lowerTimeframeTrigger: '5M_LIQUIDITY_DROP',
     timeframeAlignment: { status: 'aligned_bearish', score: 85, conflictSeverity: 'none' },
     trendChange: 'WORSENING',

@@ -58,7 +58,8 @@ const EVENT_BASE_COLUMNS = 'id,token_id,classification_id,event_type,summary,sen
 const EVENT_COLUMNS = `${EVENT_BASE_COLUMNS},lifecycle_id,lifecycle_status,event_version,last_updated_at,previous_score,score_delta,risk_delta`;
 const SNAPSHOT_COLUMNS = 'snapshot_id,token_id,timestamp,price_usd,market_cap,liquidity_usd,volume_5m,volume_1h,volume_6h,volume_24h,buys_5m,sells_5m,traders_5m,price_change_5m,price_change_1h,price_change_6h,price_change_24h,raw';
 const FEATURE_COLUMNS = 'feature_id,token_id,timestamp,total_txns_5m,buy_sell_ratio,buy_txn_dominance,sell_txn_dominance,net_txn_pressure,liquidity_change_percentage,liquidity_change_usd,volume_to_liquidity_ratio,volume_spike_score,volume_spike_persisted_snapshots,volume_quality_score,volume_quality_level,liquidity_regime,price_momentum_score,volatility_score,consecutive_green_snapshots,consecutive_red_snapshots,consecutive_buy_dominant_snapshots,consecutive_sell_dominant_snapshots,trend_direction,liquidity_state,pressure_state';
-const CLASSIFICATION_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label,market_phase,structural_regime,active_regime,dominant_timeframe,dominant_reason,lower_timeframe_trigger,timeframe_alignment,trend_change,event_status,confidence_breakdown,risk,manipulation_risk,timeframe_scores,liquidity_regime,volume_quality,alert_priority,secondary_signals,contradictory_signals,warnings,evidence,detector_scores,data_quality,rule_version,token_age_minutes,regime_weights,pair_reliability';
+const CLASSIFICATION_BASE_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label,market_phase,structural_regime,active_regime,dominant_timeframe,dominant_reason,lower_timeframe_trigger,timeframe_alignment,trend_change,event_status,confidence_breakdown,risk,manipulation_risk,timeframe_scores,liquidity_regime,volume_quality,alert_priority,secondary_signals,contradictory_signals,warnings,evidence,detector_scores,data_quality,rule_version';
+const CLASSIFICATION_COLUMNS = `${CLASSIFICATION_BASE_COLUMNS},event_horizon,confirmation_status,confirmation_score,classification_basis,token_age_minutes,regime_weights,pair_reliability`;
 
 function getSupabaseConfig() {
   const url = readEnv('SUPABASE_URL').replace(/\/$/, '');
@@ -249,6 +250,10 @@ function classificationFromRow(row: Record<string, any>): StoredClassification {
     activeRegime: row.active_regime || 'UNKNOWN',
     dominantTimeframe: row.dominant_timeframe || 'mixed',
     dominantReason: row.dominant_reason || '',
+    eventHorizon: row.event_horizon || row.dominant_timeframe || 'mixed',
+    confirmationStatus: row.confirmation_status || 'confirmed',
+    confirmationScore: Number(row.confirmation_score ?? finalConfidence),
+    classificationBasis: row.classification_basis || 'higher_timeframe_confirmed',
     lowerTimeframeTrigger: row.lower_timeframe_trigger || 'NONE',
     timeframeAlignment: row.timeframe_alignment || { status: 'mixed', score: 0, conflictSeverity: 'none' },
     trendChange: row.trend_change || 'UNCHANGED',
@@ -383,7 +388,13 @@ export class DetectionStore {
           order: 'timestamp.desc',
           limit: '1'
         });
-        const rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
+        let rows: any[];
+        try {
+          rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
+        } catch {
+          params.set('select', CLASSIFICATION_BASE_COLUMNS);
+          rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
+        }
         return Array.isArray(rows) && rows[0] ? classificationFromRow(rows[0]) : null;
       } catch {
         this.useLocalOnly = true;
@@ -600,6 +611,10 @@ export class DetectionStore {
       active_regime: classification.activeRegime,
       dominant_timeframe: classification.dominantTimeframe,
       dominant_reason: classification.dominantReason,
+      event_horizon: classification.eventHorizon,
+      confirmation_status: classification.confirmationStatus,
+      confirmation_score: classification.confirmationScore,
+      classification_basis: classification.classificationBasis,
       lower_timeframe_trigger: classification.lowerTimeframeTrigger,
       timeframe_alignment: classification.timeframeAlignment,
       trend_change: classification.trendChange,
@@ -906,7 +921,13 @@ export class DetectionStore {
         order: 'timestamp.desc',
         limit: String(limit)
       });
-      const rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
+      let rows: any[];
+      try {
+        rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
+      } catch {
+        params.set('select', CLASSIFICATION_BASE_COLUMNS);
+        rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
+      }
       return Array.isArray(rows) ? rows.map(classificationFromRow) : [];
     }
     return (readLocalState().classifications[tokenId] || []).slice(-limit).reverse();

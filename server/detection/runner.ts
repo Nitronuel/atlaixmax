@@ -159,6 +159,9 @@ export function resolveScanSchedule(
 }
 
 function resolveScanTier(classification: FinalClassification, eventCreated: boolean): ScanTier {
+  if (classification.classificationBasis === 'short_term_watch') {
+    return classification.confirmationStatus === 'watch' ? 'hot' : 'warm';
+  }
   if (
     QUIET_LABELS.has(classification.primaryLabel) ||
     (!classification.dataQuality.hasMinimumActivity && classification.riskLevel === 'low' && classification.alertPriority === 'none')

@@ -1,4 +1,5 @@
 import type { DetectionEvent } from '../../src/shared/detection';
+import { isMarketStructureLabel, isSafetyLabel } from './classifierLabels';
 import type { FinalClassification, PrimaryLabel, RiskLevel, TokenRecord } from './types';
 
 const QUIET_LABELS = new Set(['LOW_ACTIVITY', 'INSUFFICIENT_DATA', 'UNKNOWN', 'CONSOLIDATION']);
@@ -6,6 +7,8 @@ const QUIET_LABELS = new Set(['LOW_ACTIVITY', 'INSUFFICIENT_DATA', 'UNKNOWN', 'C
 export function shouldCreateDetectionEvent(classification: FinalClassification, previous: FinalClassification | null) {
   const label = classification.primaryLabel || classification.finalLabel;
   if (QUIET_LABELS.has(label)) return false;
+  if (isMarketStructureLabel(label) && classification.confirmationStatus !== 'confirmed') return false;
+  if (isSafetyLabel(label) && (classification.alertPriority !== 'none' || classification.riskLevel === 'critical' || classification.riskLevel === 'high')) return true;
   if (classification.alertPriority !== 'none') return true;
   if (classification.riskLevel === 'critical' || classification.riskLevel === 'high') return true;
   if (classification.eventStatus === 'new' && classification.finalConfidence >= 60) return true;

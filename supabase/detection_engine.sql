@@ -165,7 +165,11 @@ on public.detection_tokens (scan_tier);
 alter table public.detection_classifications
 add column if not exists token_age_minutes numeric,
 add column if not exists regime_weights jsonb,
-add column if not exists pair_reliability jsonb;
+add column if not exists pair_reliability jsonb,
+add column if not exists event_horizon text,
+add column if not exists confirmation_status text,
+add column if not exists confirmation_score numeric,
+add column if not exists classification_basis text;
 
 alter table public.detection_events
 add column if not exists lifecycle_id text,

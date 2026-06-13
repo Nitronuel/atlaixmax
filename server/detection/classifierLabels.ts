@@ -1,4 +1,4 @@
-import type { AlertPriority, MarketPhase, PrimaryLabel, RiskLevel } from "./types";
+import type { AlertPriority, ConfirmationStatus, MarketPhase, PrimaryLabel, RiskLevel } from "./types";
 
 export const LABEL_PRIORITY: Record<PrimaryLabel, number> = {
   LIQUIDITY_DRAIN: 100,
@@ -64,9 +64,30 @@ export function resolveMarketPhase(label: PrimaryLabel): MarketPhase {
   return "UNKNOWN";
 }
 
-export function resolveAlertPriority(label: PrimaryLabel, risk: RiskLevel, confidence: number): AlertPriority {
+export function isSafetyLabel(label: PrimaryLabel): boolean {
+  return label === "LIQUIDITY_DRAIN" || label === "LOW_LIQUIDITY_PRICE_SPIKE" || label === "LOW_LIQUIDITY_SELL_OFF";
+}
+
+export function isMarketStructureLabel(label: PrimaryLabel): boolean {
+  return [
+    "ACCUMULATION",
+    "DISTRIBUTION",
+    "BULLISH_CONTINUATION_PUMP",
+    "BEARISH_CONTINUATION_DUMP",
+    "BULLISH_PULLBACK",
+    "BEARISH_RELIEF_BOUNCE",
+    "BEARISH_REVERSAL_ATTEMPT",
+    "BULLISH_BREAKDOWN_ATTEMPT",
+    "RANGE_BREAKOUT_ATTEMPT",
+    "RANGE_BREAKDOWN_ATTEMPT",
+    "LIQUIDITY_ADDED"
+  ].includes(label);
+}
+
+export function resolveAlertPriority(label: PrimaryLabel, risk: RiskLevel, confidence: number, confirmationStatus: ConfirmationStatus = "confirmed"): AlertPriority {
   if (risk === "critical" && confidence >= 65) return "critical";
-  if (["LIQUIDITY_DRAIN", "LOW_LIQUIDITY_PRICE_SPIKE", "LOW_LIQUIDITY_SELL_OFF"].includes(label)) return "high";
+  if (isSafetyLabel(label)) return "high";
+  if (isMarketStructureLabel(label) && confirmationStatus !== "confirmed") return risk === "high" ? "low" : "none";
   if (["BEARISH_CONTINUATION_DUMP", "BULLISH_CONTINUATION_PUMP", "BEARISH_RELIEF_BOUNCE", "BULLISH_BREAKDOWN_ATTEMPT"].includes(label) && confidence >= 65) return "high";
   if (["BEARISH_REVERSAL_ATTEMPT", "BULLISH_PULLBACK", "RANGE_BREAKOUT_ATTEMPT", "RANGE_BREAKDOWN_ATTEMPT", "ACCUMULATION", "DISTRIBUTION"].includes(label) && confidence >= 60) return "medium";
   if (label === "LOW_ACTIVITY" || label === "UNKNOWN" || label === "INSUFFICIENT_DATA") return "none";

@@ -95,6 +95,9 @@ export type TimeframeAlignmentStatus = "aligned_bullish" | "aligned_bearish" | "
 export type TrendChange = "IMPROVING_STRONGLY" | "IMPROVING" | "UNCHANGED" | "WORSENING" | "WORSENING_STRONGLY";
 export type EventStatus = "new" | "active" | "strengthening" | "weakening" | "confirmed" | "failed" | "expired";
 export type DominantTimeframe = "5m" | "1h" | "6h" | "24h" | "mixed";
+export type EventHorizon = "5m" | "1h" | "6h" | "24h" | "mixed";
+export type ConfirmationStatus = "unconfirmed" | "watch" | "confirmed" | "contradicted";
+export type ClassificationBasis = "safety_override" | "higher_timeframe_confirmed" | "short_term_watch" | "quiet_context";
 export type LiquidityRegime = "HEALTHY_LIQUIDITY" | "LOW_LIQUIDITY" | "FRAGILE_LIQUIDITY" | "LIQUIDITY_EXPANDING" | "LIQUIDITY_DRAINING" | "LIQUIDITY_SHOCK";
 export type VolumeQualityLevel = "poor" | "moderate" | "good" | "strong";
 export type PairReliabilityTier = "high" | "medium" | "low";
@@ -259,6 +262,10 @@ export interface FinalClassification {
   activeRegime: ActiveRegime;
   dominantTimeframe: DominantTimeframe;
   dominantReason: string;
+  eventHorizon: EventHorizon;
+  confirmationStatus: ConfirmationStatus;
+  confirmationScore: number;
+  classificationBasis: ClassificationBasis;
   lowerTimeframeTrigger: LowerTimeframeTrigger;
   timeframeAlignment: TimeframeAlignment;
   trendChange: TrendChange;
