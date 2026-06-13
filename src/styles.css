@@ -3384,6 +3384,20 @@ main {
   gap: 10px;
 }
 
+.detection-token-timeline-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.detection-token-timeline-header time {
+  color: var(--text-medium);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .detection-token-timeline strong {
   display: block;
   margin-top: 6px;

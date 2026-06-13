@@ -28,6 +28,17 @@ function formatPercent(value: unknown) {
   return `${numberValue > 0 ? '+' : ''}${numberValue.toFixed(2)}%`;
 }
 
+function formatEventTimestamp(value: number) {
+  if (!Number.isFinite(value)) return 'Time unavailable';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(new Date(value));
+}
+
 function shortAddress(value?: string | null) {
   if (!value) return 'No address';
   if (value.length <= 14) return value;
@@ -161,7 +172,10 @@ export function DetectionTokenPage() {
           <div className="detection-token-timeline">
             {detail.events.map((event) => (
               <div key={event.id}>
-                <span className={`detection-sentiment sentiment-${event.sentiment}`}>{event.sentiment.toUpperCase()}</span>
+                <header className="detection-token-timeline-header">
+                  <span className={`detection-sentiment sentiment-${event.sentiment}`}>{event.sentiment.toUpperCase()}</span>
+                  <time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventTimestamp(event.detectedAt)}</time>
+                </header>
                 <strong>{event.eventType}</strong>
                 <p>{event.summary}</p>
               </div>

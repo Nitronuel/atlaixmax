@@ -26,9 +26,14 @@ function formatUsd(value: number) {
   return `$${value.toFixed(0)}`;
 }
 
-function formatHoursAgo(timestamp: number) {
-  const hours = Math.max(1, Math.round((Date.now() - timestamp) / (60 * 60 * 1000)));
-  return `${hours}h ago`;
+function formatEventAge(timestamp: number) {
+  const elapsedMs = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.floor(elapsedMs / (60 * 1000));
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function matchesQuery(event: DetectionEvent, query: string) {
@@ -98,7 +103,7 @@ function DetectionEventCard({ event }: { event: DetectionEvent }) {
           <ShieldCheck size={15} />
           <strong>{event.eventType}</strong>
         </div>
-        <time dateTime={new Date(event.detectedAt).toISOString()}>{formatHoursAgo(event.detectedAt)}</time>
+        <time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventAge(event.detectedAt)}</time>
       </header>
       <p>{event.summary}</p>
       <footer>
