@@ -1,16 +1,72 @@
-import { ArrowLeft, Copy, ShieldCheck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Activity, ArrowLeft, Bell, Copy, Scan, ShieldCheck } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { DetectionTokenDetailResponse } from '../../shared/detection';
+import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
 import { DetectionService } from './detection-service';
 
 type LooseClassification = {
-  reason?: string;
-  risk?: { reasons?: string[] };
-  manipulationRisk?: { reasons?: string[] };
-  evidence?: string[];
-  warnings?: string[];
-  dataQuality?: { score?: number; warnings?: string[] };
+  primaryLabel?: string;
+  displayLabel?: string;
+};
+
+const EVENT_ASSESSMENTS: Record<string, (tokenName: string) => string> = {
+  BULLISH_CONTINUATION_PUMP: (tokenName) =>
+    `${tokenName} is showing Bullish Continuation. Buyers remain in control after the recent move, and the trend looks healthier when volume and liquidity support the advance. Follow-through depends on price holding above recent support.`,
+  BULLISH_CONTINUATION: (tokenName) =>
+    `${tokenName} is showing Bullish Continuation. Buyers remain in control after the recent move, and the trend looks healthier when volume and liquidity support the advance. Follow-through depends on price holding above recent support.`,
+  BEARISH_CONTINUATION_DUMP: (tokenName) =>
+    `${tokenName} is showing Bearish Continuation. Sellers remain in control after the recent move, and the trend stays weak while sell pressure and bearish structure persist. Buyers need stronger volume to challenge the downtrend.`,
+  BEARISH_CONTINUATION: (tokenName) =>
+    `${tokenName} is showing Bearish Continuation. Sellers remain in control after the recent move, and the trend stays weak while sell pressure and bearish structure persist. Buyers need stronger volume to challenge the downtrend.`,
+  BEARISH_RELIEF_BOUNCE: (tokenName) =>
+    `${tokenName} is showing a Short-Term Bounce in a Bearish Trend. Price is bouncing after weakness, but the broader read still favors sellers. The bounce needs stronger volume and follow-through before it can be treated as a cleaner recovery.`,
+  SHORT_TERM_BOUNCE_IN_BEARISH_TREND: (tokenName) =>
+    `${tokenName} is showing a Short-Term Bounce in a Bearish Trend. Price is bouncing after weakness, but the broader read still favors sellers. The bounce needs stronger volume and follow-through before it can be treated as a cleaner recovery.`,
+  BULLISH_PULLBACK: (tokenName) =>
+    `${tokenName} is showing a Pullback in a Bullish Trend. Price is cooling off inside a broader bullish setup. The pullback stays healthier if buyers defend support and liquidity does not weaken.`,
+  PULLBACK_IN_BULLISH_TREND: (tokenName) =>
+    `${tokenName} is showing a Pullback in a Bullish Trend. Price is cooling off inside a broader bullish setup. The pullback stays healthier if buyers defend support and liquidity does not weaken.`,
+  BEARISH_REVERSAL_ATTEMPT: (tokenName) =>
+    `${tokenName} is showing a Possible Bullish Reversal Attempt. Buyers are trying to turn a weak trend upward after recent selling. The recovery needs volume follow-through and stronger structure before the reversal read becomes cleaner.`,
+  POSSIBLE_BULLISH_REVERSAL_ATTEMPT: (tokenName) =>
+    `${tokenName} is showing a Possible Bullish Reversal Attempt. Buyers are trying to turn a weak trend upward after recent selling. The recovery needs volume follow-through and stronger structure before the reversal read becomes cleaner.`,
+  BULLISH_BREAKDOWN_ATTEMPT: (tokenName) =>
+    `${tokenName} is showing a Possible Bearish Breakdown Attempt. Sellers are trying to break a stronger setup lower. Buyers need to reclaim the failed level quickly to weaken the breakdown read.`,
+  POSSIBLE_BEARISH_BREAKDOWN_ATTEMPT: (tokenName) =>
+    `${tokenName} is showing a Possible Bearish Breakdown Attempt. Sellers are trying to break a stronger setup lower. Buyers need to reclaim the failed level quickly to weaken the breakdown read.`,
+  RANGE_BREAKOUT_ATTEMPT: (tokenName) =>
+    `${tokenName} is attempting a range breakout. Price is trying to move above previous range highs, and the setup gets stronger if volume expansion or buy dominance supports the move. The breakout needs follow-through above the range to become cleaner.`,
+  RANGE_BREAKDOWN_ATTEMPT: (tokenName) =>
+    `${tokenName} is attempting a range breakdown. Price is trying to move below previous range lows, and the risk increases if sell dominance or liquidity drain appears nearby. Buyers need to reclaim the range to weaken the breakdown read.`,
+  LOW_LIQUIDITY_PRICE_SPIKE: (tokenName) =>
+    `${tokenName} is showing a low-liquidity price spike. Price moved up while liquidity was thin, so the move may be easier to reverse. This needs liquidity support before it can be treated as a cleaner bullish move.`,
+  LOW_LIQUIDITY_SELL_OFF: (tokenName) =>
+    `${tokenName} is showing a low-liquidity sell-off. Price dropped while liquidity was thin, which can make exits unstable. Risk grows if liquidity keeps falling or sell dominance remains active.`,
+  LIQUIDITY_DRAIN: (tokenName) =>
+    `${tokenName} is showing Liquidity Drain. Liquidity is leaving the pool, which makes price movement less stable and raises slippage risk. This becomes more dangerous when paired with sell dominance or high volatility.`,
+  LIQUIDITY_ADDED: (tokenName) =>
+    `${tokenName} is showing Liquidity Added. New liquidity entered the pool, improving trading depth and making price movement cleaner. This supports bullish continuation when paired with buy dominance or recent accumulation.`,
+  PUMP: (tokenName) =>
+    `${tokenName} is showing a Pump. Price is moving up fast with strong short-term activity. The move needs liquidity and volume support before it becomes a cleaner bullish read.`,
+  DUMP: (tokenName) =>
+    `${tokenName} is showing a Dump. Price is falling fast with strong short-term selling. Risk grows if liquidity weakens or sell pressure keeps expanding.`,
+  BUY_RECOVERY: (tokenName) =>
+    `${tokenName} is showing Buy Recovery. Buyers are returning after recent weakness, which suggests renewed demand. This becomes more meaningful if liquidity holds and sell pressure fades.`,
+  SELL_OFF: (tokenName) =>
+    `${tokenName} is showing Sell-Off. Sellers are pressing price lower, and the move becomes more serious if liquidity thins or higher-timeframe structure turns bearish.`,
+  ACCUMULATION: (tokenName) =>
+    `${tokenName} is showing Accumulation. Buyers are absorbing supply, and recent buy dominance suggests demand is building before a larger move. This read gets stronger if liquidity stays stable and volume continues expanding.`,
+  DISTRIBUTION: (tokenName) =>
+    `${tokenName} is showing Distribution. Sellers are becoming more active, and recent sell dominance suggests supply is being pushed into the market. The bearish read strengthens if price keeps failing to reclaim its recent range.`,
+  CONSOLIDATION: (tokenName) =>
+    `${tokenName} is showing Consolidation. Price is moving inside a tighter range while the market waits for stronger direction. The next read gets clearer when volume, liquidity, or flow breaks out of that range.`,
+  LOW_ACTIVITY: (tokenName) =>
+    `${tokenName} is showing Low Activity. Trading activity is quiet, so Atlaix has limited confirmation for a stronger market read. Watch for volume, flow, or liquidity changes before treating the signal as meaningful.`,
+  INSUFFICIENT_DATA: (tokenName) =>
+    `${tokenName} does not have enough reliable detection data yet. Atlaix needs more trading history before it can produce a stronger market read.`,
+  UNKNOWN: (tokenName) =>
+    `${tokenName}'s latest scan did not produce a clean directional event. Watch for a clearer event before treating this as a stronger market read.`
 };
 
 function formatUsd(value: unknown) {
@@ -20,12 +76,6 @@ function formatUsd(value: unknown) {
   if (numberValue >= 1_000_000) return `$${(numberValue / 1_000_000).toFixed(2)}M`;
   if (numberValue >= 1_000) return `$${(numberValue / 1_000).toFixed(1)}K`;
   return `$${numberValue.toFixed(0)}`;
-}
-
-function formatPercent(value: unknown) {
-  const numberValue = Number(value);
-  if (!Number.isFinite(numberValue)) return '0.00%';
-  return `${numberValue > 0 ? '+' : ''}${numberValue.toFixed(2)}%`;
 }
 
 function formatEventTimestamp(value: number) {
@@ -46,14 +96,22 @@ function shortAddress(value?: string | null) {
 }
 
 function asClassification(value: unknown): LooseClassification | null {
-  return value as LooseClassification | null;
+  return value && typeof value === 'object' ? value as LooseClassification : null;
 }
 
-function importantRiskReasons(classification: LooseClassification | null) {
-  return [
-    ...(classification?.risk?.reasons || []),
-    ...(classification?.manipulationRisk?.reasons || [])
-  ].filter((reason) => reason && reason !== 'No major risk driver detected.').slice(0, 4);
+function humanizeLabel(value = '') {
+  return value
+    .replaceAll('_', ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function normalizeEventKey(value = '') {
+  return value.trim().replace(/[-\s]+/g, '_').toUpperCase();
+}
+
+function assessmentFor(value = '') {
+  return EVENT_ASSESSMENTS[normalizeEventKey(value)] || EVENT_ASSESSMENTS.UNKNOWN;
 }
 
 export function DetectionTokenPage() {
@@ -73,13 +131,13 @@ export function DetectionTokenPage() {
       .finally(() => setLoading(false));
   }, [address, chain, pair]);
 
-  const classification = useMemo(() => asClassification(detail?.latestClassification || null), [detail]);
-  const snapshot = (detail?.latestSnapshot || {}) as Record<string, unknown>;
+  const classification = asClassification(detail?.latestClassification);
   const token = detail?.token;
-  const riskReasons = importantRiskReasons(classification);
   const tokenSymbol = token?.tokenSymbol || token?.tokenName || 'Unknown';
   const tokenName = token?.tokenName && token?.tokenSymbol && token.tokenName !== token.tokenSymbol ? token.tokenName : tokenSymbol;
   const chainDex = [token?.chain, token?.dexId].filter(Boolean).join(' / ');
+  const assessmentEvent = detail?.events[0]?.eventType || classification?.displayLabel || humanizeLabel(classification?.primaryLabel || '') || 'No primary event';
+  const assessmentCopy = assessmentFor(assessmentEvent)(tokenName);
 
   function copyValue(value?: string | null) {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -126,62 +184,63 @@ export function DetectionTokenPage() {
                 </button>
               ) : null}
             </div>
-            <p className="detection-token-reason">{classification?.reason || 'The engine has not produced a detailed verdict for this token yet.'}</p>
           </div>
         </div>
-
-        <section className="detection-token-metrics" aria-label="Latest market metrics">
-          <div><span>24h Volume</span><strong>{formatUsd((snapshot as { volume24h?: unknown }).volume24h)}</strong></div>
-          <div><span>Liquidity</span><strong>{formatUsd((snapshot as { liquidityUsd?: unknown }).liquidityUsd)}</strong></div>
-          <div><span>Market Cap</span><strong>{formatUsd((snapshot as { marketCap?: unknown }).marketCap)}</strong></div>
-          <div><span>24h Change</span><strong>{formatPercent((snapshot as { priceChange24h?: unknown }).priceChange24h)}</strong></div>
-        </section>
       </header>
 
-      <div className="detection-token-actions">
-        <Link to={`/token/${encodeURIComponent(token.tokenAddress)}?chain=${encodeURIComponent(token.chain)}&pair=${encodeURIComponent(token.pairAddress)}`}>Token Details</Link>
-        <Link to="/safe-scan">Safe Scan</Link>
-      </div>
-
-      <div className="detection-token-grid">
-        <article className="detection-detail-panel">
-          <h3>Evidence</h3>
-          {(classification?.evidence || []).length ? (
-            <ul>{classification?.evidence?.map((item) => <li key={item}>{item}</li>)}</ul>
-          ) : <p>No evidence rows were stored for this classification.</p>}
-        </article>
-
-        <article className="detection-detail-panel">
-          <h3>Warnings</h3>
-          {([...classification?.warnings || [], ...classification?.dataQuality?.warnings || []]).length ? (
-            <ul>{[...classification?.warnings || [], ...classification?.dataQuality?.warnings || []].map((item) => <li key={item}>{item}</li>)}</ul>
-          ) : <p>No warnings were attached to the latest classification.</p>}
-        </article>
-
-        <article className="detection-detail-panel">
-          <h3>Risk Reasons</h3>
-          {riskReasons.length ? (
-            <ul>{riskReasons.map((item) => <li key={item}>{item}</li>)}</ul>
-          ) : <p>No major risk driver was detected in the latest classification.</p>}
-        </article>
+      <div className="detection-assessment-row">
+        <section className="detection-detail-panel detection-assessment-panel">
+          <div className="detection-assessment-head">
+            <span>Atlaix Assessment</span>
+            <strong>{assessmentEvent}</strong>
+          </div>
+          <p className="detection-assessment-copy">{assessmentCopy}</p>
+        </section>
+        <nav className="detection-token-actions token-quick-actions-panel" aria-label="Token detection actions">
+          <h3>Quick Actions</h3>
+          <Link className="token-quick-action-button" to={`/token/${encodeURIComponent(token.tokenAddress)}?chain=${encodeURIComponent(token.chain)}&pair=${encodeURIComponent(token.pairAddress)}`}>
+            <span className="token-quick-action-icon"><Activity size={18} /></span>
+            <span><strong>Token Details</strong><small>Market profile</small></span>
+          </Link>
+          <Link className="token-quick-action-button" to="/safe-scan">
+            <span className="token-quick-action-icon"><Scan size={18} /></span>
+            <span><strong>Safe Scan</strong><small>Identify threats</small></span>
+          </Link>
+          <Link className="token-quick-action-button" to={`/smart-alerts?chain=${encodeURIComponent(token.chain)}&address=${encodeURIComponent(token.tokenAddress)}`}>
+            <span className="token-quick-action-icon"><Bell size={18} /></span>
+            <span><strong>Set Alert</strong><small>Smart alerts</small></span>
+          </Link>
+        </nav>
       </div>
 
       <section className="detection-detail-panel detection-timeline-panel">
-        <h3>Event Timeline</h3>
+        <h3>{tokenName} Event History</h3>
         {detail.events.length ? (
           <div className="detection-token-timeline">
             {detail.events.map((event) => (
-              <div key={event.id}>
-                <header className="detection-token-timeline-header">
-                  <span className={`detection-sentiment sentiment-${event.sentiment}`}>{event.sentiment.toUpperCase()}</span>
+              <article className={`detection-event-card detection-token-timeline-card sentiment-${event.sentiment}`} key={event.id}>
+                <header>
+                  <div>
+                    <ShieldCheck size={15} />
+                    <strong>{event.eventType}</strong>
+                  </div>
                   <time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventTimestamp(event.detectedAt)}</time>
                 </header>
-                <strong>{event.eventType}</strong>
-                <p>{event.summary}</p>
-              </div>
+                <p>{detectionEventSummaryForLabel(event.eventType, event.summary)}</p>
+                <footer>
+                  <div className="detection-token">
+                    {token.logo ? <img src={token.logo} alt="" /> : <span className="detection-token-fallback">{tokenSymbol.slice(0, 2).toUpperCase()}</span>}
+                    <span>{tokenSymbol}</span>
+                  </div>
+                  <div className="detection-card-metrics">
+                    <span className={`detection-sentiment sentiment-${event.sentiment}`}>{event.sentiment.toUpperCase()}</span>
+                    <strong>{formatUsd(event.metrics.volume24h)}</strong>
+                  </div>
+                </footer>
+              </article>
             ))}
           </div>
-        ) : <p>No event timeline exists for this token yet.</p>}
+        ) : <p>No event history exists for this token yet.</p>}
       </section>
     </section>
   );

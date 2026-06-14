@@ -25,6 +25,7 @@ import {
     AiAssistantProvider,
     AiAssistantService
 } from '../../features/ai-assistant/ai-assistant-service';
+import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
 
 type FloatingMessage = {
     id: string;
@@ -242,7 +243,7 @@ const normalizeDetectionSnapshotEvent = (event: any): DetectionEngineSnapshotEve
         eventType: String(event.eventType || event.type || 'Unusual Activity'),
         severity: String(event.severity || 'Medium'),
         score: Number.isFinite(Number(event.score)) ? Number(event.score) : undefined,
-        summary: String(event.summary || '').slice(0, 220),
+        summary: detectionEventSummaryForLabel(String(event.eventType || event.type || ''), String(event.summary || '')).slice(0, 220),
         detectedAt: Number.isFinite(Number(event.detectedAt)) ? Number(event.detectedAt) : undefined,
         metrics: {
             volume24h: Number(event.metrics?.volume24h || 0),

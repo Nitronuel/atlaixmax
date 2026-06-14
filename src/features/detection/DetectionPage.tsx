@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DetectionEvent, DetectionSentiment, DetectionSeverity } from '../../shared/detection';
+import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
 import { DetectionService } from './detection-service';
 
 const CACHE_KEY = 'atlaix-detection-events-cache';
@@ -39,8 +40,10 @@ function formatEventAge(timestamp: number) {
 function matchesQuery(event: DetectionEvent, query: string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
+  const summary = detectionEventSummaryForLabel(event.eventType, event.summary);
   return [
     event.eventType,
+    summary,
     event.summary,
     event.token.name,
     event.token.ticker,
@@ -95,6 +98,7 @@ function FilterSelect<T extends string>({
 function DetectionEventCard({ event }: { event: DetectionEvent }) {
   const sentimentLabel = event.sentiment.toUpperCase();
   const href = `/detection/token/${encodeURIComponent(event.token.chain)}/${encodeURIComponent(event.token.address)}?pair=${encodeURIComponent(event.token.pairAddress)}`;
+  const summary = detectionEventSummaryForLabel(event.eventType, event.summary);
 
   return (
     <Link className={`detection-event-card sentiment-${event.sentiment}`} to={href}>
@@ -105,7 +109,7 @@ function DetectionEventCard({ event }: { event: DetectionEvent }) {
         </div>
         <time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventAge(event.detectedAt)}</time>
       </header>
-      <p>{event.summary}</p>
+      <p>{summary}</p>
       <footer>
         <div className="detection-token">
           {event.token.logo ? <img src={event.token.logo} alt="" /> : <span className="detection-token-fallback">{event.token.ticker.slice(0, 2).toUpperCase()}</span>}

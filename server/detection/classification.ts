@@ -1,4 +1,5 @@
 import { calculateDataQuality } from "./dataQuality";
+import { detectionEventSummaryForLabel } from "../../src/shared/detection-copy";
 import { LABEL_PRIORITY, displayLabelFor, isMarketStructureLabel, isSafetyLabel, resolveAlertPriority, resolveMarketPhase } from "./classifierLabels";
 import { triggerToSignal } from "./classifierSignals";
 import { clamp, formatPercent, riskLevelFor, unique } from "./classifierUtils";
@@ -105,7 +106,7 @@ export function classifyToken(input: ClassificationInput): FinalClassification {
   const evidence = buildEvidence(context, primaryLabel, candidateLabel, confirmation);
   const warnings = buildWarnings(context, primaryLabel, candidateLabel, confirmation, contradictorySignals, risk, manipulationRisk);
   const displayLabel = displayLabelFor(primaryLabel);
-  const reason = evidence[0] ?? displayLabel;
+  const reason = detectionEventSummaryForLabel(primaryLabel, evidence[0] ?? displayLabel);
 
   return {
     tokenId: input.snapshot.tokenId,
