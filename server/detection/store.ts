@@ -60,6 +60,7 @@ const SNAPSHOT_COLUMNS = 'snapshot_id,token_id,timestamp,price_usd,market_cap,li
 const FEATURE_COLUMNS = 'feature_id,token_id,timestamp,total_txns_5m,buy_sell_ratio,buy_txn_dominance,sell_txn_dominance,net_txn_pressure,liquidity_change_percentage,liquidity_change_usd,volume_to_liquidity_ratio,volume_spike_score,volume_spike_persisted_snapshots,volume_quality_score,volume_quality_level,liquidity_regime,price_momentum_score,volatility_score,consecutive_green_snapshots,consecutive_red_snapshots,consecutive_buy_dominant_snapshots,consecutive_sell_dominant_snapshots,trend_direction,liquidity_state,pressure_state';
 const CLASSIFICATION_BASE_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label,market_phase,structural_regime,active_regime,dominant_timeframe,dominant_reason,lower_timeframe_trigger,timeframe_alignment,trend_change,event_status,confidence_breakdown,risk,manipulation_risk,timeframe_scores,liquidity_regime,volume_quality,alert_priority,secondary_signals,contradictory_signals,warnings,evidence,detector_scores,data_quality,rule_version';
 const CLASSIFICATION_COLUMNS = `${CLASSIFICATION_BASE_COLUMNS},event_horizon,confirmation_status,confirmation_score,classification_basis,token_age_minutes,regime_weights,pair_reliability`;
+const CLASSIFICATION_SUMMARY_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label';
 const INTERNAL_HISTORY_TABLES = ['detection_features', 'detection_snapshots', 'detection_classifications'] as const;
 const DEFAULT_HISTORY_RETENTION_HOURS = 24;
 const HISTORY_RETENTION_INTERVAL_MS = 15 * 60 * 1000;
@@ -424,6 +425,25 @@ export class DetectionStore {
           params.set('select', CLASSIFICATION_BASE_COLUMNS);
           rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
         }
+        return Array.isArray(rows) && rows[0] ? classificationFromRow(rows[0]) : null;
+      } catch {
+        this.useLocalOnly = true;
+      }
+    }
+
+    return readLocalState().classifications[tokenId]?.at(-1) || null;
+  }
+
+  async getLatestClassificationSummary(tokenId: string): Promise<StoredClassification | null> {
+    if (!this.useLocalOnly) {
+      try {
+        const params = new URLSearchParams({
+          select: CLASSIFICATION_SUMMARY_COLUMNS,
+          token_id: `eq.${tokenId}`,
+          order: 'timestamp.desc',
+          limit: '1'
+        });
+        const rows = await supabaseFetch<any[]>(`detection_classifications?${params.toString()}`);
         return Array.isArray(rows) && rows[0] ? classificationFromRow(rows[0]) : null;
       } catch {
         this.useLocalOnly = true;
@@ -866,6 +886,38 @@ export class DetectionStore {
     };
   }
 
+  async listTokenEvents(address: string, limit = 100): Promise<DetectionEvent[]> {
+    const normalizedAddress = address.trim().toLowerCase();
+    const boundedLimit = Math.max(1, Math.min(250, Number(limit || 100)));
+    if (!normalizedAddress) return [];
+
+    if (!this.useLocalOnly) {
+      try {
+        const params = new URLSearchParams({
+          select: EVENT_COLUMNS,
+          'token->>address': `eq.${address}`,
+          order: 'detected_at.desc',
+          limit: String(boundedLimit)
+        });
+        let rows: any[];
+        try {
+          rows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        } catch {
+          params.set('select', EVENT_BASE_COLUMNS);
+          rows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
+        }
+        return Array.isArray(rows) ? rows.map(eventFromRow) : [];
+      } catch {
+        this.useLocalOnly = true;
+      }
+    }
+
+    return readLocalState().events
+      .filter((event) => event.token.address.toLowerCase() === normalizedAddress)
+      .sort((left, right) => right.detectedAt - left.detectedAt)
+      .slice(0, boundedLimit);
+  }
+
   async getTokenDetail(chain: string, address: string, pairAddress = ''): Promise<DetectionTokenDetailResponse> {
     const normalizedChain = chain.trim().toLowerCase();
     const normalizedAddress = address.trim().toLowerCase();
@@ -884,9 +936,9 @@ export class DetectionStore {
         const token = Array.isArray(tokenRows) && tokenRows[0] ? tokenFromRow(tokenRows[0]) : null;
         if (!token) return emptyDetail();
 
-        const [latestClassification, eventsResponse] = await Promise.all([
-          this.getLatestClassification(token.tokenId),
-          this.listEvents({ q: token.tokenAddress, limit: 100 })
+        const [latestClassification, events] = await Promise.all([
+          this.getLatestClassificationSummary(token.tokenId),
+          this.listTokenEvents(token.tokenAddress, 100)
         ]);
 
         return {
@@ -895,7 +947,7 @@ export class DetectionStore {
           latestSnapshot: null,
           latestFeatures: null,
           latestClassification,
-          events: eventsResponse.events.filter((event) => event.token.address.toLowerCase() === normalizedAddress || event.token.pairAddress.toLowerCase() === normalizedPair),
+          events: events.filter((event) => event.token.address.toLowerCase() === normalizedAddress || event.token.pairAddress.toLowerCase() === normalizedPair),
           snapshotHistory: [],
           classificationHistory: []
         };
