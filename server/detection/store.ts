@@ -60,6 +60,9 @@ const SNAPSHOT_COLUMNS = 'snapshot_id,token_id,timestamp,price_usd,market_cap,li
 const FEATURE_COLUMNS = 'feature_id,token_id,timestamp,total_txns_5m,buy_sell_ratio,buy_txn_dominance,sell_txn_dominance,net_txn_pressure,liquidity_change_percentage,liquidity_change_usd,volume_to_liquidity_ratio,volume_spike_score,volume_spike_persisted_snapshots,volume_quality_score,volume_quality_level,liquidity_regime,price_momentum_score,volatility_score,consecutive_green_snapshots,consecutive_red_snapshots,consecutive_buy_dominant_snapshots,consecutive_sell_dominant_snapshots,trend_direction,liquidity_state,pressure_state';
 const CLASSIFICATION_BASE_COLUMNS = 'classification_id,token_id,timestamp,rule_label,rule_confidence,final_label,final_confidence,risk_level,reason,primary_label,display_label,market_phase,structural_regime,active_regime,dominant_timeframe,dominant_reason,lower_timeframe_trigger,timeframe_alignment,trend_change,event_status,confidence_breakdown,risk,manipulation_risk,timeframe_scores,liquidity_regime,volume_quality,alert_priority,secondary_signals,contradictory_signals,warnings,evidence,detector_scores,data_quality,rule_version';
 const CLASSIFICATION_COLUMNS = `${CLASSIFICATION_BASE_COLUMNS},event_horizon,confirmation_status,confirmation_score,classification_basis,token_age_minutes,regime_weights,pair_reliability`;
+const INTERNAL_HISTORY_TABLES = ['detection_features', 'detection_snapshots', 'detection_classifications'] as const;
+const DEFAULT_HISTORY_RETENTION_HOURS = 24;
+const HISTORY_RETENTION_INTERVAL_MS = 15 * 60 * 1000;
 
 function getSupabaseConfig() {
   const url = readEnv('SUPABASE_URL').replace(/\/$/, '');
@@ -69,6 +72,11 @@ function getSupabaseConfig() {
 
 function getLocalPath() {
   return resolve(process.cwd(), '.data', 'detection-engine.json');
+}
+
+function getHistoryRetentionHours() {
+  const configured = Number(readEnv('DETECTION_HISTORY_RETENTION_HOURS'));
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_HISTORY_RETENTION_HOURS;
 }
 
 function readLocalState(): DetectionState {
@@ -359,6 +367,27 @@ function tokenLogoFromSnapshot(snapshot: TokenSnapshot) {
 
 export class DetectionStore {
   private useLocalOnly = false;
+  private lastRetentionAt = 0;
+
+  private async pruneSupabaseHistory() {
+    if (this.useLocalOnly) return;
+    const now = Date.now();
+    if (now - this.lastRetentionAt < HISTORY_RETENTION_INTERVAL_MS) return;
+    this.lastRetentionAt = now;
+
+    const cutoff = new Date(now - getHistoryRetentionHours() * 60 * 60 * 1000).toISOString();
+    await Promise.all(INTERNAL_HISTORY_TABLES.map(async (table) => {
+      const params = new URLSearchParams({ timestamp: `lt.${cutoff}` });
+      try {
+        await supabaseFetch(`${table}?${params.toString()}`, {
+          method: 'DELETE',
+          headers: { Prefer: 'return=minimal' }
+        });
+      } catch {
+        // Retention is best-effort so scan writes do not fail if cleanup is temporarily unavailable.
+      }
+    }));
+  }
 
   async getRecentSnapshots(tokenId: string, limit: number): Promise<TokenSnapshot[]> {
     if (!this.useLocalOnly) {
@@ -641,6 +670,7 @@ export class DetectionStore {
     if (!this.useLocalOnly) {
       try {
         await supabaseFetch('detection_classifications', { method: 'POST', body: JSON.stringify(row) });
+        await this.pruneSupabaseHistory();
         return classificationId;
       } catch {
         try {
@@ -681,6 +711,7 @@ export class DetectionStore {
             rule_version: row.rule_version
           };
           await supabaseFetch('detection_classifications', { method: 'POST', body: JSON.stringify(baseRow) });
+          await this.pruneSupabaseHistory();
           return classificationId;
         } catch {
           this.useLocalOnly = true;
