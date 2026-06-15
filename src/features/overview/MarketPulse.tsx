@@ -70,14 +70,14 @@ export function MarketPulse({ tokens }: { tokens: OverviewToken[] }) {
             <strong>{sentimentLabel}</strong>
           </div>
         </div>
-        <div className="overview-pulse-card">
+        <div className="overview-pulse-card overview-pulse-card--rotation">
           <div className="overview-pulse-main">
             <span><Zap size={16} /> Smart Rotation</span>
             <strong>{topChain?.chain || 'Scanning'}</strong>
           </div>
           <small>{topChain ? `${formatUsd(topChain.volume)} volume` : 'Waiting for feed'}</small>
         </div>
-        <button className="overview-pulse-card as-button" type="button" onClick={() => topInflow && openToken(topInflow)} disabled={!topInflow}>
+        <button className="overview-pulse-card overview-pulse-card--inflow as-button" type="button" onClick={() => topInflow && openToken(topInflow)} disabled={!topInflow}>
           <div className="overview-pulse-main">
             <span><TrendingUp size={16} /> Top Inflow</span>
             <strong>{topInflow?.symbol || 'Scanning'}</strong>

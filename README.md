@@ -1,6 +1,6 @@
 # Atlaix Max
 
-Fresh Atlaix codebase. Safe Scan is the first rebuilt surface.
+Atlaix Max token intelligence dashboard.
 
 ## Run Locally
 

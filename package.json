@@ -2,7 +2,7 @@
   "name": "atlaix-max",
   "private": true,
   "version": "0.1.0",
-  "description": "Fresh Atlaix codebase starting with the InsightX-powered Safe Scan surface.",
+  "description": "Atlaix Max token intelligence dashboard.",
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c cyan,green \"npm:dev:api\" \"npm:dev:web\"",

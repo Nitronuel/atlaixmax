@@ -137,7 +137,7 @@ export function evaluateSmartMoney(stats: WalletStats): SmartMoneyQualification 
 
   if (activePositions >= 8) {
     score += 15;
-    reasons.push(`${activePositions} active positions provide a strong sample size`);
+    reasons.push(`${activePositions} active positions show broad activity`);
   } else if (activePositions >= 4) {
     score += 10;
     reasons.push(`${activePositions} active positions provide enough activity to assess`);

@@ -1006,7 +1006,7 @@ export const SmartAlerts: React.FC = () => {
                                     <div className="flex min-h-[200px] flex-col items-center justify-center p-6 text-center">
                                         <Bell size={24} className="mb-3 text-primary-green" />
                                         <div className="text-sm font-bold text-text-light">No saved alerts yet</div>
-                                        <div className="mt-1 max-w-sm text-xs text-text-medium">Create an alert and Atlaix will keep watching it while you are away.</div>
+                                        <div className="mt-1 max-w-sm text-xs text-text-medium">Create an alert to start monitoring this token.</div>
                                     </div>
                                 )}
                             </div>
@@ -1146,7 +1146,7 @@ export const SmartAlerts: React.FC = () => {
                                 <div className="mt-2 text-xs leading-relaxed text-text-medium">
                                     {setupDraft.thresholdKind === 'percent'
                                         ? 'The first check establishes a baseline. Future checks trigger when the value moves by this percentage.'
-                                        : 'Saved alerts keep watching market data while the local server is running.'}
+                                        : 'Saved alerts monitor market data while the local server runs.'}
                                     {setupDraft.expirationMinutes ? ` If it never triggers, this alert expires in ${EXPIRATION_OPTIONS.find((option) => option.value === setupDraft.expirationMinutes)?.label.toLowerCase() || 'the selected time'}.` : ''}
                                 </div>
                             </div>
