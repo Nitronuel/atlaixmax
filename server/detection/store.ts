@@ -884,22 +884,20 @@ export class DetectionStore {
         const token = Array.isArray(tokenRows) && tokenRows[0] ? tokenFromRow(tokenRows[0]) : null;
         if (!token) return emptyDetail();
 
-        const [snapshots, features, classifications, eventsResponse] = await Promise.all([
-          this.getRecentSnapshots(token.tokenId, 48),
-          this.getRecentFeatures(token.tokenId, 48),
-          this.getRecentClassifications(token.tokenId, 48),
+        const [latestClassification, eventsResponse] = await Promise.all([
+          this.getLatestClassification(token.tokenId),
           this.listEvents({ q: token.tokenAddress, limit: 100 })
         ]);
 
         return {
           generatedAt: new Date().toISOString(),
           token,
-          latestSnapshot: snapshots[0] || null,
-          latestFeatures: features[0] || null,
-          latestClassification: classifications[0] || null,
+          latestSnapshot: null,
+          latestFeatures: null,
+          latestClassification,
           events: eventsResponse.events.filter((event) => event.token.address.toLowerCase() === normalizedAddress || event.token.pairAddress.toLowerCase() === normalizedPair),
-          snapshotHistory: snapshots,
-          classificationHistory: classifications
+          snapshotHistory: [],
+          classificationHistory: []
         };
       } catch {
         this.useLocalOnly = true;
@@ -915,18 +913,16 @@ export class DetectionStore {
     }) || null;
     if (!token) return emptyDetail();
 
-    const snapshots = (state.snapshots[token.tokenId] || []).slice(-48).reverse();
-    const features = (state.features[token.tokenId] || []).slice(-48).reverse();
-    const classifications = (state.classifications[token.tokenId] || []).slice(-48).reverse();
+    const latestClassification = state.classifications[token.tokenId]?.at(-1) || null;
     return {
       generatedAt: new Date().toISOString(),
       token,
-      latestSnapshot: snapshots[0] || null,
-      latestFeatures: features[0] || null,
-      latestClassification: classifications[0] || null,
+      latestSnapshot: null,
+      latestFeatures: null,
+      latestClassification,
       events: state.events.filter((event) => event.token.address.toLowerCase() === normalizedAddress).slice(0, 100),
-      snapshotHistory: snapshots,
-      classificationHistory: classifications
+      snapshotHistory: [],
+      classificationHistory: []
     };
   }
 
