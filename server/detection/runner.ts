@@ -8,6 +8,7 @@ import { buildDetectionEvent, severityScore, shouldCreateDetectionEvent } from '
 import { calculateFeatures } from './features';
 import { hydrateDetectionCandidate } from './dexscreener';
 import { DetectionStore } from './store';
+import { saveDetectionEventSetup } from '../detection-lab/setupWriter';
 import type { FinalClassification, ScanTier, TokenSchedulePatch } from './types';
 
 type DetectionRunnerStatus = {
@@ -379,6 +380,15 @@ export class DetectionRunner {
 
     const event = buildDetectionEvent(record, classification, classificationId);
     const eventCreated = await this.store.saveEvent(event, record.token.tokenId);
+    if (eventCreated) {
+      await saveDetectionEventSetup({
+        record,
+        features,
+        classification,
+        event,
+        historySnapshots: previousSnapshots.length
+      }).catch(() => undefined);
+    }
     await this.store.upsertToken(record.token, record.snapshot, resolveScanSchedule(classification, previousClassification, eventCreated));
     return { classified: true, eventCreated };
   }
