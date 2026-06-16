@@ -2880,7 +2880,7 @@ main {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  gap: 24px;
+  gap: 16px;
   padding-bottom: 64px;
 }
 
@@ -2888,12 +2888,12 @@ main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(180px, 210px);
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 28px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
-  padding: 18px;
+  padding: 10px 14px;
   box-shadow:
     0 18px 38px rgba(73, 92, 84, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
@@ -2902,14 +2902,14 @@ main {
 .detection-search-control {
   display: flex;
   min-width: 0;
-  min-height: 58px;
+  min-height: 46px;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 18px;
   background: rgba(248, 254, 250, 0.58);
   color: var(--text-dark);
-  padding: 0 18px;
+  padding: 0 14px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
@@ -2930,12 +2930,12 @@ main {
 }
 
 .detection-search-button {
-  min-height: 58px;
+  min-height: 46px;
   border: 0;
   border-radius: 18px;
   background: var(--primary-green);
   color: #061009;
-  padding: 0 26px;
+  padding: 0 24px;
   font-weight: 900;
   transition: transform 180ms ease, background 180ms ease;
 }
@@ -2948,7 +2948,7 @@ main {
 .detection-chain-select {
   position: relative;
   display: flex;
-  min-height: 44px;
+  min-height: 46px;
   align-items: center;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 18px;
@@ -2959,7 +2959,7 @@ main {
 
 .detection-chain-select select {
   width: 100%;
-  min-height: 54px;
+  min-height: 46px;
   appearance: none;
   border: 0;
   outline: 0;
@@ -2979,12 +2979,12 @@ main {
 .detection-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
 }
 
 .detection-secondary-button {
   display: inline-flex;
-  min-height: 48px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 9px;
@@ -2993,7 +2993,7 @@ main {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
   color: var(--text-light);
-  padding: 0 18px;
+  padding: 0 16px;
   font-weight: 800;
   box-shadow:
     0 18px 38px rgba(73, 92, 84, 0.12),
@@ -3039,26 +3039,26 @@ main {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   border-bottom: 1px solid var(--border-color);
   border-radius: 28px 28px 0 0;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
-  padding: 22px 24px;
+  padding: 14px 22px;
   backdrop-filter: blur(18px);
 }
 
 .detection-events-head h2 {
   margin: 0;
   color: var(--text-light);
-  font-size: 21px;
+  font-size: 19px;
   line-height: 1.1;
 }
 
 .detection-events-head p {
-  margin: 8px 0 0;
+  margin: 5px 0 0;
   color: var(--text-medium);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
 }
 
@@ -3067,7 +3067,7 @@ main {
   border: 1px solid var(--border-color);
   border-radius: 999px;
   color: var(--text-medium);
-  padding: 7px 11px;
+  padding: 5px 10px;
   font-size: 12px;
   font-weight: 800;
 }
@@ -3075,9 +3075,9 @@ main {
 .detection-events-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
   background: rgba(248, 254, 250, 0.58);
-  padding: 22px;
+  padding: 14px 22px;
 }
 
 .detection-event-card {
@@ -3085,14 +3085,14 @@ main {
   isolation: isolate;
   overflow: hidden;
   display: grid;
-  min-height: 168px;
-  gap: 16px;
+  min-height: 132px;
+  gap: 10px;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 28px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
   color: var(--text-light);
-  padding: 18px;
+  padding: 14px 16px;
   text-decoration: none;
   box-shadow:
     0 18px 38px rgba(73, 92, 84, 0.12),
@@ -3123,7 +3123,7 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
 
 .detection-event-card header > div {
@@ -3137,7 +3137,7 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-light);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.2;
   text-transform: uppercase;
   white-space: nowrap;
@@ -3151,25 +3151,25 @@ main {
 .detection-event-card time {
   flex: 0 0 auto;
   color: var(--text-medium);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
 .detection-event-card p {
   position: relative;
   z-index: 1;
-  min-height: 48px;
+  min-height: 38px;
   margin: 0;
   color: var(--text-light);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.38;
 }
 
 .detection-event-card footer {
   align-self: end;
   border-top: 1px solid rgba(16, 24, 32, 0.1);
-  padding-top: 12px;
+  padding-top: 6px;
 }
 
 .detection-event-card footer .detection-token {
@@ -3181,15 +3181,15 @@ main {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
 .detection-token img,
 .detection-token-fallback {
-  width: 34px;
-  height: 34px;
+  width: 26px;
+  height: 26px;
   flex: 0 0 auto;
-  border: 2px solid var(--border-color);
+  border: 1px solid var(--border-color);
   border-radius: 999px;
   background: var(--bg-main);
   object-fit: cover;
@@ -3199,7 +3199,7 @@ main {
   display: grid;
   place-items: center;
   color: var(--primary-green);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 900;
 }
 
@@ -3207,6 +3207,7 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-medium);
+  font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -3218,6 +3219,7 @@ main {
 
 .detection-card-metrics strong {
   color: var(--text-light);
+  font-size: 13px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -3225,10 +3227,10 @@ main {
 .detection-sentiment {
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 3px 8px;
+  font-size: 11px;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .detection-sentiment.sentiment-bullish {
@@ -3408,13 +3410,14 @@ main {
 .detection-token-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
+  gap: 16px;
   align-items: center;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 28px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
-  padding: 24px;
+  min-height: 118px;
+  padding: 14px 24px;
   box-shadow:
     0 18px 38px rgba(73, 92, 84, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
@@ -3423,15 +3426,15 @@ main {
 .detection-token-profile {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 14px;
 }
 
 .detection-token-logo-large {
   display: grid;
-  width: 64px;
-  height: 64px;
-  flex: 0 0 64px;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--border-color);
@@ -3449,23 +3452,19 @@ main {
 }
 
 .detection-token-profile-copy {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) auto;
+  column-gap: 18px;
+  row-gap: 3px;
+  align-items: center;
   min-width: 0;
 }
 
-.detection-token-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--primary-green);
-  font-size: 12px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
 .detection-token-hero h2 {
-  margin: 8px 0 4px;
+  min-width: 0;
+  margin: 0;
   color: var(--text-light);
-  font-size: clamp(30px, 3.8vw, 48px);
+  font-size: clamp(23px, 2.25vw, 32px);
   line-height: 1.05;
 }
 
@@ -3476,17 +3475,21 @@ main {
 }
 
 .detection-token-network {
+  grid-column: 1;
   margin: 0;
   color: var(--text-medium);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
 }
 
 .detection-token-meta-row {
   display: flex;
   flex-wrap: wrap;
+  grid-column: 2;
+  grid-row: 1;
   gap: 8px;
-  margin-top: 12px;
+  align-self: center;
+  margin-top: 0;
 }
 
 .detection-token-meta-row button {
@@ -3498,7 +3501,7 @@ main {
   border-radius: 999px;
   background: var(--bg-main);
   color: var(--text-medium);
-  padding: 8px 12px;
+  padding: 7px 12px;
   font: inherit;
   font-size: 13px;
   font-weight: 800;
@@ -3511,10 +3514,11 @@ main {
 }
 
 .detection-token-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
   align-self: stretch;
-  align-content: flex-start;
+  align-content: start;
+  align-items: start;
   gap: 8px;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 28px;
@@ -3527,7 +3531,7 @@ main {
 }
 
 .detection-token-actions h3 {
-  width: 100%;
+  grid-column: 1 / -1;
 }
 
 .detection-token-actions .token-quick-action-button {
@@ -3890,14 +3894,14 @@ main {
 
 .overview-token-chain-logo {
   display: grid;
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
   place-items: center;
   overflow: hidden;
   border: 1px solid var(--border-color);
   border-radius: 999px;
-  background: var(--bg-card-hover);
+  background: #ffffff;
   color: var(--primary-green);
   font-size: 8px;
   font-weight: 800;
@@ -3908,24 +3912,56 @@ main {
   height: 15px;
 }
 
+.overview-token-chain-logo img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
 .overview-token-chain-logo svg path,
 .overview-token-chain-logo svg circle {
   fill: currentColor;
 }
 
+.overview-token-chain-logo svg .chain-logo-cutout {
+  fill: #ffffff;
+}
+
+.overview-token-chain-logo svg .chain-logo-light {
+  fill: #ffffff;
+}
+
+.overview-token-chain-logo svg .chain-logo-accent {
+  fill: #28a0f0;
+}
+
 .overview-token-chain-logo.chain-solana {
   background: #111315;
-  color: #7bf5c6;
+  color: #14f195;
+}
+
+.overview-token-chain-logo.chain-solana img {
+  width: 17px;
+  height: 14px;
 }
 
 .overview-token-chain-logo.chain-ethereum {
-  background: #f3f6fb;
-  color: #454a75;
+  background: #eef2ff;
+  color: #627eea;
 }
 
 .overview-token-chain-logo.chain-base {
-  background: #2151f5;
+  overflow: visible;
+  border-radius: 7px;
+  background: transparent;
   color: #ffffff;
+}
+
+.overview-token-chain-logo.chain-base img {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
 }
 
 .overview-token-chain-logo.chain-bsc {
@@ -3950,7 +3986,7 @@ main {
 
 .overview-token-chain-logo.chain-arbitrum {
   background: #213147;
-  color: #28a0f0;
+  color: #213147;
 }
 
 .overview-token-chain-logo.chain-optimism {
@@ -4283,12 +4319,31 @@ main {
   background: rgba(255, 255, 255, 0.58);
 }
 
+.overview-column-head .chain-col,
+.overview-table-wrap .chain-col,
 .overview-column-head .token-col,
 .overview-table-wrap .token-col {
   position: sticky;
-  left: 0;
   z-index: 9;
   background: rgba(248, 254, 250, 0.98);
+}
+
+.overview-column-head .chain-col,
+.overview-table-wrap .chain-col {
+  left: 0;
+}
+
+.overview-column-head .token-col,
+.overview-table-wrap .token-col {
+  left: 78px;
+}
+
+.overview-table-wrap td.chain-col {
+  text-align: center;
+}
+
+.overview-table-wrap td.chain-col .overview-token-chain-logo {
+  margin: 0 auto;
 }
 
 .overview-table-wrap td.token-col {
@@ -4329,6 +4384,10 @@ main {
   text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 600;
+}
+
+.overview-event-pill.is-empty {
+  color: var(--text-dark);
 }
 
 .overview-flow {
@@ -4758,7 +4817,7 @@ main {
   justify-content: center;
   border-top: 1px solid var(--border-color);
   border-radius: 0 0 8px 8px;
-  background: #07090b;
+  background: var(--bg-card-solid);
   padding: 3px 12px;
 }
 
@@ -4767,17 +4826,53 @@ main {
   min-height: 38px;
   align-items: center;
   gap: 8px;
-  border: 1px solid rgba(63, 163, 77, 0.3);
+  border: 1px solid rgba(63, 163, 77, 0.28);
   border-radius: 8px;
-  background: rgba(63, 163, 77, 0.1);
-  color: var(--primary-green);
+  background: rgba(63, 163, 77, 0.09);
+  color: var(--primary-green-dark);
   padding: 0 14px;
   font-size: 13px;
   font-weight: 600;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.token-chart-actions button:not(:disabled):hover {
+  border-color: rgba(63, 163, 77, 0.38);
+  background: rgba(63, 163, 77, 0.14);
+  color: var(--primary-green);
 }
 
 .token-chart-actions button:disabled {
   opacity: 0.5;
+}
+
+.app-shell:not(.dark-preview) .token-chart-actions {
+  border-color: rgba(215, 232, 220, 0.94);
+  background:
+    linear-gradient(180deg, rgba(248, 254, 250, 0.98), rgba(239, 248, 242, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 -10px 28px rgba(73, 119, 88, 0.08);
+}
+
+.app-shell.dark-preview .token-chart-actions {
+  border-color: #2a2e33;
+  background:
+    linear-gradient(180deg, rgba(17, 19, 21, 0.98), rgba(7, 9, 11, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.025),
+    0 -10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.app-shell.dark-preview .token-chart-actions button {
+  border-color: rgba(38, 211, 86, 0.32);
+  background: rgba(38, 211, 86, 0.12);
+  color: var(--primary-green);
+}
+
+.app-shell.dark-preview .token-chart-actions button:not(:disabled):hover {
+  border-color: rgba(38, 211, 86, 0.46);
+  background: rgba(38, 211, 86, 0.18);
 }
 
 .token-detail-side {
@@ -5472,9 +5567,15 @@ main {
   color: var(--primary-green-dark);
 }
 
+.dark-preview .overview-column-head .chain-col,
+.dark-preview .overview-table-wrap .chain-col,
 .dark-preview .overview-column-head .token-col,
 .dark-preview .overview-table-wrap .token-col {
   background: rgba(17, 19, 21, 0.98);
+}
+
+.dark-preview .overview-column-head .token-col,
+.dark-preview .overview-table-wrap .token-col {
   box-shadow: 18px 0 28px -24px rgba(0, 0, 0, 0.82);
 }
 
@@ -5509,11 +5610,15 @@ main {
 
 .dark-preview .analysis-icon,
 .dark-preview .token-logo,
-.dark-preview .overview-token-chain-logo,
 .dark-preview .overview-token-logo {
   border-color: #2a2e33;
   background: #111315;
   color: var(--primary-green-dark);
+  box-shadow: inset 0 0 0 1px rgba(170, 178, 191, 0.08);
+}
+
+.dark-preview .overview-token-chain-logo {
+  border-color: #2a2e33;
   box-shadow: inset 0 0 0 1px rgba(170, 178, 191, 0.08);
 }
 
@@ -6092,26 +6197,26 @@ main {
 
 .wallet-page {
   display: grid;
-  gap: 22px;
+  gap: 16px;
   padding: 28px clamp(18px, 3vw, 42px) 48px;
 }
 
 .wallet-dashboard-page {
-  gap: 24px;
-  padding-top: 24px;
+  gap: 16px;
+  padding-top: 14px;
 }
 
 .wallet-dashboard-search-card {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(320px, 520px);
   align-items: center;
-  gap: 24px;
-  min-height: 122px;
+  gap: 16px;
+  min-height: 82px;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 28px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
-  padding: 24px;
+  padding: 14px 20px;
   box-shadow:
     0 18px 38px rgba(73, 92, 84, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
@@ -6121,7 +6226,7 @@ main {
 .wallet-dashboard-search-card > p {
   margin: 0;
   color: var(--text-medium);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
 }
 
@@ -6130,28 +6235,28 @@ main {
   position: relative;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
 }
 
 .wallet-dashboard-search svg {
   position: absolute;
-  left: 18px;
+  left: 15px;
   z-index: 1;
   color: var(--text-medium);
 }
 
 .wallet-dashboard-search input {
-  min-height: 52px;
+  min-height: 44px;
   min-width: 0;
   border: 1px solid rgba(215, 226, 220, 0.86);
   border-radius: 18px;
   background: rgba(248, 254, 250, 0.58);
   color: var(--text-light);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   outline: 0;
-  padding: 0 18px 0 52px;
+  padding: 0 14px 0 46px;
 }
 
 .wallet-dashboard-search input::placeholder {
@@ -6165,13 +6270,13 @@ main {
 }
 
 .wallet-dashboard-search button {
-  min-height: 52px;
+  min-height: 44px;
   border: 0;
   border-radius: 8px;
   background: var(--primary-green);
   color: #ffffff;
-  padding: 0 24px;
-  font-size: 16px;
+  padding: 0 22px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
@@ -7075,7 +7180,7 @@ main {
 
   .wallet-dashboard-search-card {
     min-height: 0;
-    padding: 18px;
+    padding: 12px;
   }
 
   .wallet-dashboard-search {
@@ -7083,7 +7188,7 @@ main {
   }
 
   .wallet-dashboard-search svg {
-    top: 15px;
+    top: 11px;
   }
 
   .wallet-dashboard-search button {
@@ -8615,6 +8720,24 @@ main {
     grid-template-columns: 1fr;
   }
 
+  .detection-token-profile-copy {
+    grid-template-columns: 1fr;
+  }
+
+  .detection-token-network,
+  .detection-token-meta-row {
+    grid-column: 1;
+  }
+
+  .detection-token-meta-row {
+    grid-row: auto;
+    margin-top: 8px;
+  }
+
+  .detection-token-actions {
+    grid-template-columns: 1fr;
+  }
+
   .safe-scan-empty {
     gap: 28px;
     min-height: calc(100dvh - 120px);
@@ -8635,7 +8758,7 @@ main {
   .primary-button,
   .smart-alert-search-control,
   .smart-alert-search-button {
-    min-height: 54px;
+    min-height: 46px;
   }
 
   .primary-button,
@@ -8768,12 +8891,12 @@ main {
   .detection-search-control,
   .detection-search-button,
   .overview-search-button {
-    min-height: 48px;
+    min-height: 44px;
     border-radius: 14px;
   }
 
   .detection-search-panel {
-    padding: 14px;
+    padding: 10px;
   }
 
   .detection-actions {
@@ -8786,7 +8909,7 @@ main {
 
   .detection-events-head {
     flex-direction: column;
-    padding: 16px;
+    padding: 14px;
   }
 
   .detection-events-grid {
@@ -8806,7 +8929,7 @@ main {
   .detection-token-hero,
   .detection-token-actions,
   .detection-detail-panel {
-    padding: 16px;
+    padding: 14px;
   }
 
   .detection-token-profile {
@@ -8814,9 +8937,9 @@ main {
   }
 
   .detection-token-logo-large {
-    width: 54px;
-    height: 54px;
-    flex-basis: 54px;
+    width: 50px;
+    height: 50px;
+    flex-basis: 50px;
   }
 
   .detection-token-actions .token-quick-action-button,
@@ -8881,7 +9004,7 @@ main {
   .smart-panel,
   .smart-profile-hero,
   .smart-profile-stats > div {
-    padding: 16px;
+    padding: 14px;
   }
 
   .wallet-dashboard-filters,

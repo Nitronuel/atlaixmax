@@ -172,7 +172,7 @@ export function SafeScanPage() {
       <Card className="result-hero">
         <div>
           <h1>Safety Scan</h1>
-          <p>Check contract flags, holder concentration, launch wallets, labels, and graph links in one scan.</p>
+          <p>Review contract flags, holder concentration, launch wallets, labels, and graph links.</p>
         </div>
         <button type="button" className="primary-button compact" onClick={reset}>
           <Shield size={18} /> New scan
@@ -184,7 +184,7 @@ export function SafeScanPage() {
           <div className="token-heading">
             <div className="token-logo">{scanner?.token?.logo ? <img src={scanner.token.logo} alt="" /> : (scanner?.token?.symbol || 'IX').slice(0, 2)}</div>
             <div>
-              <h2>{scanner?.token?.name || 'Token Safety Report'}</h2>
+              <h2>{scanner?.token?.name || 'Token report'}</h2>
               <div className="token-meta">
                 <span>{scanner?.token?.symbol || 'N/A'}</span>
                 <button type="button" onClick={() => navigator.clipboard?.writeText(report.address)} aria-label="Copy token address">
@@ -199,7 +199,7 @@ export function SafeScanPage() {
             <MetricCard
               label="Cluster supply"
               value={<span className="metric-split"><span>{formatPercent(overview?.cluster_pct)}</span><small className="metric-side-value">{formatCurrencyCompact(clusterUsd)}</small></span>}
-              detail="Supply held by detected clusters"
+              detail="Supply held by wallet clusters"
             />
             <MetricCard label="Dev holdings" value={formatPercent(creatorSupplyShare(scanner, overview?.dev_pct))} detail="Creator/deployer exposure" />
           </div>

@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { DetectionEvent } from '../../shared/detection';
 import type { OverviewToken } from '../../shared/overview';
+import { DetectionService } from '../detection/detection-service';
 import { LiveAlphaFeed } from './LiveAlphaFeed';
 import { MarketPulse } from './MarketPulse';
+import { buildLatestDetectionEventLookup, detectionEventLabelForToken } from './overview-detection-events';
 import { OverviewFiltersModal } from './OverviewFilters';
 import { OverviewService } from './overview-service';
 import { DEFAULT_OVERVIEW_FILTERS, type OverviewFilters } from './overview-utils';
@@ -49,6 +52,21 @@ export function OverviewPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<OverviewFilters>(DEFAULT_OVERVIEW_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detectionEvents, setDetectionEvents] = useState<DetectionEvent[]>([]);
+  const detectionEventLookup = useMemo(() => buildLatestDetectionEventLookup(detectionEvents), [detectionEvents]);
+  const detectionEventOptions = useMemo(() => (
+    Array.from(new Set(tokens.map((token) => detectionEventLabelForToken(detectionEventLookup, token))))
+      .sort((left, right) => (left === 'None' ? 1 : right === 'None' ? -1 : left.localeCompare(right)))
+  ), [detectionEventLookup, tokens]);
+
+  async function loadDetectionEvents() {
+    try {
+      const response = await DetectionService.getEvents();
+      setDetectionEvents(response.events);
+    } catch {
+      setDetectionEvents([]);
+    }
+  }
 
   async function loadFeed(showLoading = true, force = false) {
     if (showLoading) setLoading(true);
@@ -66,7 +84,7 @@ export function OverviewPage() {
   async function refreshFeed() {
     setSyncing(true);
     try {
-      await loadFeed(false, true);
+      await Promise.all([loadFeed(false, true), loadDetectionEvents()]);
     } catch (nextError) {
       setError(nextError instanceof Error ? `Refresh failed: ${nextError.message}` : 'Live Alpha Feed refresh failed.');
     } finally {
@@ -81,12 +99,17 @@ export function OverviewPage() {
       setLastUpdated(new Date(cached.generatedAt));
       setLoading(false);
       void loadFeed(false);
+      void loadDetectionEvents();
     } else {
       void loadFeed();
+      void loadDetectionEvents();
     }
 
     const interval = window.setInterval(() => {
-      if (!document.hidden) void loadFeed(false);
+      if (!document.hidden) {
+        void loadFeed(false);
+        void loadDetectionEvents();
+      }
     }, FEED_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, []);
@@ -102,6 +125,7 @@ export function OverviewPage() {
         lastUpdated={lastUpdated}
         searchQuery={searchQuery}
         filters={filters}
+        detectionEvents={detectionEvents}
         onFiltersClick={() => setFiltersOpen(true)}
         onRefresh={() => void refreshFeed()}
       />
@@ -109,6 +133,7 @@ export function OverviewPage() {
         open={filtersOpen}
         filters={filters}
         tokens={tokens}
+        eventOptions={detectionEventOptions}
         onClose={() => setFiltersOpen(false)}
         onApply={(nextFilters) => {
           setFilters(nextFilters);

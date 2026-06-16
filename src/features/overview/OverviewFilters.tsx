@@ -1,6 +1,6 @@
 import { RotateCcw, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import type { OverviewEvent, OverviewToken } from '../../shared/overview';
+import type { OverviewToken } from '../../shared/overview';
 import { DEFAULT_OVERVIEW_FILTERS, type OverviewFilters } from './overview-utils';
 
 function FilterSelect({ label, value, options, onChange }: {
@@ -39,16 +39,16 @@ function FilterRange({ label, minValue, maxValue, suffix, onMinChange, onMaxChan
   );
 }
 
-export function OverviewFiltersModal({ open, filters, tokens, onClose, onApply }: {
+export function OverviewFiltersModal({ open, filters, tokens, eventOptions, onClose, onApply }: {
   open: boolean;
   filters: OverviewFilters;
   tokens: OverviewToken[];
+  eventOptions: string[];
   onClose: () => void;
   onApply: (filters: OverviewFilters) => void;
 }) {
   const [draft, setDraft] = useState(filters);
   const chainOptions = useMemo(() => [...new Set(tokens.map((token) => token.chain))].sort(), [tokens]);
-  const eventOptions = useMemo(() => [...new Set(tokens.map((token) => token.event))].sort() as OverviewEvent[], [tokens]);
 
   useEffect(() => {
     if (open) setDraft(filters);

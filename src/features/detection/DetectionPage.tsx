@@ -2,7 +2,7 @@ import { ChevronDown, Filter, RefreshCw, Search, ShieldCheck, SlidersHorizontal,
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { DetectionEvent, DetectionSentiment, DetectionSeverity } from '../../shared/detection';
+import type { DetectionEvent, DetectionSentiment } from '../../shared/detection';
 import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
 import { DetectionService } from './detection-service';
 
@@ -10,13 +10,13 @@ const CACHE_KEY = 'atlaix-detection-events-cache';
 
 type DetectionFilters = {
   sentiment: DetectionSentiment | 'all';
-  severity: DetectionSeverity | 'all';
+  eventType: string;
   minVolume: number;
 };
 
 const defaultFilters: DetectionFilters = {
   sentiment: 'all',
-  severity: 'all',
+  eventType: 'all',
   minVolume: 0
 };
 
@@ -58,7 +58,7 @@ function visibleEvents(events: DetectionEvent[], query: string, chain: string, f
     if (!matchesQuery(event, query)) return false;
     if (chain !== 'All Chains' && event.token.chain !== chain) return false;
     if (filters.sentiment !== 'all' && event.sentiment !== filters.sentiment) return false;
-    if (filters.severity !== 'all' && event.severity !== filters.severity) return false;
+    if (filters.eventType !== 'all' && event.eventType !== filters.eventType) return false;
     if (event.metrics.volume24h < filters.minVolume) return false;
     return true;
   });
@@ -136,10 +136,13 @@ export function DetectionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const detectionChains = useMemo(() => ['All Chains', ...Array.from(new Set(events.map((event) => event.token.chain).filter(Boolean)))], [events]);
+  const detectionEventTypes = useMemo(() => (
+    ['all', ...Array.from(new Set(events.map((event) => event.eventType).filter(Boolean))).sort()]
+  ), [events]);
   const filteredEvents = useMemo(() => visibleEvents(events, submittedQuery || query, chain, filters), [chain, events, filters, query, submittedQuery]);
   const activeFilterCount = [
     filters.sentiment !== 'all',
-    filters.severity !== 'all',
+    filters.eventType !== 'all',
     filters.minVolume > 0
   ].filter(Boolean).length;
 
@@ -283,16 +286,13 @@ export function DetectionPage() {
               onChange={(sentiment) => setFilters((current) => ({ ...current, sentiment }))}
             />
             <FilterSelect
-              label="Severity"
-              value={filters.severity}
-              options={[
-                { label: 'All severity', value: 'all' },
-                { label: 'Critical', value: 'critical' },
-                { label: 'High', value: 'high' },
-                { label: 'Medium', value: 'medium' },
-                { label: 'Low', value: 'low' }
-              ]}
-              onChange={(severity) => setFilters((current) => ({ ...current, severity }))}
+              label="Event type"
+              value={filters.eventType}
+              options={detectionEventTypes.map((eventType) => ({
+                label: eventType === 'all' ? 'All events' : eventType,
+                value: eventType
+              }))}
+              onChange={(eventType) => setFilters((current) => ({ ...current, eventType }))}
             />
             <label className="detection-filter-field">
               <span>Minimum 24h volume</span>

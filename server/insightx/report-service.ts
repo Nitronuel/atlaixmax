@@ -126,7 +126,8 @@ export class InsightXReportService {
       'atlasTimestamps'
     ];
 
-    const entries = await Promise.all(endpointKeys.map(async (key) => {
+    const entries: Array<readonly [Exclude<ReportEndpointKey, 'labels'>, SafeScanReport['endpoints'][Exclude<ReportEndpointKey, 'labels'>]]> = [];
+    for (const key of endpointKeys) {
       const result = await this.client.fetchEndpoint({
         path: endpointPath(key, encodedNetwork, encodedAddress),
         cacheKey: `${key}:${cacheBase}`,
@@ -134,8 +135,8 @@ export class InsightXReportService {
         network,
         schema: schemaForEndpoint(key)
       });
-      return [key, result] as const;
-    }));
+      entries.push([key, result] as const);
+    }
 
     const endpoints = Object.fromEntries(entries) as SafeScanReport['endpoints'];
     const labelAddresses = collectLabelAddresses(endpoints, address);

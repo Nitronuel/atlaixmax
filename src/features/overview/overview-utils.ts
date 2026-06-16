@@ -20,6 +20,7 @@ export type SortConfig = {
 } | null;
 
 export type OverviewSortKey =
+  | 'chain'
   | 'symbol'
   | 'event'
   | 'priceUsd'

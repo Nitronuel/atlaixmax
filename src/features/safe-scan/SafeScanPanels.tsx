@@ -84,7 +84,7 @@ export function ScannerPanel({ scanner, result }: { scanner: ScannerResponse | n
         <StatusPill result={result} />
       </div>
       {!scanner ? (
-        <EmptyBlock title="Scanner unavailable" body={result?.error || 'No scanner report was returned for this token.'} />
+        <EmptyBlock title="Scanner unavailable" body={result?.error || 'No scanner data for this token.'} />
       ) : (
         <div className="flag-grid contract-grid">
           {flags.map((flag) => (
@@ -251,7 +251,7 @@ export function DrainRiskSummary({ clusterBalance, totalSupply, liquidity, loadi
         <div className="drain-grid">
           <MetricCard label="Cluster held supply" value={formatCurrencyCompact(clusterUsd)} detail={clusterShare !== null ? `${formatPercent(clusterShare)} of supply` : 'N/A of supply'} />
           <MetricCard label="Live liquidity" value={formatCurrencyCompact(liquidity?.liquidityUsd)} detail={liquidity ? `${liquidity.pairCount} live pairs` : 'No live pairs'} />
-          <MetricCard label="Liquidity held" value={ratio === null ? 'N/A' : `${(ratio * 100).toFixed(1)}%`} tone={highRisk ? 'danger' : 'safe'} detail={highRisk ? 'Cluster supply can exceed live liquidity' : 'Visible liquidity covers detected cluster value'} />
+          <MetricCard label="Liquidity held" value={ratio === null ? 'N/A' : `${(ratio * 100).toFixed(1)}%`} tone={highRisk ? 'danger' : 'safe'} detail={highRisk ? 'Cluster supply can exceed live liquidity' : 'Visible liquidity covers cluster value'} />
         </div>
       )}
     </Card>
@@ -270,7 +270,7 @@ export function ManipulationPanel({ overview, snipers, bundlers, insiders, label
   const [tab, setTab] = useState<'bundlers' | 'snipers' | 'insiders'>('bundlers');
   const [expanded, setExpanded] = useState(false);
   const activeRows = tab === 'bundlers' ? bundlers?.bundlers || [] : tab === 'snipers' ? snipers?.snipers || [] : insiders?.insiders || [];
-  const activeEmpty = tab === 'bundlers' ? 'No bundler wallets were returned.' : tab === 'snipers' ? 'No sniper wallets were returned.' : 'No insider wallets were returned.';
+  const activeEmpty = tab === 'bundlers' ? 'No bundler wallets found.' : tab === 'snipers' ? 'No sniper wallets found.' : 'No insider wallets found.';
   const detailRowCount = (bundlers?.bundlers?.length || 0) + (snipers?.snipers?.length || 0) + (insiders?.insiders?.length || 0);
   const bundlersPct = bundlers?.total_bundlers_pct ?? overview?.bundlers_pct;
   const snipersPct = snipers?.total_sniper_pct ?? overview?.snipers_pct;
@@ -278,7 +278,7 @@ export function ManipulationPanel({ overview, snipers, bundlers, insiders, label
 
   return (
     <Card>
-      <SectionHeader icon={<Radar size={20} />} title="Launch Manipulation Intelligence" eyebrow="Bundlers, snipers, insiders" />
+      <SectionHeader icon={<Radar size={20} />} title="Launch Manipulation" eyebrow="Bundlers, snipers, insiders" />
       <div className="metric-grid three">
         <MetricCard label="Bundlers" value={<MetricSplit percent={bundlersPct} usd={manipulationUsd(bundlersPct, totalSupply, tokenPriceUsd)} />} detail={`${formatNumber(bundlers?.bundlers?.length, '0')} wallet interaction`} />
         <MetricCard label="Snipers" value={<MetricSplit percent={snipersPct} usd={manipulationUsd(snipersPct, totalSupply, tokenPriceUsd)} />} detail={`${formatNumber(snipers?.count?.total, '0')} wallet interaction`} />
@@ -345,9 +345,9 @@ export function LiquidityAndHoldersPanel({ scanner, labels, totalSupply }: {
         ) : null}
       />
       {!holderCount ? (
-        <EmptyBlock title="No holder rows" body="No top holder details were returned for this scan." />
+        <EmptyBlock title="No holder rows" body="No top holder details for this scan." />
       ) : expanded ? (
-        <WalletTable rows={holders || []} labels={labels} totalSupply={totalSupply} empty="No top holder details were returned for this scan." maxRows={80} />
+        <WalletTable rows={holders || []} labels={labels} totalSupply={totalSupply} empty="No top holder details for this scan." maxRows={80} />
       ) : null}
     </Card>
   );

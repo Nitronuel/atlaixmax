@@ -568,7 +568,7 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
               ) : null}
             </>
           ) : (
-            <EmptyBlock title="Atlas snapshot unavailable" body="No graph nodes were returned for this token." />
+            <EmptyBlock title="Atlas snapshot unavailable" body="No graph nodes for this token." />
           )}
         </div>
         <div className="cluster-list">

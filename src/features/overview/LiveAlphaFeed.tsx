@@ -1,6 +1,10 @@
 import { ChevronLeft, ChevronRight, Info, RefreshCw, SlidersHorizontal } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { SiBnbchain, SiEthereum, SiOptimism, SiPolygon, SiTon } from 'react-icons/si';
+import type { IconType } from 'react-icons';
+import type { DetectionEvent } from '../../shared/detection';
 import type { OverviewToken } from '../../shared/overview';
+import { buildLatestDetectionEventLookup, detectionEventLabelForToken, latestDetectionEventForToken } from './overview-detection-events';
 import {
   activeFilterCount,
   filterTokens,
@@ -29,6 +33,17 @@ const chainLabels: Record<string, string> = {
   solana: 'Solana',
   ton: 'TON'
 };
+const chainIcons: Partial<Record<string, IconType>> = {
+  bsc: SiBnbchain,
+  ethereum: SiEthereum,
+  optimism: SiOptimism,
+  polygon: SiPolygon,
+  ton: SiTon
+};
+const chainLogoImages: Partial<Record<string, string>> = {
+  base: '/chain-icons/base-square-blue.svg',
+  solana: '/chain-icons/solana-logo.svg'
+};
 
 type FeedColumn = {
   label: string;
@@ -39,7 +54,8 @@ type FeedColumn = {
 };
 
 const columns: FeedColumn[] = [
-  { label: 'Chain Token', key: 'symbol', className: 'token-col', width: 230 },
+  { label: 'Chain', key: 'chain', className: 'chain-col', width: 78 },
+  { label: 'Token', key: 'symbol', className: 'token-col', width: 190 },
   { label: 'Price', key: 'priceUsd', width: 122, align: 'right' },
   { label: 'Chg 24h', key: 'change24h', width: 116, align: 'right' },
   { label: 'MCap', key: 'marketCapUsd', width: 132, align: 'right' },
@@ -125,62 +141,31 @@ function normalizeChainKey(chain: string) {
 function ChainLogo({ chain }: { chain: string }) {
   const key = normalizeChainKey(chain);
   const label = chainLabels[key] || chain || 'Unknown chain';
+  const Icon = chainIcons[key];
+  const image = chainLogoImages[key];
   return (
     <span className={`overview-token-chain-logo chain-${key}`} title={label} aria-label={`${label} chain`}>
-      {key === 'solana' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M5 7.4h12.5l1.5-2.1H6.5L5 7.4Z" />
-          <path d="M19 10.9H6.5L5 13h12.5l1.5-2.1Z" />
-          <path d="M5 18.7h12.5l1.5-2.1H6.5L5 18.7Z" />
-        </svg>
-      )}
-      {key === 'ethereum' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 2 5.6 12.2 12 16l6.4-3.8L12 2Z" />
-          <path d="M12 17.2 5.6 13.4 12 22l6.4-8.6-6.4 3.8Z" />
-        </svg>
-      )}
-      {key === 'base' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="12" r="7.5" />
-        </svg>
-      )}
-      {key === 'bsc' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 4 16 8l-2.2 2.2L12 8.4l-1.8 1.8L8 8l4-4Zm-6 8 2.2-2.2L10.4 12l-2.2 2.2L6 12Zm6 3.6 1.8-1.8L16 16l-4 4-4-4 2.2-2.2 1.8 1.8Zm1.6-3.6L16 9.6l2.4 2.4-2.4 2.4-2.4-2.4Zm-3.1 0L12 10.5l1.5 1.5-1.5 1.5-1.5-1.5Z" />
-        </svg>
-      )}
-      {key === 'ton' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M4.5 6.5h15L12 18 4.5 6.5Zm2.9 1.8L12 15.5l4.6-7.2H7.4Z" />
-        </svg>
-      )}
-      {key === 'abstract' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M6 7.5h5.2v3.2H6V7.5Zm6.8 0H18v3.2h-5.2V7.5ZM6 13.3h5.2v3.2H6v-3.2Zm6.8 0H18v3.2h-5.2v-3.2Z" />
-        </svg>
-      )}
-      {key === 'polygon' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m16.2 8.2-3.5 2v4l3.5 2 3.5-2v-4l-3.5-2Zm-8.4 0-3.5 2v4l3.5 2 3.5-2v-4l-3.5-2Zm8.4 2.5 1.3.8v1.4l-1.3.8-1.3-.8v-1.4l1.3-.8Zm-8.4 0 1.3.8v1.4l-1.3.8-1.3-.8v-1.4l1.3-.8Z" />
-        </svg>
-      )}
+      {image ? <img src={image} alt="" aria-hidden="true" /> : null}
+      {Icon ? <Icon aria-hidden="true" /> : null}
       {key === 'arbitrum' && (
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3 19.5 7.2v9.6L12 21l-7.5-4.2V7.2L12 3Zm-1.7 13.7 5.4-9.5-1.9-1.1-5.4 9.5 1.9 1.1Zm3.2 1.1 3.3-5.8-1.8-1.1-3.4 5.8 1.9 1.1Z" />
-        </svg>
-      )}
-      {key === 'optimism' && (
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M7.8 8h3.7c2.3 0 3.7 1.2 3.7 3.1 0 2.4-1.8 4.9-5 4.9H6.5L7.8 8Zm2.4 2-0.7 4h0.9c1.4 0 2.3-1.4 2.3-2.6 0-0.9-0.5-1.4-1.5-1.4h-1Z" />
+          <path d="M12 2.8 20.1 7.4v9.2L12 21.2l-8.1-4.6V7.4L12 2.8Z" />
+          <path className="chain-logo-light" d="m9.5 16.4 5.6-9.8 2 1.1-5.6 9.8-2-1.1Zm3.8 1.2 3.2-5.6 2 1.1-3.2 5.6-2-1.1Z" />
+          <path className="chain-logo-accent" d="m6.2 14.8 5.6-9.7 2 1.1-5.6 9.8-2-1.2Z" />
         </svg>
       )}
       {key === 'avalanche' && (
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m12 4 6.7 12H15l-3-5.2L9 16H5.3L12 4Zm3.4 12h3.3l-2.2-3.9-1.1 1.9Z" />
+          <circle cx="12" cy="12" r="9.4" />
+          <path className="chain-logo-cutout" d="m12.1 6 5.4 9.4h-3.2l-2.2-3.8-2.2 3.8H6.7L12.1 6Zm3.1 9.4h2.3l-1.5-2.6-.8 1.4Z" />
         </svg>
       )}
-      {!chainLabels[key] && <span>{chain.slice(0, 2).toUpperCase()}</span>}
+      {key === 'abstract' && (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5.2 5.2h6.2v6.2H5.2V5.2Zm7.4 0h6.2v6.2h-6.2V5.2ZM5.2 12.6h6.2v6.2H5.2v-6.2Zm7.4 0h6.2v6.2h-6.2v-6.2Z" />
+        </svg>
+      )}
+      {!image && !Icon && !['arbitrum', 'avalanche', 'abstract'].includes(key) && <span>{chain.slice(0, 2).toUpperCase()}</span>}
     </span>
   );
 }
@@ -192,6 +177,7 @@ export function LiveAlphaFeed({
   lastUpdated,
   searchQuery,
   filters,
+  detectionEvents,
   onFiltersClick,
   onRefresh
 }: {
@@ -201,6 +187,7 @@ export function LiveAlphaFeed({
   lastUpdated: Date | null;
   searchQuery: string;
   filters: OverviewFilters;
+  detectionEvents: DetectionEvent[];
   onFiltersClick: () => void;
   onRefresh: () => void;
 }) {
@@ -212,8 +199,20 @@ export function LiveAlphaFeed({
   const tableRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLDivElement | null>(null);
   const syncing = useRef(false);
-  const filtered = useMemo(() => filterTokens(tokens, filters, searchQuery), [filters, searchQuery, tokens]);
-  const sorted = useMemo(() => sortTokens(filtered, sortConfig), [filtered, sortConfig]);
+  const detectionEventLookup = useMemo(() => buildLatestDetectionEventLookup(detectionEvents), [detectionEvents]);
+  const eventFiltered = useMemo(() => {
+    const baseFilters = { ...filters, event: 'all' };
+    return filterTokens(tokens, baseFilters, searchQuery).filter((token) => (
+      filters.event === 'all' || detectionEventLabelForToken(detectionEventLookup, token) === filters.event
+    ));
+  }, [detectionEventLookup, filters, searchQuery, tokens]);
+  const sorted = useMemo(() => {
+    if (sortConfig?.key !== 'event') return sortTokens(eventFiltered, sortConfig);
+    const multiplier = sortConfig.direction === 'asc' ? 1 : -1;
+    return [...eventFiltered].sort((left, right) => (
+      detectionEventLabelForToken(detectionEventLookup, left).localeCompare(detectionEventLabelForToken(detectionEventLookup, right)) * multiplier
+    ));
+  }, [detectionEventLookup, eventFiltered, sortConfig]);
   const limited = useMemo(() => sorted.slice(0, visibleLimit(filters, sorted.length)), [filters, sorted]);
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
@@ -309,8 +308,10 @@ export function LiveAlphaFeed({
             <tbody>
               {pageRows.map((token) => (
                 <tr key={token.id} onClick={() => openToken(token)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openToken(token)}>
-                  <td className="token-col">
+                  <td className="chain-col">
                     <ChainLogo chain={token.chain} />
+                  </td>
+                  <td className="token-col">
                     <span className="overview-token-logo">{token.logo ? <img src={token.logo} alt="" /> : token.symbol.slice(0, 2)}</span>
                     <span>
                       <strong>{token.symbol}</strong>
@@ -325,7 +326,16 @@ export function LiveAlphaFeed({
                   <td className="metric-col positive">{formatInteger(token.dexBuys24h)}</td>
                   <td className="metric-col negative">{formatInteger(token.dexSells24h)}</td>
                   <td className={`metric-col ${signedClass(token.dexFlow24h)}`}><FlowBar value={token.dexFlow24h} max={maxFlow} /></td>
-                  <td><span className="overview-event-pill">{token.event}</span></td>
+                  <td>
+                    {(() => {
+                      const detectionEvent = latestDetectionEventForToken(detectionEventLookup, token);
+                      return (
+                        <span className={['overview-event-pill', !detectionEvent ? 'is-empty' : ''].filter(Boolean).join(' ')}>
+                          {detectionEvent?.eventType || 'None'}
+                        </span>
+                      );
+                    })()}
+                  </td>
                 </tr>
               ))}
             </tbody>

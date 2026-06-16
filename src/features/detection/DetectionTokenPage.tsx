@@ -171,18 +171,12 @@ export function DetectionTokenPage() {
             {token.logo ? <img src={token.logo} alt="" /> : <span>{tokenSymbol.slice(0, 2).toUpperCase()}</span>}
           </div>
           <div className="detection-token-profile-copy">
-            <span className="detection-token-kicker"><ShieldCheck size={16} />Detection Profile</span>
             <h2>{tokenName} <small>({tokenSymbol})</small></h2>
             {chainDex ? <p className="detection-token-network">{chainDex}</p> : null}
             <div className="detection-token-meta-row">
               <button type="button" onClick={() => copyValue(token.tokenAddress)} aria-label="Copy token address">
                 {shortAddress(token.tokenAddress)} <Copy size={14} />
               </button>
-              {token.pairAddress ? (
-                <button type="button" onClick={() => copyValue(token.pairAddress)} aria-label="Copy pair address">
-                  Pair {shortAddress(token.pairAddress)} <Copy size={14} />
-                </button>
-              ) : null}
             </div>
           </div>
         </div>
@@ -200,15 +194,15 @@ export function DetectionTokenPage() {
           <h3>Quick Actions</h3>
           <Link className="token-quick-action-button" to={`/token/${encodeURIComponent(token.tokenAddress)}?chain=${encodeURIComponent(token.chain)}&pair=${encodeURIComponent(token.pairAddress)}`}>
             <span className="token-quick-action-icon"><Activity size={18} /></span>
-            <span><strong>Token Details</strong><small>Market profile</small></span>
-          </Link>
-          <Link className="token-quick-action-button" to="/safe-scan">
-            <span className="token-quick-action-icon"><Scan size={18} /></span>
-            <span><strong>Safe Scan</strong><small>Identify threats</small></span>
+            <span><strong>Token Details</strong><small>Market data</small></span>
           </Link>
           <Link className="token-quick-action-button" to={`/smart-alerts?chain=${encodeURIComponent(token.chain)}&address=${encodeURIComponent(token.tokenAddress)}`}>
             <span className="token-quick-action-icon"><Bell size={18} /></span>
             <span><strong>Set Alert</strong><small>Smart alerts</small></span>
+          </Link>
+          <Link className="token-quick-action-button" to="/safe-scan">
+            <span className="token-quick-action-icon"><Scan size={18} /></span>
+            <span><strong>Safe Scan</strong><small>Risk check</small></span>
           </Link>
         </nav>
       </div>
