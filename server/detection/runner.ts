@@ -381,7 +381,7 @@ export class DetectionRunner {
     const event = buildDetectionEvent(record, classification, classificationId);
     const eventCreated = await this.store.saveEvent(event, record.token.tokenId);
     if (eventCreated) {
-      await saveDetectionEventSetup({
+      void saveDetectionEventSetup({
         record,
         features,
         classification,

@@ -119,6 +119,8 @@ export type OutcomeRow = {
   updated_at: string;
 };
 
+const REQUEST_TIMEOUT_MS = 8_000;
+
 function getSupabaseConfig() {
   return {
     url: readEnv('SUPABASE_URL').replace(/\/$/, ''),
@@ -139,6 +141,7 @@ export class DetectionResearchStore {
 
     const response = await fetch(`${url}/rest/v1/${path}`, {
       ...init,
+      signal: init.signal || AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Accept: 'application/json',
         apikey: key,
