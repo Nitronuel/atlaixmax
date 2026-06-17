@@ -4014,6 +4014,47 @@ main {
   margin-left: auto;
 }
 
+.overview-feed-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 340px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  margin: 22px 0 24px;
+}
+
+.overview-feed-controls .overview-search-wrap {
+  width: 100%;
+  max-width: none;
+  margin-left: 0;
+}
+
+.overview-feed-mode {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 50px;
+  border: 1px solid var(--border-color);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+  padding: 5px;
+  box-shadow: var(--shadow-subtle);
+}
+
+.overview-feed-mode button {
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-medium);
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.overview-feed-mode button.is-active {
+  background: rgba(63, 163, 77, 0.12);
+  color: var(--positive-green);
+  box-shadow: inset 0 0 0 1px rgba(63, 163, 77, 0.22);
+}
+
 .overview-search {
   display: flex;
   min-height: 50px;
@@ -4213,6 +4254,28 @@ main {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.token-col svg {
+  flex: 0 0 auto;
+  width: 86px;
+  height: 32px;
+  margin-left: auto;
+}
+
+.token-col svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.token-col svg.positive {
+  color: var(--positive-green);
+}
+
+.token-col svg.negative {
+  color: var(--primary-red);
 }
 
 .overview-search-menu strong,
@@ -5069,6 +5132,92 @@ main {
 
 .token-chart-actions button:disabled {
   opacity: 0.5;
+}
+
+.coin-chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.coin-chart-toolbar button {
+  min-width: 52px;
+  height: 34px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card-solid);
+  color: var(--text-medium);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.coin-chart-toolbar button.is-active {
+  border-color: rgba(63, 163, 77, 0.3);
+  background: rgba(63, 163, 77, 0.12);
+  color: var(--positive-green);
+}
+
+.coin-chart-canvas {
+  position: absolute;
+  inset: 0;
+  padding: 22px;
+}
+
+.coin-chart-canvas svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.coin-chart-canvas path {
+  vector-effect: non-scaling-stroke;
+}
+
+.coin-chart-canvas path.positive,
+.coin-chart-canvas path.negative {
+  fill: none;
+  stroke-width: 3;
+}
+
+.coin-chart-canvas path.positive {
+  stroke: var(--positive-green);
+}
+
+.coin-chart-canvas path.negative {
+  stroke: var(--primary-red);
+}
+
+.coin-profile-copy {
+  display: grid;
+  gap: 16px;
+}
+
+.coin-profile-copy p {
+  max-width: 920px;
+  margin: 0;
+  color: var(--text-medium);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.75;
+}
+
+.coin-profile-copy div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coin-profile-copy span {
+  border: 1px solid rgba(63, 163, 77, 0.2);
+  border-radius: 999px;
+  background: rgba(63, 163, 77, 0.08);
+  color: var(--positive-green);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .app-shell:not(.dark-preview) .token-chart-actions {
@@ -6346,6 +6495,14 @@ main {
 }
 
 @media (max-width: 760px) {
+  .overview-feed-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-feed-mode {
+    width: 100%;
+  }
+
   .overview-volume-carousel {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

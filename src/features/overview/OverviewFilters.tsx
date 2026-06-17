@@ -1,6 +1,7 @@
 import { RotateCcw, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { OverviewToken } from '../../shared/overview';
+import type { FeedMode } from './FeedModeSwitch';
 import { DEFAULT_OVERVIEW_FILTERS, type OverviewFilters } from './overview-utils';
 
 function FilterSelect({ label, value, options, onChange }: {
@@ -39,11 +40,12 @@ function FilterRange({ label, minValue, maxValue, suffix, onMinChange, onMaxChan
   );
 }
 
-export function OverviewFiltersModal({ open, filters, tokens, eventOptions, onClose, onApply }: {
+export function OverviewFiltersModal({ open, filters, tokens, eventOptions, mode = 'tokens', onClose, onApply }: {
   open: boolean;
   filters: OverviewFilters;
   tokens: OverviewToken[];
   eventOptions: string[];
+  mode?: FeedMode;
   onClose: () => void;
   onApply: (filters: OverviewFilters) => void;
 }) {
@@ -68,24 +70,28 @@ export function OverviewFiltersModal({ open, filters, tokens, eventOptions, onCl
           <button type="button" onClick={onClose} aria-label="Close filters"><X size={21} /></button>
         </header>
         <div className="overview-filter-body">
-          <FilterSelect label="Visible tokens" value={draft.visibleCount} onChange={(value) => update('visibleCount', value)} options={[
+          <FilterSelect label={mode === 'coins' ? 'Visible coins' : 'Visible tokens'} value={draft.visibleCount} onChange={(value) => update('visibleCount', value)} options={[
             { value: '50', label: 'Show 50' },
             { value: '100', label: 'Show 100' },
             { value: '200', label: 'Show 200' },
             { value: 'all', label: 'Show all' }
           ]} />
-          <FilterSelect label="Chain" value={draft.chain} onChange={(value) => update('chain', value)} options={[
-            { value: 'all', label: 'All chains' },
-            ...chainOptions.map((chain) => ({ value: chain, label: chain }))
-          ]} />
+          {mode === 'tokens' ? (
+            <FilterSelect label="Chain" value={draft.chain} onChange={(value) => update('chain', value)} options={[
+              { value: 'all', label: 'All chains' },
+              ...chainOptions.map((chain) => ({ value: chain, label: chain }))
+            ]} />
+          ) : null}
           <FilterSelect label="Event" value={draft.event} onChange={(value) => update('event', value)} options={[
             { value: 'all', label: 'All events' },
             ...eventOptions.map((event) => ({ value: event, label: event }))
           ]} />
           <FilterRange label="Market cap" suffix="$" minValue={draft.marketCapMin} maxValue={draft.marketCapMax} onMinChange={(value) => update('marketCapMin', value)} onMaxChange={(value) => update('marketCapMax', value)} />
-          <FilterRange label="Liquidity" suffix="$" minValue={draft.liquidityMin} maxValue={draft.liquidityMax} onMinChange={(value) => update('liquidityMin', value)} onMaxChange={(value) => update('liquidityMax', value)} />
+          {mode === 'tokens' ? (
+            <FilterRange label="Liquidity" suffix="$" minValue={draft.liquidityMin} maxValue={draft.liquidityMax} onMinChange={(value) => update('liquidityMin', value)} onMaxChange={(value) => update('liquidityMax', value)} />
+          ) : null}
           <FilterRange label="24h change" suffix="%" minValue={draft.changeMin} maxValue={draft.changeMax} onMinChange={(value) => update('changeMin', value)} onMaxChange={(value) => update('changeMax', value)} />
-          <FilterRange label="DEX volume" suffix="$" minValue={draft.volumeMin} maxValue={draft.volumeMax} onMinChange={(value) => update('volumeMin', value)} onMaxChange={(value) => update('volumeMax', value)} />
+          <FilterRange label={mode === 'coins' ? '24h volume' : 'DEX volume'} suffix="$" minValue={draft.volumeMin} maxValue={draft.volumeMax} onMinChange={(value) => update('volumeMin', value)} onMaxChange={(value) => update('volumeMax', value)} />
         </div>
         <footer>
           <button type="button" className="overview-filter-reset" onClick={() => setDraft(DEFAULT_OVERVIEW_FILTERS)}>

@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { CoinGeckoCoin } from '../../shared/coingecko';
 import type { DetectionEvent } from '../../shared/detection';
 import type { OverviewToken } from '../../shared/overview';
 import { DetectionService } from '../detection/detection-service';
+import { CoinAlphaFeed } from './CoinAlphaFeed';
+import { CoinFeedService } from './coin-feed-service';
+import { CoinSearch } from './CoinSearch';
+import { FeedModeSwitch, type FeedMode } from './FeedModeSwitch';
 import { LiveAlphaFeed } from './LiveAlphaFeed';
 import { MarketPulse } from './MarketPulse';
 import { buildLatestDetectionEventLookup, detectionEventLabelForToken } from './overview-detection-events';
@@ -12,43 +17,60 @@ import { TokenSearch } from './TokenSearch';
 
 const FEED_REFRESH_INTERVAL_MS = 60_000;
 const FEED_CACHE_KEY = 'atlaix:overview-feed';
+const COIN_FEED_CACHE_KEY = 'atlaix:coingecko-feed';
 
 type CachedOverviewFeed = {
   generatedAt: string;
   tokens: OverviewToken[];
 };
 
-function readCachedFeed(): CachedOverviewFeed | null {
+type CachedCoinFeed = {
+  generatedAt: string;
+  coins: CoinGeckoCoin[];
+};
+
+function readCachedFeed<T extends { generatedAt: string }>(key: string, field: 'tokens' | 'coins'): T | null {
   try {
-    const cached = window.localStorage.getItem(FEED_CACHE_KEY);
+    const cached = window.localStorage.getItem(key);
     if (!cached) return null;
-    const parsed = JSON.parse(cached) as CachedOverviewFeed;
-    return Array.isArray(parsed.tokens) && parsed.generatedAt ? parsed : null;
+    const parsed = JSON.parse(cached) as T & Record<string, unknown>;
+    return Array.isArray(parsed[field]) && parsed.generatedAt ? parsed as T : null;
   } catch {
     return null;
   }
 }
 
-function writeCachedFeed(feed: CachedOverviewFeed) {
+function writeCachedFeed(key: string, feed: CachedOverviewFeed | CachedCoinFeed) {
   try {
-    window.localStorage.setItem(FEED_CACHE_KEY, JSON.stringify(feed));
+    window.localStorage.setItem(key, JSON.stringify(feed));
   } catch {
-    // Local storage is best-effort; the network feed remains the source of truth.
+    // Local storage is best-effort; the network feed is still the source of truth.
   }
 }
 
 function applyFeed(response: CachedOverviewFeed, setTokens: (tokens: OverviewToken[]) => void, setLastUpdated: (date: Date) => void) {
   setTokens(response.tokens);
   setLastUpdated(new Date(response.generatedAt));
-  writeCachedFeed({ generatedAt: response.generatedAt, tokens: response.tokens });
+  writeCachedFeed(FEED_CACHE_KEY, { generatedAt: response.generatedAt, tokens: response.tokens });
+}
+
+function applyCoinFeed(response: CachedCoinFeed, setCoins: (coins: CoinGeckoCoin[]) => void, setLastUpdated: (date: Date) => void) {
+  setCoins(response.coins);
+  setLastUpdated(new Date(response.generatedAt));
+  writeCachedFeed(COIN_FEED_CACHE_KEY, { generatedAt: response.generatedAt, coins: response.coins });
 }
 
 export function OverviewPage() {
+  const [feedMode, setFeedMode] = useState<FeedMode>('tokens');
   const [tokens, setTokens] = useState<OverviewToken[]>([]);
+  const [coins, setCoins] = useState<CoinGeckoCoin[]>([]);
   const [loading, setLoading] = useState(true);
+  const [coinsLoading, setCoinsLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coinsError, setCoinsError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [coinsLastUpdated, setCoinsLastUpdated] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<OverviewFilters>(DEFAULT_OVERVIEW_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -58,6 +80,7 @@ export function OverviewPage() {
     Array.from(new Set(tokens.map((token) => detectionEventLabelForToken(detectionEventLookup, token))))
       .sort((left, right) => (left === 'None' ? 1 : right === 'None' ? -1 : left.localeCompare(right)))
   ), [detectionEventLookup, tokens]);
+  const coinEventOptions = useMemo(() => Array.from(new Set(coins.map((coin) => coin.event))).sort(), [coins]);
 
   async function loadDetectionEvents() {
     try {
@@ -81,10 +104,24 @@ export function OverviewPage() {
     }
   }
 
+  async function loadCoinFeed(showLoading = true, force = false) {
+    if (showLoading) setCoinsLoading(true);
+    setCoinsError(null);
+    try {
+      const response = await CoinFeedService.getFeed(force);
+      applyCoinFeed(response, setCoins, setCoinsLastUpdated);
+    } catch (nextError) {
+      setCoinsError(nextError instanceof Error ? nextError.message : 'Coin feed is unavailable.');
+    } finally {
+      if (showLoading) setCoinsLoading(false);
+    }
+  }
+
   async function refreshFeed() {
     setSyncing(true);
     try {
-      await Promise.all([loadFeed(false, true), loadDetectionEvents()]);
+      if (feedMode === 'coins') await loadCoinFeed(false, true);
+      else await Promise.all([loadFeed(false, true), loadDetectionEvents()]);
     } catch (nextError) {
       setError(nextError instanceof Error ? `Refresh failed: ${nextError.message}` : 'Live Alpha Feed refresh failed.');
     } finally {
@@ -93,7 +130,7 @@ export function OverviewPage() {
   }
 
   useEffect(() => {
-    const cached = readCachedFeed();
+    const cached = readCachedFeed<CachedOverviewFeed>(FEED_CACHE_KEY, 'tokens');
     if (cached) {
       setTokens(cached.tokens);
       setLastUpdated(new Date(cached.generatedAt));
@@ -105,35 +142,72 @@ export function OverviewPage() {
       void loadDetectionEvents();
     }
 
+    const cachedCoins = readCachedFeed<CachedCoinFeed>(COIN_FEED_CACHE_KEY, 'coins');
+    if (cachedCoins) {
+      setCoins(cachedCoins.coins);
+      setCoinsLastUpdated(new Date(cachedCoins.generatedAt));
+      setCoinsLoading(false);
+      void loadCoinFeed(false);
+    } else {
+      void loadCoinFeed();
+    }
+
     const interval = window.setInterval(() => {
       if (!document.hidden) {
         void loadFeed(false);
+        void loadCoinFeed(false);
         void loadDetectionEvents();
       }
     }, FEED_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    setSearchQuery('');
+    setFilters(DEFAULT_OVERVIEW_FILTERS);
+  }, [feedMode]);
+
   return (
     <div className="overview-page">
       <MarketPulse tokens={tokens} />
-      <TokenSearch tokens={tokens} query={searchQuery} onQueryChange={setSearchQuery} />
-      <LiveAlphaFeed
-        tokens={tokens}
-        loading={loading || syncing}
-        error={error}
-        lastUpdated={lastUpdated}
-        searchQuery={searchQuery}
-        filters={filters}
-        detectionEvents={detectionEvents}
-        onFiltersClick={() => setFiltersOpen(true)}
-        onRefresh={() => void refreshFeed()}
-      />
+      <div className="overview-feed-controls">
+        <FeedModeSwitch value={feedMode} onChange={setFeedMode} />
+        {feedMode === 'coins' ? (
+          <CoinSearch coins={coins} query={searchQuery} onQueryChange={setSearchQuery} />
+        ) : (
+          <TokenSearch tokens={tokens} query={searchQuery} onQueryChange={setSearchQuery} />
+        )}
+      </div>
+      {feedMode === 'coins' ? (
+        <CoinAlphaFeed
+          coins={coins}
+          loading={coinsLoading || syncing}
+          error={coinsError}
+          lastUpdated={coinsLastUpdated}
+          searchQuery={searchQuery}
+          filters={filters}
+          onFiltersClick={() => setFiltersOpen(true)}
+          onRefresh={() => void refreshFeed()}
+        />
+      ) : (
+        <LiveAlphaFeed
+          tokens={tokens}
+          loading={loading || syncing}
+          error={error}
+          lastUpdated={lastUpdated}
+          searchQuery={searchQuery}
+          filters={filters}
+          detectionEvents={detectionEvents}
+          onFiltersClick={() => setFiltersOpen(true)}
+          onRefresh={() => void refreshFeed()}
+        />
+      )}
       <OverviewFiltersModal
         open={filtersOpen}
         filters={filters}
         tokens={tokens}
-        eventOptions={detectionEventOptions}
+        eventOptions={feedMode === 'coins' ? coinEventOptions : detectionEventOptions}
+        mode={feedMode}
         onClose={() => setFiltersOpen(false)}
         onApply={(nextFilters) => {
           setFilters(nextFilters);

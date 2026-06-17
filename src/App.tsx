@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ComingSoonPage } from './app/ComingSoonPage';
 import { Layout } from './app/Layout';
 import { AiAssistantPage } from './features/ai-assistant/AiAssistantPage';
+import { CoinDetailsPage } from './features/coin-details/CoinDetailsPage';
 import { DetectionPage } from './features/detection/DetectionPage';
 import { DetectionTokenPage } from './features/detection/DetectionTokenPage';
 import { OverviewPage } from './features/overview/OverviewPage';
@@ -17,6 +18,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<OverviewPage />} />
+        <Route path="/coin/:coinId" element={<CoinDetailsPage />} />
         <Route path="/token/:address" element={<TokenDetailsPage />} />
         <Route path="/detection/token/:chain/:address" element={<DetectionTokenPage />} />
         <Route path="/detection/*" element={<DetectionPage />} />
