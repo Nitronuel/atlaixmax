@@ -19,7 +19,8 @@ import {
     AiAssistantConversationMessage,
     AiAssistantPageContext,
     AiAssistantProvider,
-    AiAssistantService
+    AiAssistantService,
+    normalizeAssistantText
 } from './ai-assistant-service';
 
 type ChatMessage = {
@@ -84,7 +85,10 @@ const loadAssistantChatCache = (): AssistantChatCache | null => {
         }
 
         return {
-            messages: parsed.messages.filter((message) => message?.id && message?.role && message?.text).slice(-40),
+            messages: parsed.messages.filter((message) => message?.id && message?.role && message?.text).slice(-40).map((message) => ({
+                ...message,
+                text: message.role === 'assistant' ? normalizeAssistantText(message.text) : message.text
+            })),
             draft: typeof parsed.draft === 'string' ? parsed.draft : '',
             provider: parsed.provider || null,
             savedAt: parsed.savedAt
@@ -106,7 +110,10 @@ const loadAssistantHandoff = (): AssistantHandoff | null => {
         if (!parsed.savedAt || Date.now() - parsed.savedAt > ASSISTANT_CHAT_TTL_MS) return null;
 
         return {
-            messages: Array.isArray(parsed.messages) ? parsed.messages.filter((message) => message?.id && message?.role && message?.text).slice(-40) : [],
+            messages: Array.isArray(parsed.messages) ? parsed.messages.filter((message) => message?.id && message?.role && message?.text).slice(-40).map((message) => ({
+                ...message,
+                text: message.role === 'assistant' ? normalizeAssistantText(message.text) : message.text
+            })) : [],
             draft: typeof parsed.draft === 'string' ? parsed.draft : '',
             provider: parsed.provider || null,
             pageContext: parsed.pageContext || null,
@@ -131,7 +138,7 @@ const saveAssistantChatCache = (cache: Omit<AssistantChatCache, 'savedAt'>) => {
     }
 };
 
-const splitLines = (text: string) => text.split('\n').filter(Boolean);
+const splitLines = (text: string) => normalizeAssistantText(text).split('\n').filter(Boolean);
 
 type AssistantInlineReference = {
     label: string;
@@ -315,7 +322,7 @@ export const AiAssistantPage: React.FC = () => {
                 {
                     id: response.id,
                     role: 'assistant',
-                    text: response.answer,
+                    text: normalizeAssistantText(response.answer),
                     tool: response.tool,
                     data: response.data,
                     actions: response.actions || [],

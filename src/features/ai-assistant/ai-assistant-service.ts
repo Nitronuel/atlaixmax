@@ -74,6 +74,16 @@ export type AiAssistantPageContext = {
 
 const CHAT_TIMEOUT_MS = 25_000;
 
+export function normalizeAssistantText(value: unknown) {
+    return String(value || '')
+        .replace(/(^|[^\w])\*\*([^*\n]+?)\*\*/g, '$1$2')
+        .replace(/(^|[^\w])\*([^*\n]+?)\*/g, '$1$2')
+        .replace(/^\s*\*\s+/gm, '- ')
+        .replace(/\*{2,}/g, '')
+        .replace(/[ \t]+\n/g, '\n')
+        .trim();
+}
+
 const fetchJson = async <T>(input: RequestInfo | URL, init?: RequestInit, timeoutMs?: number): Promise<T> => {
     const controller = timeoutMs ? new AbortController() : null;
     const timeoutId = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : 0;
@@ -112,10 +122,14 @@ export const AiAssistantService = {
     },
 
     sendMessage: async (message: string, history: AiAssistantConversationMessage[] = [], pageContext?: AiAssistantPageContext | null) => {
-        return fetchJson<AiAssistantChatResponse>(apiUrl('/api/ai-assistant/chat'), {
+        const response = await fetchJson<AiAssistantChatResponse>(apiUrl('/api/ai-assistant/chat'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message, history: history.slice(-12), pageContext })
         }, CHAT_TIMEOUT_MS);
+        return {
+            ...response,
+            answer: normalizeAssistantText(response.answer)
+        };
     }
 };

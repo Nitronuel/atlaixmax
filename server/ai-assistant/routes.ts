@@ -304,6 +304,29 @@ function fallbackConversation(pageContext?: AiAssistantPageContext | null) {
   ].join('\n');
 }
 
+function normalizeAssistantText(value: unknown) {
+  return String(value || '')
+    .replace(/(^|[^\w])\*\*([^*\n]+?)\*\*/g, '$1$2')
+    .replace(/(^|[^\w])\*([^*\n]+?)\*/g, '$1$2')
+    .replace(/^\s*\*\s+/gm, '- ')
+    .replace(/\*{2,}/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+}
+
+const ASSISTANT_VOICE_RULES = [
+  'Voice rules:',
+  'Write like a sharp product analyst talking to one person, not like a generic chatbot.',
+  'Do not start with filler such as "Sure", "Certainly", "Absolutely", "Here is", "Here are", or "Great question".',
+  'Do not announce what you are about to do. Give the answer.',
+  'Use active voice. Name the actor, token, wallet, chain, or signal when you can.',
+  'Be specific. Avoid vague phrases such as "it depends", "significant implications", "robust solution", "delve", "leverage", "seamless", and "comprehensive".',
+  'Avoid formulaic wrap-ups, motivational lines, disclaimers, and canned closing sentences.',
+  'Vary sentence length. Keep paragraphs short. Use numbered lines only when the user asks for steps or choices.',
+  'If you need missing info, ask one direct question and explain why in one sentence.',
+  'Use plain text only. Do not use markdown, markdown tables, emoji, asterisks, bold formatting, or em dashes.'
+].join('\n');
+
 async function synthesize(message: string, history: AiAssistantConversationMessage[], pageContext: AiAssistantPageContext | null, result: AiAssistantToolResult) {
   if (!getProvider().configured || result.tool === 'conversation') return result;
   try {
@@ -311,7 +334,8 @@ async function synthesize(message: string, history: AiAssistantConversationMessa
       [
         'You are Atlaix AI inside a crypto intelligence app.',
         'Answer using only the supplied Atlaix data. Do not invent prices, holder data, endpoints, or trading advice.',
-        'Keep the answer concise, direct, and useful. Use plain text with no markdown tables and no emoji.',
+        'Keep the answer concise, direct, and useful.',
+        ASSISTANT_VOICE_RULES,
         pageContext?.systemContext || ''
       ].join('\n'),
       [
@@ -327,7 +351,7 @@ async function synthesize(message: string, history: AiAssistantConversationMessa
         }
       ]
     );
-    return content ? { ...result, answer: content } : result;
+    return content ? { ...result, answer: normalizeAssistantText(content) } : result;
   } catch {
     return result;
   }
@@ -373,7 +397,8 @@ export class AiAssistantRoutes {
         role: 'assistant',
         createdAt: new Date().toISOString(),
         provider: getProvider(),
-        ...result
+        ...result,
+        answer: normalizeAssistantText(result.answer)
       });
       return;
     }
@@ -392,6 +417,7 @@ export class AiAssistantRoutes {
           [
             'You are Atlaix AI, a helpful assistant inside the Atlaix crypto intelligence platform.',
             'Be clear and conversational. If data is needed, ask for the token, wallet, or chain.',
+            ASSISTANT_VOICE_RULES,
             pageContext?.systemContext || ''
           ].join('\n'),
           [

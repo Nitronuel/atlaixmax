@@ -23,7 +23,8 @@ import {
     AiAssistantPageContext,
     AiAssistantPageModule,
     AiAssistantProvider,
-    AiAssistantService
+    AiAssistantService,
+    normalizeAssistantText
 } from '../../features/ai-assistant/ai-assistant-service';
 import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
 
@@ -129,7 +130,7 @@ const toConversationHistory = (messages: FloatingMessage[]): AiAssistantConversa
             text: message.text
         }));
 
-const splitLines = (text: string) => text.split('\n').filter(Boolean);
+const splitLines = (text: string) => normalizeAssistantText(text).split('\n').filter(Boolean);
 
 const formatClock = (timestamp: number) => new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
@@ -792,7 +793,7 @@ export const GlobalAiAssistant: React.FC = () => {
                 {
                     id: response.id,
                     role: 'assistant',
-                    text: response.answer,
+                    text: normalizeAssistantText(response.answer),
                     tool: response.tool,
                     data: response.data,
                     actions: [
@@ -808,7 +809,7 @@ export const GlobalAiAssistant: React.FC = () => {
                 {
                     id: `global-assistant-error-${Date.now()}`,
                     role: 'assistant',
-                    text: error instanceof Error ? error.message : 'I could not complete that request.',
+                    text: error instanceof Error ? normalizeAssistantText(error.message) : 'I could not complete that request.',
                     tool: 'error',
                     createdAt: Date.now()
                 }
