@@ -20,7 +20,7 @@ import {
   visibleLimit
 } from './overview-utils';
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 50;
 const chainLabels: Record<string, string> = {
   abstract: 'Abstract',
   arbitrum: 'Arbitrum',

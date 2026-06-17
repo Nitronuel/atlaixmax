@@ -2,71 +2,12 @@ import { Activity, ArrowLeft, Bell, Copy, Scan, ShieldCheck } from 'lucide-react
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { DetectionTokenDetailResponse } from '../../shared/detection';
-import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
+import { detectionEventAssessmentForLabel } from '../../shared/detection-copy';
 import { DetectionService } from './detection-service';
 
 type LooseClassification = {
   primaryLabel?: string;
   displayLabel?: string;
-};
-
-const EVENT_ASSESSMENTS: Record<string, (tokenName: string) => string> = {
-  BULLISH_CONTINUATION_PUMP: (tokenName) =>
-    `${tokenName} is showing Bullish Continuation. Buyers remain in control after the recent move, and the trend looks healthier when volume and liquidity support the advance. Follow-through depends on price holding above recent support.`,
-  BULLISH_CONTINUATION: (tokenName) =>
-    `${tokenName} is showing Bullish Continuation. Buyers remain in control after the recent move, and the trend looks healthier when volume and liquidity support the advance. Follow-through depends on price holding above recent support.`,
-  BEARISH_CONTINUATION_DUMP: (tokenName) =>
-    `${tokenName} is showing Bearish Continuation. Sellers remain in control after the recent move, and the trend stays weak while sell pressure and bearish structure persist. Buyers need stronger volume to challenge the downtrend.`,
-  BEARISH_CONTINUATION: (tokenName) =>
-    `${tokenName} is showing Bearish Continuation. Sellers remain in control after the recent move, and the trend stays weak while sell pressure and bearish structure persist. Buyers need stronger volume to challenge the downtrend.`,
-  BEARISH_RELIEF_BOUNCE: (tokenName) =>
-    `${tokenName} is showing a Short-Term Bounce in a Bearish Trend. Price is bouncing after weakness, but the broader read still favors sellers. The bounce needs stronger volume and follow-through before it can be treated as a cleaner recovery.`,
-  SHORT_TERM_BOUNCE_IN_BEARISH_TREND: (tokenName) =>
-    `${tokenName} is showing a Short-Term Bounce in a Bearish Trend. Price is bouncing after weakness, but the broader read still favors sellers. The bounce needs stronger volume and follow-through before it can be treated as a cleaner recovery.`,
-  BULLISH_PULLBACK: (tokenName) =>
-    `${tokenName} is showing a Pullback in a Bullish Trend. Price is cooling off inside a broader bullish setup. The pullback stays healthier if buyers defend support and liquidity does not weaken.`,
-  PULLBACK_IN_BULLISH_TREND: (tokenName) =>
-    `${tokenName} is showing a Pullback in a Bullish Trend. Price is cooling off inside a broader bullish setup. The pullback stays healthier if buyers defend support and liquidity does not weaken.`,
-  BEARISH_REVERSAL_ATTEMPT: (tokenName) =>
-    `${tokenName} is showing a Possible Bullish Reversal Attempt. Buyers are trying to turn a weak trend upward after recent selling. The recovery needs volume follow-through and stronger structure before the reversal read becomes cleaner.`,
-  POSSIBLE_BULLISH_REVERSAL_ATTEMPT: (tokenName) =>
-    `${tokenName} is showing a Possible Bullish Reversal Attempt. Buyers are trying to turn a weak trend upward after recent selling. The recovery needs volume follow-through and stronger structure before the reversal read becomes cleaner.`,
-  BULLISH_BREAKDOWN_ATTEMPT: (tokenName) =>
-    `${tokenName} is showing a Possible Bearish Breakdown Attempt. Sellers are trying to break a stronger setup lower. Buyers need to reclaim the failed level quickly to weaken the breakdown read.`,
-  POSSIBLE_BEARISH_BREAKDOWN_ATTEMPT: (tokenName) =>
-    `${tokenName} is showing a Possible Bearish Breakdown Attempt. Sellers are trying to break a stronger setup lower. Buyers need to reclaim the failed level quickly to weaken the breakdown read.`,
-  RANGE_BREAKOUT_ATTEMPT: (tokenName) =>
-    `${tokenName} is attempting a range breakout. Price is trying to move above previous range highs, and the setup gets stronger if volume expansion or buy dominance supports the move. The breakout needs follow-through above the range to become cleaner.`,
-  RANGE_BREAKDOWN_ATTEMPT: (tokenName) =>
-    `${tokenName} is attempting a range breakdown. Price is trying to move below previous range lows, and the risk increases if sell dominance or liquidity drain appears nearby. Buyers need to reclaim the range to weaken the breakdown read.`,
-  LOW_LIQUIDITY_PRICE_SPIKE: (tokenName) =>
-    `${tokenName} is showing a low-liquidity price spike. Price moved up while liquidity was thin, so the move may be easier to reverse. This needs liquidity support before it can be treated as a cleaner bullish move.`,
-  LOW_LIQUIDITY_SELL_OFF: (tokenName) =>
-    `${tokenName} is showing a low-liquidity sell-off. Price dropped while liquidity was thin, which can make exits unstable. Risk grows if liquidity keeps falling or sell dominance remains active.`,
-  LIQUIDITY_DRAIN: (tokenName) =>
-    `${tokenName} is showing Liquidity Drain. Liquidity is leaving the pool, which makes price movement less stable and raises slippage risk. This becomes more dangerous when paired with sell dominance or high volatility.`,
-  LIQUIDITY_ADDED: (tokenName) =>
-    `${tokenName} is showing Liquidity Added. New liquidity entered the pool, improving trading depth and making price movement cleaner. This supports bullish continuation when paired with buy dominance or recent accumulation.`,
-  PUMP: (tokenName) =>
-    `${tokenName} is showing a Pump. Price is moving up fast with strong short-term activity. The move needs liquidity and volume support before it becomes a cleaner bullish read.`,
-  DUMP: (tokenName) =>
-    `${tokenName} is showing a Dump. Price is falling fast with strong short-term selling. Risk grows if liquidity weakens or sell pressure keeps expanding.`,
-  BUY_RECOVERY: (tokenName) =>
-    `${tokenName} is showing Buy Recovery. Buyers are returning after recent weakness, which suggests renewed demand. This becomes more meaningful if liquidity holds and sell pressure fades.`,
-  SELL_OFF: (tokenName) =>
-    `${tokenName} is showing Sell-Off. Sellers are pressing price lower, and the move becomes more serious if liquidity thins or higher-timeframe structure turns bearish.`,
-  ACCUMULATION: (tokenName) =>
-    `${tokenName} is showing Accumulation. Buyers are absorbing supply, and recent buy dominance suggests demand is building before a larger move. This read gets stronger if liquidity stays stable and volume continues expanding.`,
-  DISTRIBUTION: (tokenName) =>
-    `${tokenName} is showing Distribution. Sellers are becoming more active, and recent sell dominance suggests supply is being pushed into the market. The bearish read strengthens if price keeps failing to reclaim its recent range.`,
-  CONSOLIDATION: (tokenName) =>
-    `${tokenName} is showing Consolidation. Price is moving inside a tighter range while the market waits for stronger direction. The next read gets clearer when volume, liquidity, or flow breaks out of that range.`,
-  LOW_ACTIVITY: (tokenName) =>
-    `${tokenName} is showing Low Activity. Trading activity is quiet, so Atlaix has limited confirmation for a stronger market read. Watch for volume, flow, or liquidity changes before treating the signal as meaningful.`,
-  INSUFFICIENT_DATA: (tokenName) =>
-    `${tokenName} does not have enough reliable detection data yet. Atlaix needs more trading history before it can produce a stronger market read.`,
-  UNKNOWN: (tokenName) =>
-    `${tokenName}'s latest scan did not produce a clean directional event. Watch for a clearer event before treating this as a stronger market read.`
 };
 
 function formatUsd(value: unknown) {
@@ -106,14 +47,6 @@ function humanizeLabel(value = '') {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function normalizeEventKey(value = '') {
-  return value.trim().replace(/[-\s]+/g, '_').toUpperCase();
-}
-
-function assessmentFor(value = '') {
-  return EVENT_ASSESSMENTS[normalizeEventKey(value)] || EVENT_ASSESSMENTS.UNKNOWN;
-}
-
 export function DetectionTokenPage() {
   const { chain = '', address = '' } = useParams();
   const [searchParams] = useSearchParams();
@@ -137,7 +70,7 @@ export function DetectionTokenPage() {
   const tokenName = token?.tokenName && token?.tokenSymbol && token.tokenName !== token.tokenSymbol ? token.tokenName : tokenSymbol;
   const chainDex = [token?.chain, token?.dexId].filter(Boolean).join(' / ');
   const assessmentEvent = detail?.events[0]?.eventType || classification?.displayLabel || humanizeLabel(classification?.primaryLabel || '') || 'No primary event';
-  const assessmentCopy = assessmentFor(assessmentEvent)(tokenName);
+  const assessmentCopy = detectionEventAssessmentForLabel(assessmentEvent, tokenName, `${tokenName}'s latest scan did not produce a clean directional event.`);
 
   function copyValue(value?: string | null) {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -220,7 +153,7 @@ export function DetectionTokenPage() {
                   </div>
                   <time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventTimestamp(event.detectedAt)}</time>
                 </header>
-                <p>{detectionEventSummaryForLabel(event.eventType, event.summary)}</p>
+                <p>{detectionEventAssessmentForLabel(event.eventType, tokenName, event.summary)}</p>
                 <footer>
                   <div className="detection-token">
                     {token.logo ? <img src={token.logo} alt="" /> : <span className="detection-token-fallback">{tokenSymbol.slice(0, 2).toUpperCase()}</span>}

@@ -1,9 +1,9 @@
 import { ChevronDown, Filter, RefreshCw, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import type { FormEvent } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { DetectionEvent, DetectionSentiment } from '../../shared/detection';
-import { detectionEventSummaryForLabel } from '../../shared/detection-copy';
+import { detectionEventAssessmentForLabel } from '../../shared/detection-copy';
 import { DetectionService } from './detection-service';
 
 const CACHE_KEY = 'atlaix-detection-events-cache';
@@ -40,7 +40,8 @@ function formatEventAge(timestamp: number) {
 function matchesQuery(event: DetectionEvent, query: string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
-  const summary = detectionEventSummaryForLabel(event.eventType, event.summary);
+  const tokenName = event.token.name || event.token.ticker || 'This token';
+  const summary = detectionEventAssessmentForLabel(event.eventType, tokenName, event.summary);
   return [
     event.eventType,
     summary,
@@ -62,6 +63,24 @@ function visibleEvents(events: DetectionEvent[], query: string, chain: string, f
     if (event.metrics.volume24h < filters.minVolume) return false;
     return true;
   });
+}
+
+function detectionTokenKey(event: DetectionEvent) {
+  return [
+    event.token.chain.trim().toLowerCase(),
+    event.token.address.trim().toLowerCase() || event.token.pairAddress.trim().toLowerCase()
+  ].join(':');
+}
+
+function latestEventsByToken(events: DetectionEvent[]) {
+  const grouped = new Map<string, DetectionEvent[]>();
+  events.forEach((event) => {
+    const key = detectionTokenKey(event);
+    grouped.set(key, [...(grouped.get(key) || []), event]);
+  });
+  return Array.from(grouped.values()).map((tokenEvents) => (
+    [...tokenEvents].sort((left, right) => right.detectedAt - left.detectedAt)
+  )).sort((left, right) => right[0].detectedAt - left[0].detectedAt);
 }
 
 function cacheEvents(events: DetectionEvent[]) {
@@ -95,13 +114,38 @@ function FilterSelect<T extends string>({
   );
 }
 
-function DetectionEventCard({ event }: { event: DetectionEvent }) {
+function DetectionEventCard({ event, previousEvents }: { event: DetectionEvent; previousEvents: DetectionEvent[] }) {
+  const cardRef = useRef<HTMLAnchorElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const [previewPlacement, setPreviewPlacement] = useState<'above' | 'below'>('above');
   const sentimentLabel = event.sentiment.toUpperCase();
   const href = `/detection/token/${encodeURIComponent(event.token.chain)}/${encodeURIComponent(event.token.address)}?pair=${encodeURIComponent(event.token.pairAddress)}`;
-  const summary = detectionEventSummaryForLabel(event.eventType, event.summary);
+  const tokenName = event.token.name || event.token.ticker || 'This token';
+  const summary = detectionEventAssessmentForLabel(event.eventType, tokenName, event.summary);
+
+  function updatePreviewPlacement() {
+    const card = cardRef.current;
+    const preview = previewRef.current;
+    if (!card || !preview) return;
+
+    const cardRect = card.getBoundingClientRect();
+    const previewHeight = Math.min(preview.scrollHeight || 220, 220);
+    const spacing = 18;
+    const safeTop = 76;
+    const safeBottom = 24;
+    const roomAbove = cardRect.top - safeTop;
+    const roomBelow = window.innerHeight - cardRect.bottom - safeBottom;
+    setPreviewPlacement(roomBelow >= previewHeight + spacing || roomBelow > roomAbove ? 'below' : 'above');
+  }
 
   return (
-    <Link className={`detection-event-card sentiment-${event.sentiment}`} to={href}>
+    <Link
+      ref={cardRef}
+      className={['detection-event-card', `sentiment-${event.sentiment}`, previousEvents.length ? 'has-history' : '', `is-preview-${previewPlacement}`].filter(Boolean).join(' ')}
+      to={href}
+      onMouseEnter={updatePreviewPlacement}
+      onFocus={updatePreviewPlacement}
+    >
       <header>
         <div>
           <ShieldCheck size={15} />
@@ -116,10 +160,28 @@ function DetectionEventCard({ event }: { event: DetectionEvent }) {
           <span>{event.token.ticker}</span>
         </div>
         <div className="detection-card-metrics">
+          {previousEvents.length ? <span className="detection-history-count">+{previousEvents.length}</span> : null}
           <span className={`detection-sentiment sentiment-${event.sentiment}`}>{sentimentLabel}</span>
           <strong>{formatUsd(event.metrics.volume24h)}</strong>
         </div>
       </footer>
+      {previousEvents.length ? (
+        <div ref={previewRef} className="detection-event-preview" aria-label={`${event.token.ticker} previous detection events`}>
+          <div>
+            <strong>{event.token.ticker} history</strong>
+            <span>{previousEvents.length} previous</span>
+          </div>
+          <ul>
+            {previousEvents.map((previousEvent) => (
+              <li key={previousEvent.id}>
+                <span>{previousEvent.eventType}</span>
+                <time dateTime={new Date(previousEvent.detectedAt).toISOString()}>{formatEventAge(previousEvent.detectedAt)}</time>
+              </li>
+            ))}
+          </ul>
+          <em>Open token page for full history</em>
+        </div>
+      ) : null}
     </Link>
   );
 }
@@ -140,6 +202,7 @@ export function DetectionPage() {
     ['all', ...Array.from(new Set(events.map((event) => event.eventType).filter(Boolean))).sort()]
   ), [events]);
   const filteredEvents = useMemo(() => visibleEvents(events, submittedQuery || query, chain, filters), [chain, events, filters, query, submittedQuery]);
+  const groupedEvents = useMemo(() => latestEventsByToken(filteredEvents), [filteredEvents]);
   const activeFilterCount = [
     filters.sentiment !== 'all',
     filters.eventType !== 'all',
@@ -226,7 +289,7 @@ export function DetectionPage() {
             <h2 id="detection-events-title">Events</h2>
             <p>Latest activity across detected tokens.</p>
           </div>
-          <span>{filteredEvents.length} visible</span>
+          <span>{groupedEvents.length} tokens</span>
         </div>
         {loading ? (
           <div className="detection-empty">
@@ -239,10 +302,10 @@ export function DetectionPage() {
             <strong>{error}</strong>
             <button type="button" onClick={() => void refreshEvents()}>Retry</button>
           </div>
-        ) : filteredEvents.length ? (
+        ) : groupedEvents.length ? (
           <div className="detection-events-grid">
-            {filteredEvents.map((event) => (
-              <DetectionEventCard event={event} key={event.id} />
+            {groupedEvents.map(([event, ...previousEvents]) => (
+              <DetectionEventCard event={event} previousEvents={previousEvents} key={detectionTokenKey(event)} />
             ))}
           </div>
         ) : (

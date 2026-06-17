@@ -342,11 +342,19 @@ export function TokenDetailsPage() {
             </a>
           ))}
         </div>
-        <div className="token-detail-hero-metrics">
-          <MetricTile label="Price" value={formatPrice(pair?.priceUsd)} />
-          <MetricTile label="Market cap" value={formatUsd(marketCap)} />
-          <MetricTile label="Liquidity" value={formatUsd(pair?.liquidity?.usd)} />
-          <MetricTile label="Volume 24h" value={formatUsd(volume24h)} />
+        <div className="token-detail-hero-market">
+          <div className="token-detail-hero-metrics">
+            <MetricTile label="Price" value={formatPrice(pair?.priceUsd)} />
+            <MetricTile label="Market cap" value={formatUsd(marketCap)} />
+            <MetricTile label="Liquidity" value={formatUsd(pair?.liquidity?.usd)} />
+            <MetricTile label="Volume 24h" value={formatUsd(volume24h)} />
+          </div>
+          <div className="token-change-panel token-change-panel-inline" aria-label="Price change">
+            <MetricTile label="5m" value={formatPercentValue(change5m)} accent={changeAccent(change5m)} />
+            <MetricTile label="1h" value={formatPercentValue(change1h)} accent={changeAccent(change1h)} />
+            <MetricTile label="6h" value={formatPercentValue(change6h)} accent={changeAccent(change6h)} />
+            <MetricTile label="24h" value={formatPercentValue(change24h)} accent={changeAccent(change24h)} />
+          </div>
         </div>
       </section>
 
@@ -380,13 +388,6 @@ export function TokenDetailsPage() {
         </div>
 
         <aside className="token-detail-side">
-          <div className="token-side-panel token-change-panel">
-            <MetricTile label="5m" value={formatPercentValue(change5m)} accent={changeAccent(change5m)} />
-            <MetricTile label="1h" value={formatPercentValue(change1h)} accent={changeAccent(change1h)} />
-            <MetricTile label="6h" value={formatPercentValue(change6h)} accent={changeAccent(change6h)} />
-            <MetricTile label="24h" value={formatPercentValue(change24h)} accent={changeAccent(change24h)} />
-          </div>
-
           <div className="token-side-panel token-quick-actions-panel">
             <h3>Quick Actions</h3>
             {quickActions.map((action) => (
