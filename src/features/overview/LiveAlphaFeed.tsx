@@ -63,7 +63,7 @@ const columns: FeedColumn[] = [
   { label: 'Liquidity', key: 'liquidityUsd', width: 136, align: 'right' },
   { label: 'DEX Buys', key: 'dexBuys24h', width: 116, align: 'right' },
   { label: 'DEX Sells', key: 'dexSells24h', width: 116, align: 'right' },
-  { label: 'DEX Flow', key: 'dexFlow24h', width: 150, align: 'right' },
+  { label: 'DEX Flow', key: 'dexFlowUsd24h', width: 150, align: 'right' },
   { label: 'Event', key: 'event', width: 180 }
 ];
 
@@ -100,7 +100,7 @@ function HeaderRow({ sortConfig, onSort }: { sortConfig: SortConfig; onSort: (ke
             aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}
           >
             <button type="button" onClick={() => onSort(key)} className={active ? 'active' : ''}>
-              {['Price', 'MCap', 'DEX Volume', 'Liquidity', 'DEX Buys', 'DEX Sells'].includes(column.label) ? <Info size={12} /> : null}
+              {['Price', 'MCap', 'DEX Volume', 'Liquidity', 'DEX Buys', 'DEX Sells', 'DEX Flow'].includes(column.label) ? <Info size={12} /> : null}
               {column.label}
               <SortGlyph direction={direction} />
             </button>
@@ -116,7 +116,7 @@ function FlowBar({ value, max }: { value: number; max: number }) {
   const width = max > 0 ? Math.max(6, Math.min(100, (Math.abs(value) / max) * 100)) : 0;
   return (
     <div className="overview-flow">
-      <span className={positive ? 'positive' : 'negative'}>{value > 0 ? '+' : ''}{formatInteger(value)}</span>
+      <span className={positive ? 'positive' : 'negative'}>{value > 0 ? '+' : value < 0 ? '-' : ''}{formatUsd(Math.abs(value))}</span>
       <div><i className={positive ? 'positive' : 'negative'} style={{ width: `${width}%` }} /></div>
     </div>
   );
@@ -216,7 +216,7 @@ export function LiveAlphaFeed({
   const limited = useMemo(() => sorted.slice(0, visibleLimit(filters, sorted.length)), [filters, sorted]);
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
-  const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlow24h))), [pageRows]);
+  const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlowUsd24h))), [pageRows]);
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
 
   useEffect(() => setPage(1), [filters, searchQuery, sortConfig]);
@@ -325,7 +325,7 @@ export function LiveAlphaFeed({
                   <td className="metric-col">{formatUsd(token.liquidityUsd)}</td>
                   <td className="metric-col positive">{formatInteger(token.dexBuys24h)}</td>
                   <td className="metric-col negative">{formatInteger(token.dexSells24h)}</td>
-                  <td className={`metric-col ${signedClass(token.dexFlow24h)}`}><FlowBar value={token.dexFlow24h} max={maxFlow} /></td>
+                  <td className={`metric-col ${signedClass(token.dexFlowUsd24h)}`}><FlowBar value={token.dexFlowUsd24h} max={maxFlow} /></td>
                   <td>
                     {(() => {
                       const detectionEvent = latestDetectionEventForToken(detectionEventLookup, token);

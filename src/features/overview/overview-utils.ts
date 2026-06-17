@@ -30,7 +30,8 @@ export type OverviewSortKey =
   | 'liquidityUsd'
   | 'dexBuys24h'
   | 'dexSells24h'
-  | 'dexFlow24h';
+  | 'dexFlow24h'
+  | 'dexFlowUsd24h';
 
 export const DEFAULT_OVERVIEW_FILTERS: OverviewFilters = {
   visibleCount: '100',
