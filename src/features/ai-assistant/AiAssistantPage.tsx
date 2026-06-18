@@ -228,7 +228,7 @@ const toolLabel = (tool?: string) => {
     if (tool === 'get_wallet_deep_brief') return 'Wallet Brief';
     if (tool === 'get_platform_updates') return 'Platform Update';
     if (tool === 'run_safe_scan') return 'Safe Scan';
-    if (tool === 'detection_updates') return 'Detection';
+    if (tool === 'detection_updates' || tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return 'Detection';
     if (tool === 'get_token_activity') return 'Token Activity';
     if (tool === 'get_smart_alert_status') return 'Smart Alerts';
     if (tool === 'alert_setup') return 'Smart Alerts';
@@ -242,7 +242,7 @@ const toolIcon = (tool?: string) => {
     if (tool === 'get_wallet_deep_brief') return <User size={15} />;
     if (tool === 'get_platform_updates') return <Radar size={15} />;
     if (tool === 'run_safe_scan') return <ShieldCheck size={15} />;
-    if (tool === 'detection_updates') return <CheckCircle2 size={15} />;
+    if (tool === 'detection_updates' || tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return <CheckCircle2 size={15} />;
     if (tool === 'get_smart_alert_status' || tool === 'alert_setup') return <Bell size={15} />;
     if (tool === 'unsupported_capability') return <AlertTriangle size={15} />;
     if (tool === 'error') return <AlertTriangle size={15} />;

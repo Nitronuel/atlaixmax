@@ -76,3 +76,40 @@ export type DetectionTokenDetailResponse = {
   snapshotHistory: unknown[];
   classificationHistory: unknown[];
 };
+
+export type DetectionTokenRecentEventsResponse = {
+  generatedAt: string;
+  token: DetectionTokenDetailResponse['token'];
+  events: DetectionEvent[];
+};
+
+export type DetectionEventRelationship =
+  | 'aligned'
+  | 'conflicting'
+  | 'sequential_recovery'
+  | 'sequential_deterioration'
+  | 'mixed_unstable'
+  | 'single_event';
+
+export type DetectionRelationshipBias = 'bullish' | 'bearish' | 'neutral' | 'mixed';
+
+export type DetectionTokenAssessmentContext = {
+  relationship: DetectionEventRelationship;
+  bias: DetectionRelationshipBias;
+  contraryCase: string;
+  relevantPriorEventIds: string[];
+  stats: {
+    eventCount: number;
+    bullishCount: number;
+    bearishCount: number;
+    neutralCount: number;
+    sentimentFlips: number;
+    minutesSincePrevious: number | null;
+  };
+};
+
+export type DetectionTokenAiAssessmentResponse = DetectionTokenRecentEventsResponse & {
+  assessment: string;
+  source: 'model' | 'local';
+  context: DetectionTokenAssessmentContext;
+};

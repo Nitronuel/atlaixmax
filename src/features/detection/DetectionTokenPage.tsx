@@ -1,7 +1,7 @@
 import { Activity, ArrowLeft, Bell, Copy, Scan, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import type { DetectionTokenDetailResponse } from '../../shared/detection';
+import type { DetectionTokenAiAssessmentResponse, DetectionTokenDetailResponse } from '../../shared/detection';
 import { detectionEventAssessmentForLabel } from '../../shared/detection-copy';
 import { DetectionService } from './detection-service';
 
@@ -47,21 +47,38 @@ function humanizeLabel(value = '') {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function relationshipLabel(value = '') {
+  return humanizeLabel(value).replace('Sequential ', '');
+}
+
 export function DetectionTokenPage() {
   const { chain = '', address = '' } = useParams();
   const [searchParams] = useSearchParams();
   const pair = searchParams.get('pair') || '';
   const [detail, setDetail] = useState<DetectionTokenDetailResponse | null>(null);
+  const [aiAssessment, setAiAssessment] = useState<DetectionTokenAiAssessmentResponse | null>(null);
+  const [assessmentLoading, setAssessmentLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setAssessmentLoading(true);
     setError(null);
-    DetectionService.getToken(chain, address, pair)
-      .then(setDetail)
+    setAiAssessment(null);
+    Promise.all([
+      DetectionService.getToken(chain, address, pair),
+      DetectionService.getTokenAiAssessment(chain, address, pair).catch(() => null)
+    ])
+      .then(([nextDetail, nextAssessment]) => {
+        setDetail(nextDetail);
+        setAiAssessment(nextAssessment);
+      })
       .catch((nextError) => setError(nextError instanceof Error ? nextError.message : 'Detection token details are unavailable.'))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setAssessmentLoading(false);
+      });
   }, [address, chain, pair]);
 
   const classification = asClassification(detail?.latestClassification);
@@ -70,7 +87,8 @@ export function DetectionTokenPage() {
   const tokenName = token?.tokenName && token?.tokenSymbol && token.tokenName !== token.tokenSymbol ? token.tokenName : tokenSymbol;
   const chainDex = [token?.chain, token?.dexId].filter(Boolean).join(' / ');
   const assessmentEvent = detail?.events[0]?.eventType || classification?.displayLabel || humanizeLabel(classification?.primaryLabel || '') || 'No primary event';
-  const assessmentCopy = detectionEventAssessmentForLabel(assessmentEvent, tokenName, `${tokenName}'s latest scan did not produce a clean directional event.`);
+  const assessmentCopy = aiAssessment?.assessment || detectionEventAssessmentForLabel(assessmentEvent, tokenName, `${tokenName}'s latest scan did not produce a clean directional event.`);
+  const assessmentBadge = aiAssessment?.context?.relationship ? relationshipLabel(aiAssessment.context.relationship) : assessmentEvent;
 
   function copyValue(value?: string | null) {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -118,10 +136,13 @@ export function DetectionTokenPage() {
       <div className="detection-assessment-row">
         <section className="detection-detail-panel detection-assessment-panel">
           <div className="detection-assessment-head">
-            <span>Atlaix Assessment</span>
-            <strong>{assessmentEvent}</strong>
+            <span>AI Assessment</span>
+            <div className="detection-assessment-badges">
+              <strong>{assessmentBadge}</strong>
+              {aiAssessment?.events?.length ? <strong>{aiAssessment.events.length}-event read</strong> : null}
+            </div>
           </div>
-          <p className="detection-assessment-copy">{assessmentCopy}</p>
+          <p className="detection-assessment-copy">{assessmentLoading ? 'Reading the latest Detection Engine events...' : assessmentCopy}</p>
         </section>
         <nav className="detection-token-actions token-quick-actions-panel" aria-label="Token detection actions">
           <h3>Quick Actions</h3>

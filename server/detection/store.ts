@@ -52,6 +52,19 @@ export type DetectionEventFilters = {
   limit?: number;
 };
 
+export type DetectionSummary = {
+  generatedAt: string;
+  total: number;
+  bySeverity: Record<string, number>;
+  bySentiment: Record<string, number>;
+  byEventType: Record<string, number>;
+  byChain: Record<string, number>;
+  newest: DetectionEvent[];
+  topRisk: DetectionEvent[];
+  topBullish: DetectionEvent[];
+  topScoreChanges: DetectionEvent[];
+};
+
 const TOKEN_COLUMNS = 'token_id,token_name,token_symbol,token_address,chain,pair_address,dex_id,pair_url,logo_url,overview_event,overview_volume_24h,overview_liquidity,last_detection_checked_at,created_at,updated_at';
 const TOKEN_QUEUE_COLUMNS = `${TOKEN_COLUMNS},scan_tier,next_detection_check_at,detection_priority_score,failed_hydration_count,last_primary_label,last_risk_level,last_event_status,consecutive_quiet_count`;
 const EVENT_BASE_COLUMNS = 'id,token_id,classification_id,event_type,summary,sentiment,severity,score,detected_at,token,metrics,dedupe_key,created_at';
@@ -883,6 +896,44 @@ export class DetectionStore {
     return {
       generatedAt: new Date().toISOString(),
       events: events.filter((event) => eventMatches(event, filters)).slice(0, limit)
+    };
+  }
+
+  async getEventDetail(query: string): Promise<DetectionEvent | null> {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return null;
+
+    const events = (await this.listEvents({ q: normalized, limit: 250 })).events;
+    return events.find((event) => event.id.toLowerCase() === normalized || event.classificationId.toLowerCase() === normalized) || events[0] || null;
+  }
+
+  async getDetectionSummary(filters: DetectionEventFilters = {}): Promise<DetectionSummary> {
+    const events = (await this.listEvents({ ...filters, limit: Math.max(100, Math.min(250, Number(filters.limit || 250))) })).events;
+    const bySeverity: Record<string, number> = {};
+    const bySentiment: Record<string, number> = {};
+    const byEventType: Record<string, number> = {};
+    const byChain: Record<string, number> = {};
+
+    events.forEach((event) => {
+      bySeverity[event.severity] = (bySeverity[event.severity] || 0) + 1;
+      bySentiment[event.sentiment] = (bySentiment[event.sentiment] || 0) + 1;
+      byEventType[event.eventType] = (byEventType[event.eventType] || 0) + 1;
+      const chain = event.token.chain || 'unknown';
+      byChain[chain] = (byChain[chain] || 0) + 1;
+    });
+
+    const riskRank = (event: DetectionEvent) => severityRank(event.severity) * 100 + event.score;
+    return {
+      generatedAt: new Date().toISOString(),
+      total: events.length,
+      bySeverity,
+      bySentiment,
+      byEventType,
+      byChain,
+      newest: events.slice(0, 8),
+      topRisk: [...events].sort((left, right) => riskRank(right) - riskRank(left)).slice(0, 8),
+      topBullish: events.filter((event) => event.sentiment === 'bullish').sort((left, right) => right.score - left.score).slice(0, 8),
+      topScoreChanges: events.filter((event) => Number.isFinite(Number(event.scoreDelta))).sort((left, right) => Math.abs(Number(right.scoreDelta || 0)) - Math.abs(Number(left.scoreDelta || 0))).slice(0, 8)
     };
   }
 

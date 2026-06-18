@@ -538,7 +538,7 @@ function normalizeEvent(signal?: string): OverviewEvent {
   if (signal === 'Breakout') return 'Momentum Breakout';
   if (signal === 'Dump') return 'Market Stress';
   if (signal === 'Volume Spike') return 'Liquidity Event';
-  return 'Unusual Activity';
+  return 'Market Watch';
 }
 
 function tokenKey(token: OverviewToken) {

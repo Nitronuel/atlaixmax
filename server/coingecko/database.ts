@@ -74,8 +74,19 @@ function withTimeout<T>(work: Promise<T>, milliseconds: number, label: string) {
   ]);
 }
 
+function normalizeCoinEvent(value: string): CoinGeckoCoin['event'] {
+  if (value === 'Strong Momentum') return value;
+  if (value === 'Volume Expansion') return value;
+  if (value === 'Recovery Attempt') return value;
+  if (value === 'Sell Pressure') return value;
+  if (value === 'Market Leader') return value;
+  if (value === 'Range Cooling') return value;
+  return 'Market Watch';
+}
+
 function rowToCoin(row: CoinRow): CoinGeckoCoin {
   const raw = row.raw_data || null;
+  const event = String(row.atlaix_event || raw?.event || 'Market Watch');
   return {
     id: row.coin_id,
     symbol: row.symbol,
@@ -98,7 +109,7 @@ function rowToCoin(row: CoinRow): CoinGeckoCoin {
     atl: row.atl ?? raw?.atl ?? null,
     atlChangePercentage: row.atl_change_percentage ?? raw?.atlChangePercentage ?? null,
     sparkline7d: Array.isArray(row.sparkline_7d) ? row.sparkline_7d : raw?.sparkline7d || [],
-    event: row.atlaix_event || raw?.event || 'Unusual Activity',
+    event: normalizeCoinEvent(event),
     lastSeenAt: row.last_seen_at || raw?.lastSeenAt || new Date().toISOString()
   };
 }
@@ -313,7 +324,7 @@ export async function searchCoinGeckoCoins(query: string) {
     atl: null,
     atlChangePercentage: null,
     sparkline7d: [],
-    event: 'Unusual Activity' as const,
+    event: 'Market Watch' as const,
     lastSeenAt: new Date().toISOString()
   }));
 

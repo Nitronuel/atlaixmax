@@ -5,7 +5,7 @@ export type CoinGeckoEvent =
   | 'Sell Pressure'
   | 'Market Leader'
   | 'Range Cooling'
-  | 'Unusual Activity';
+  | 'Market Watch';
 
 export type CoinGeckoCoin = {
   id: string;

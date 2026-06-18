@@ -22,7 +22,7 @@ export type AiAssistantAction = {
 export type AiAssistantProvider = {
     configured: boolean;
     model: string | null;
-    mode: 'model-ready' | 'local-tool-router';
+    mode: 'model-tool-calling' | 'unconfigured';
 };
 
 export type AiAssistantChatResponse = {

@@ -15,5 +15,5 @@ export function classifyCoinEvent(coin: Pick<CoinGeckoCoin, 'marketCapRank' | 'v
   if (change7d < -8 && change24h > 2 && change1h >= 0) return 'Recovery Attempt';
   if (change24h <= -6 || (change1h <= -2 && change24h < 0)) return 'Sell Pressure';
   if (Math.abs(change24h) <= 1.5 && Math.abs(change7d) <= 4) return 'Range Cooling';
-  return 'Unusual Activity';
+  return 'Market Watch';
 }

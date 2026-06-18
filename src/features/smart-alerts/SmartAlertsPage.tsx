@@ -122,7 +122,7 @@ const VALUE_OPTIONS: Partial<Record<SmartAlertType, string[]>> = {
         'Confirmed Recovery',
         'Recovery',
         'Liquidity Event',
-        'Unusual Activity'
+        'Market Watch'
     ],
     Risk: ['Any new risk', 'High', 'Medium', 'Low']
 };

@@ -126,7 +126,7 @@ export function mapMarketRow(row: CoinMarketRow): CoinGeckoCoin | null {
     atl: numberOrNull(row.atl),
     atlChangePercentage: numberOrNull(row.atl_change_percentage),
     sparkline7d: Array.isArray(row.sparkline_in_7d?.price) ? row.sparkline_in_7d.price.filter((value) => Number.isFinite(Number(value))).map(Number) : [],
-    event: 'Unusual Activity',
+    event: 'Market Watch',
     lastSeenAt: new Date().toISOString()
   };
   return { ...coin, event: classifyCoinEvent(coin) };

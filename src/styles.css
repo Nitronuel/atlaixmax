@@ -3808,6 +3808,13 @@ main {
   font-weight: 900;
 }
 
+.detection-assessment-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .detection-assessment-copy {
   max-width: 920px;
   margin: 0;

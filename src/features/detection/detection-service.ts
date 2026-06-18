@@ -1,5 +1,5 @@
 import { apiUrl } from '../../config';
-import type { DetectionEventsResponse, DetectionTokenDetailResponse } from '../../shared/detection';
+import type { DetectionEventsResponse, DetectionTokenAiAssessmentResponse, DetectionTokenDetailResponse, DetectionTokenRecentEventsResponse } from '../../shared/detection';
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), init);
@@ -24,5 +24,17 @@ export const DetectionService = {
     const params = new URLSearchParams({ chain, address });
     if (pair) params.set('pair', pair);
     return fetchJson<DetectionTokenDetailResponse>(`/api/detection/token?${params.toString()}`);
+  },
+
+  getTokenRecentEvents(chain: string, address: string, pair = '') {
+    const params = new URLSearchParams({ chain, address });
+    if (pair) params.set('pair', pair);
+    return fetchJson<DetectionTokenRecentEventsResponse>(`/api/detection/token/recent-events?${params.toString()}`);
+  },
+
+  getTokenAiAssessment(chain: string, address: string, pair = '') {
+    const params = new URLSearchParams({ chain, address });
+    if (pair) params.set('pair', pair);
+    return fetchJson<DetectionTokenAiAssessmentResponse>(`/api/detection/token/ai-assessment?${params.toString()}`);
   }
 };

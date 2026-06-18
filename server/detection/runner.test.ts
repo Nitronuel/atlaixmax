@@ -55,7 +55,7 @@ function makeOverviewToken(overrides: Partial<OverviewToken> = {}): OverviewToke
     dexSells24h: 90,
     dexFlow24h: 10,
     dexFlowUsd24h: 1_000,
-    event: 'Unusual Activity',
+    event: 'Market Watch',
     pairCreatedAt: null,
     ...overrides
   };

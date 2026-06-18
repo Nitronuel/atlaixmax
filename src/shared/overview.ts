@@ -28,7 +28,7 @@ export type OverviewEvent =
   | 'Liquidity Event'
   | 'Thin Liquidity Risk'
   | 'Market Stress'
-  | 'Unusual Activity';
+  | 'Market Watch';
 
 export type OverviewFeedResponse = {
   generatedAt: string;

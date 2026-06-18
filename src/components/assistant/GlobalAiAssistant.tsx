@@ -241,7 +241,7 @@ const normalizeDetectionSnapshotEvent = (event: any): DetectionEngineSnapshotEve
             address: String(token.address || '').trim(),
             chain: String(token.chain || '').trim()
         },
-        eventType: String(event.eventType || event.type || 'Unusual Activity'),
+        eventType: String(event.eventType || event.type || '').trim(),
         severity: String(event.severity || 'Medium'),
         score: Number.isFinite(Number(event.score)) ? Number(event.score) : undefined,
         summary: detectionEventSummaryForLabel(String(event.eventType || event.type || ''), String(event.summary || '')).slice(0, 220),
@@ -391,6 +391,7 @@ const toolLabel = (tool?: string) => {
     if (tool === 'get_token_deep_brief') return 'Token Brief';
     if (tool === 'get_wallet_deep_brief') return 'Wallet Brief';
     if (tool === 'get_platform_updates') return 'Platform Update';
+    if (tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return 'Detection';
     if (tool === 'dashboard_feed') return 'Live Alpha Feed';
     if (tool === 'run_safe_scan') return 'Safe Scan';
     if (tool === 'get_token_activity') return 'Activity';
@@ -403,6 +404,7 @@ const toolIcon = (tool?: string) => {
     if (tool === 'get_token_deep_brief') return <Activity size={14} />;
     if (tool === 'get_wallet_deep_brief') return <Wallet size={14} />;
     if (tool === 'run_safe_scan') return <ShieldCheck size={14} />;
+    if (tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return <Radar size={14} />;
     if (tool === 'get_smart_alert_status' || tool === 'alert_setup' || tool === 'alert_setup_needs_token') return <Bell size={14} />;
     if (tool === 'get_platform_updates') return <Radar size={14} />;
     if (tool === 'dashboard_feed') return <Activity size={14} />;
