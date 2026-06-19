@@ -96,6 +96,8 @@ export type DetectionRelationshipBias = 'bullish' | 'bearish' | 'neutral' | 'mix
 export type DetectionTokenAssessmentContext = {
   relationship: DetectionEventRelationship;
   bias: DetectionRelationshipBias;
+  state: string;
+  marketBias: string;
   contraryCase: string;
   relevantPriorEventIds: string[];
   stats: {
@@ -108,8 +110,18 @@ export type DetectionTokenAssessmentContext = {
   };
 };
 
+export type DetectionTokenStructuredAssessment = {
+  state: string;
+  sequenceLabel: string;
+  summary: string;
+  marketBias: string;
+  invalidation: string;
+  supportingSignals: string[];
+  watchFor: string[];
+};
+
 export type DetectionTokenAiAssessmentResponse = DetectionTokenRecentEventsResponse & {
-  assessment: string;
+  assessment: DetectionTokenStructuredAssessment;
   source: 'model' | 'local';
   context: DetectionTokenAssessmentContext;
 };

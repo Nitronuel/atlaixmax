@@ -87,8 +87,9 @@ export function DetectionTokenPage() {
   const tokenName = token?.tokenName && token?.tokenSymbol && token.tokenName !== token.tokenSymbol ? token.tokenName : tokenSymbol;
   const chainDex = [token?.chain, token?.dexId].filter(Boolean).join(' / ');
   const assessmentEvent = detail?.events[0]?.eventType || classification?.displayLabel || humanizeLabel(classification?.primaryLabel || '') || 'No primary event';
-  const assessmentCopy = aiAssessment?.assessment || detectionEventAssessmentForLabel(assessmentEvent, tokenName, `${tokenName}'s latest scan did not produce a clean directional event.`);
+  const fallbackAssessment = detectionEventAssessmentForLabel(assessmentEvent, tokenName, `${tokenName}'s latest scan did not produce a clean directional event.`);
   const assessmentBadge = aiAssessment?.context?.relationship ? relationshipLabel(aiAssessment.context.relationship) : assessmentEvent;
+  const structuredAssessment = aiAssessment?.assessment;
 
   function copyValue(value?: string | null) {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -142,7 +143,46 @@ export function DetectionTokenPage() {
               {aiAssessment?.events?.length ? <strong>{aiAssessment.events.length}-event read</strong> : null}
             </div>
           </div>
-          <p className="detection-assessment-copy">{assessmentLoading ? 'Reading the latest Detection Engine events...' : assessmentCopy}</p>
+          {assessmentLoading ? (
+            <p className="detection-assessment-copy">Reading the latest Detection Engine events...</p>
+          ) : structuredAssessment ? (
+            <div className="detection-ai-assessment-body">
+              <div className="detection-ai-summary">
+                <span>Summary</span>
+                <p>{structuredAssessment.summary}</p>
+              </div>
+              <div className="detection-ai-field-grid">
+                <div>
+                  <span>Market Bias</span>
+                  <strong>{structuredAssessment.marketBias}</strong>
+                </div>
+                <div>
+                  <span>Invalidation</span>
+                  <strong>{structuredAssessment.invalidation}</strong>
+                </div>
+              </div>
+              <div className="detection-ai-list-grid">
+                {structuredAssessment.supportingSignals.length ? (
+                  <div>
+                    <span>Supporting Signals</span>
+                    <ul>
+                      {structuredAssessment.supportingSignals.map((signal) => <li key={signal}>{signal}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+                {structuredAssessment.watchFor.length ? (
+                  <div>
+                    <span>Watch For</span>
+                    <ul>
+                      {structuredAssessment.watchFor.map((item) => <li key={item}>{item}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <p className="detection-assessment-copy">{fallbackAssessment}</p>
+          )}
         </section>
         <nav className="detection-token-actions token-quick-actions-panel" aria-label="Token detection actions">
           <h3>Quick Actions</h3>

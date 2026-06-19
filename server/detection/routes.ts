@@ -9,9 +9,9 @@ import type {
   DetectionRelationshipBias,
   DetectionTokenAiAssessmentResponse,
   DetectionTokenAssessmentContext,
-  DetectionTokenRecentEventsResponse
+  DetectionTokenRecentEventsResponse,
+  DetectionTokenStructuredAssessment
 } from '../../src/shared/detection';
-import { detectionEventAssessmentForLabel } from '../../src/shared/detection-copy';
 
 type CachedResponse = {
   expiresAt: number;
@@ -46,13 +46,35 @@ function formatEventAge(timestamp: number) {
   return `${Math.round(hours / 24)}d ago`;
 }
 
+function formatCompactUsd(value: number) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return '$0';
+  const sign = numeric < 0 ? '-' : '';
+  const absolute = Math.abs(numeric);
+  if (absolute >= 1_000_000_000) return `${sign}$${(absolute / 1_000_000_000).toFixed(2)}B`;
+  if (absolute >= 1_000_000) return `${sign}$${(absolute / 1_000_000).toFixed(2)}M`;
+  if (absolute >= 1_000) return `${sign}$${(absolute / 1_000).toFixed(1)}K`;
+  return `${sign}$${absolute.toFixed(0)}`;
+}
+
+function formatSignedNumber(value: number) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return '0';
+  return `${numeric > 0 ? '+' : ''}${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function formatPercent(value: number) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return '0%';
+  return `${numeric > 0 ? '+' : ''}${numeric.toFixed(Math.abs(numeric) >= 10 ? 1 : 2)}%`;
+}
+
 function compactEvent(event: DetectionEvent, index: number) {
   return {
     index: index + 1,
     eventType: event.eventType,
     sentiment: event.sentiment,
     severity: event.severity,
-    score: event.score,
     detectedAt: event.detectedAt,
     age: formatEventAge(event.detectedAt),
     summary: event.summary,
@@ -61,6 +83,12 @@ function compactEvent(event: DetectionEvent, index: number) {
       liquidity: event.metrics.liquidity,
       priceChange24h: event.metrics.priceChange24h,
       netFlow: event.metrics.netFlow
+    },
+    formattedMetrics: {
+      volume24h: formatCompactUsd(event.metrics.volume24h),
+      liquidity: formatCompactUsd(event.metrics.liquidity),
+      priceChange24h: formatPercent(event.metrics.priceChange24h),
+      netFlow: formatSignedNumber(event.metrics.netFlow)
     },
     lifecycleStatus: event.lifecycleStatus || '',
     scoreDelta: event.scoreDelta ?? null
@@ -77,22 +105,68 @@ function relationshipBias(events: DetectionEvent[]): DetectionRelationshipBias {
   return 'mixed';
 }
 
+function severityTone(event?: DetectionEvent) {
+  if (!event) return 'developing';
+  if (event.severity === 'critical') return 'acute';
+  if (event.severity === 'high') return 'meaningful';
+  if (event.severity === 'medium') return 'notable';
+  return 'early-stage';
+}
+
+function stateFor(latest: DetectionEvent | undefined, relationship: DetectionEventRelationship): string {
+  if (!latest) return 'High Uncertainty';
+  const label = latest.eventType.toLowerCase();
+  if (relationship === 'mixed_unstable') return 'High Uncertainty';
+  if (relationship === 'sequential_recovery') return 'Recovery';
+  if (relationship === 'sequential_deterioration') return latest.sentiment === 'bearish' ? 'Structural Weakness' : 'Trend Exhaustion';
+  if (label.includes('liquidity drain') || label.includes('low-liquidity')) return 'Liquidity Stress';
+  if (label.includes('liquidity added')) return 'Expansion';
+  if (label.includes('accumulation') || label.includes('buy recovery')) return relationship === 'conflicting' ? 'Recovery' : 'Accumulation';
+  if (label.includes('distribution') || label.includes('sell') || label.includes('dump')) return 'Distribution';
+  if (label.includes('breakout') || label.includes('breakdown')) return 'Volatility Expansion';
+  if (label.includes('continuation')) return 'Trend Continuation';
+  if (latest.sentiment === 'bullish') return 'Structural Strength';
+  if (latest.sentiment === 'bearish') return 'Structural Weakness';
+  return 'High Uncertainty';
+}
+
+function marketBiasFor(latest: DetectionEvent | undefined, relationship: DetectionEventRelationship, bias: DetectionRelationshipBias): string {
+  if (!latest) return 'Unavailable';
+  const unconfirmed = relationship === 'conflicting' || relationship === 'mixed_unstable' || relationship === 'single_event' || latest.severity === 'low';
+  if (latest.sentiment === 'bullish') return unconfirmed ? 'Bullish / Unconfirmed' : 'Bullish';
+  if (latest.sentiment === 'bearish') return unconfirmed ? 'Bearish / Unconfirmed' : 'Bearish';
+  if (bias === 'bullish') return 'Bullish / Unconfirmed';
+  if (bias === 'bearish') return 'Bearish / Unconfirmed';
+  return 'Unclear';
+}
+
 function contraryCaseFor(event?: DetectionEvent, relationship?: DetectionEventRelationship) {
   if (!event) return 'clearer confirmation from volume, liquidity, and price structure';
   const label = event.eventType.toLowerCase();
-  if (relationship === 'mixed_unstable') return 'cleaner confirmation from liquidity, flow, and price structure';
-  if (label.includes('liquidity drain')) return 'liquidity recovery and renewed buy-side absorption';
-  if (label.includes('distribution') || label.includes('dump') || label.includes('sell') || event.sentiment === 'bearish') {
-    return 'buyers reclaiming levels with improving liquidity and buy-side absorption';
-  }
-  if (label.includes('liquidity added')) return 'added liquidity leaving quickly or failing to support organic demand';
-  if (label.includes('accumulation') || label.includes('recovery') || label.includes('breakout') || event.sentiment === 'bullish') {
-    return 'fading buy-side flow, support loss, or renewed sell-side dominance';
-  }
+  if (label.includes('bullish continuation')) return 'support loss, fading buy-side flow, or liquidity leaving the pool';
+  if (label.includes('bearish continuation')) return 'buyers reclaiming key levels, selling pressure fading, or liquidity improving';
+  if (label.includes('short-term bounce')) return 'sellers reasserting control at resistance or liquidity fading';
+  if (label.includes('pullback')) return 'support breakdown, expanding sell-side flow, or liquidity deterioration';
+  if (label.includes('bullish reversal')) return 'failure to hold above resistance or renewed sell-side dominance';
+  if (label.includes('bearish breakdown')) return 'support reclaim with stronger buy-side absorption';
+  if (label.includes('range breakout')) return 'price falling back into range with fading buy-side flow';
+  if (label.includes('range breakdown')) return 'price recovering back into range with stronger buy-side flow';
+  if (label.includes('low-liquidity price spike')) return 'quick retrace, liquidity failing to deepen, or volume fading';
+  if (label.includes('low-liquidity sell')) return 'liquidity returning and buyers stabilizing price';
+  if (label.includes('liquidity drain')) return 'liquidity returning, order depth stabilizing, or buyers absorbing pressure';
+  if (label.includes('liquidity added')) return 'new liquidity leaving quickly, activity fading, or sell-side flow taking control';
+  if (label === 'pump') return 'liquidity failing to support the move or swift retracement';
+  if (label === 'dump') return 'renewed buy-side absorption and price stabilization';
+  if (label.includes('buy recovery')) return 'buy-side flow fading or sellers regaining control';
+  if (label.includes('sell-off')) return 'buyers absorbing selling and stabilizing price';
+  if (label.includes('accumulation')) return 'buy-side flow fading, liquidity thinning, or sellers regaining control';
+  if (label.includes('distribution')) return 'buy demand absorbing supply, price reclaiming range, or sell-side flow fading';
+  if (event.sentiment === 'bullish') return 'fading buy-side flow, support loss, or liquidity leaving the pool';
+  if (event.sentiment === 'bearish') return 'buyers absorbing pressure, liquidity improving, or price reclaiming structure';
   return 'cleaner confirmation from volume, liquidity, and price structure';
 }
 
-function classifyEventRelationship(events: DetectionEvent[]): DetectionTokenAssessmentContext {
+export function classifyEventRelationship(events: DetectionEvent[]): DetectionTokenAssessmentContext {
   const recent = events.slice(0, 5);
   const latest = recent[0];
   const prior = recent.slice(1);
@@ -136,9 +210,13 @@ function classifyEventRelationship(events: DetectionEvent[]): DetectionTokenAsse
     }
   });
 
+  const bias = relationship === 'mixed_unstable' ? 'mixed' : relationshipBias(recent);
+  const state = stateFor(latest, relationship);
   return {
     relationship,
-    bias: relationship === 'mixed_unstable' ? 'mixed' : relationshipBias(recent),
+    bias,
+    state,
+    marketBias: marketBiasFor(latest, relationship, bias),
     contraryCase: contraryCaseFor(latest, relationship),
     relevantPriorEventIds: relevantPriorEvents.map((event) => event.id),
     stats: {
@@ -152,13 +230,67 @@ function classifyEventRelationship(events: DetectionEvent[]): DetectionTokenAsse
   };
 }
 
-function localAssessment(tokenName: string, events: DetectionEvent[], context: DetectionTokenAssessmentContext) {
+function sequenceLabel(events: DetectionEvent[]) {
+  const count = Math.max(1, Math.min(5, events.length));
+  return `${count}-event sequence`;
+}
+
+function supportingSignalsFor(events: DetectionEvent[], context: DetectionTokenAssessmentContext) {
   const latest = events[0];
-  if (!latest) return 'No recent Detection Engine events are available for this token yet.';
+  const signals = new Set<string>();
+  if (!latest) return [];
+  signals.add(`${latest.eventType} detected`);
+  if (context.relationship === 'aligned') signals.add('Recent events point in the same direction');
+  if (context.relationship === 'conflicting') signals.add('Latest event changed the prior read');
+  if (context.relationship === 'sequential_recovery') signals.add('Recent sequence shows recovery pressure');
+  if (context.relationship === 'sequential_deterioration') signals.add('Recent sequence shows weakening structure');
+  if (latest.metrics.priceChange24h) signals.add(`${formatPercent(latest.metrics.priceChange24h)} 24h price change`);
+  if (latest.metrics.netFlow) signals.add(`${formatSignedNumber(latest.metrics.netFlow)} net flow`);
+  if (latest.metrics.liquidity) signals.add(`${formatCompactUsd(latest.metrics.liquidity)} liquidity depth`);
+  if (latest?.severity === 'high' || latest?.severity === 'critical') signals.add(`${severityTone(latest)} event intensity`);
+  return [...signals].slice(0, 3);
+}
+
+function watchForFor(events: DetectionEvent[], context: DetectionTokenAssessmentContext) {
+  const latest = events[0];
+  const label = latest?.eventType.toLowerCase() || '';
+  if (context.relationship === 'mixed_unstable' && latest?.sentiment === 'bullish') return ['Liquidity leaving the pool', 'Fading buy-side flow', 'Support loss'];
+  if (context.relationship === 'mixed_unstable' && latest?.sentiment === 'bearish') return ['Buy-side absorption', 'Liquidity recovery', 'Price structure reclaim'];
+  if (context.relationship === 'mixed_unstable') return ['Cleaner direction from flow', 'Liquidity confirmation', 'Range reclaim or failure'];
+  if (label.includes('liquidity drain')) return ['Liquidity recovery', 'Order depth stabilization', 'Buy-side absorption'];
+  if (label.includes('liquidity added')) return ['Liquidity staying in the pool', 'Organic volume follow-through', 'Sell-side pressure returning'];
+  if (latest?.sentiment === 'bullish') return ['Liquidity leaving the pool', 'Fading buy-side flow', 'Support loss'];
+  if (latest?.sentiment === 'bearish') return ['Buy-side absorption', 'Liquidity recovery', 'Price structure reclaim'];
+  return ['Volume confirmation', 'Liquidity changes', 'Price structure'];
+}
+
+export function localAssessment(tokenName: string, events: DetectionEvent[], context: DetectionTokenAssessmentContext): DetectionTokenStructuredAssessment {
+  const latest = events[0];
+  if (!latest) {
+    return {
+      state: 'High Uncertainty',
+      sequenceLabel: 'No recent events',
+      summary: 'No recent Detection Engine events are available for this token yet.',
+      marketBias: 'Unavailable',
+      invalidation: 'Fresh Detection Engine events are needed before forming a market read.',
+      supportingSignals: [],
+      watchFor: ['New detection events', 'Liquidity changes', 'Flow changes']
+    };
+  }
   const prior = events.filter((event) => context.relevantPriorEventIds.includes(event.id));
-  const priorLine = prior.length ? `Recent context includes ${prior.map((event) => event.eventType).join(' and ').toLowerCase()}, which makes this a ${context.relationship.replaceAll('_', ' ')} read.` : `This is a ${context.relationship.replaceAll('_', ' ')} read.`;
-  const latestLine = `${tokenName}'s latest Detection Engine event is ${latest.eventType}, a ${latest.sentiment} read with ${latest.severity} severity.`;
-  return `${latestLine} ${priorLine} The contrary case would require ${context.contraryCase}.`;
+  const intensity = severityTone(latest);
+  const priorLine = prior.length
+    ? `Recent context includes ${prior.map((event) => event.eventType.toLowerCase()).join(' and ')}, giving this a ${context.relationship.replaceAll('_', ' ')} profile.`
+    : `This is a ${context.relationship.replaceAll('_', ' ')} read.`;
+  return {
+    state: context.state,
+    sequenceLabel: sequenceLabel(events),
+    summary: `${tokenName}'s latest event is ${latest.eventType}, an ${intensity} ${latest.sentiment} read. ${priorLine} Confirmation depends on liquidity, flow, and whether price structure supports the current event.`,
+    marketBias: context.marketBias,
+    invalidation: context.contraryCase,
+    supportingSignals: supportingSignalsFor(events, context),
+    watchFor: watchForFor(events, context)
+  };
 }
 
 function normalizeAssessmentText(value: string) {
@@ -170,10 +302,60 @@ function normalizeAssessmentText(value: string) {
     .trim();
 }
 
-async function modelAssessment(tokenName: string, events: DetectionEvent[], context: DetectionTokenAssessmentContext) {
+function sanitizeAssessmentString(value: unknown, maxLength: number) {
+  const normalized = normalizeAssessmentText(String(value || ''));
+  const cleaned = normalized
+    .replace(/\bscore\s*\d+(\.\d+)?\b/gi, '')
+    .replace(/\b\d+(\.\d+)?\s*%\s*(chance|confidence|probability)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  const clipped = cleaned.slice(0, maxLength + 1);
+  return clipped.slice(0, Math.max(0, clipped.lastIndexOf(' '))).trim();
+}
+
+function hasBannedAssessmentLanguage(value: DetectionTokenStructuredAssessment) {
+  const haystack = [
+    value.state,
+    value.sequenceLabel,
+    value.summary,
+    value.marketBias,
+    value.invalidation,
+    ...value.supportingSignals,
+    ...value.watchFor
+  ].join(' ').toLowerCase();
+  return /\b(score\s*\d+|buy now|sell now|entry|target|guaranteed|will pump|will dump|will moon|price will|% chance|confidence score|likelihood|likely|probability)\b/.test(haystack);
+}
+
+export function parseAssessmentJson(value: string, fallback: DetectionTokenStructuredAssessment): DetectionTokenStructuredAssessment | null {
+  const cleaned = value.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  let raw: any;
+  try {
+    raw = JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+  const assessment: DetectionTokenStructuredAssessment = {
+    state: sanitizeAssessmentString(raw.state || fallback.state, 48),
+    sequenceLabel: sanitizeAssessmentString(raw.sequenceLabel || fallback.sequenceLabel, 32),
+    summary: sanitizeAssessmentString(raw.summary || fallback.summary, 560),
+    marketBias: fallback.marketBias,
+    invalidation: fallback.invalidation,
+    supportingSignals: fallback.supportingSignals,
+    watchFor: fallback.watchFor
+  };
+  if (!assessment.summary || !assessment.marketBias || !assessment.invalidation || hasBannedAssessmentLanguage(assessment)) return null;
+  return {
+    ...assessment,
+    supportingSignals: assessment.supportingSignals.length ? assessment.supportingSignals : fallback.supportingSignals,
+    watchFor: assessment.watchFor.length ? assessment.watchFor : fallback.watchFor
+  };
+}
+
+async function modelAssessment(tokenName: string, events: DetectionEvent[], context: DetectionTokenAssessmentContext, fallback: DetectionTokenStructuredAssessment) {
   const apiKey = readEnv('OPENROUTER_API_KEY');
   const model = readEnv('OPENROUTER_MODEL');
-  if (!apiKey || !model || !events.length) return '';
+  if (!apiKey || !model || !events.length) return null;
   const baseUrl = readEnv('OPENROUTER_BASE_URL') || 'https://openrouter.ai/api/v1';
   const response = await fetchWithTimeout(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
@@ -191,13 +373,18 @@ async function modelAssessment(tokenName: string, events: DetectionEvent[], cont
           role: 'system',
           content: [
             'You write the AI Assessment for one token inside Atlaix Detection Engine.',
+            'Atlaix interprets current market structure. It does not predict price.',
             'Use only the supplied Detection Engine events.',
-            'Lead with the latest event and its meaning right now.',
-            'Use the supplied relationship classification. Name it naturally, such as aligned signals, conflicting shift, sequential deterioration, sequential recovery, mixed unstable, or single-event read.',
+            'Return valid JSON only with state, sequenceLabel, summary, marketBias, invalidation, supportingSignals, and watchFor.',
+            'Lead with the latest event. Use severity as an intensity dial, not as a displayed score.',
+            'Market bias and invalidation are controlled by fallbackShape; keep their meaning unchanged.',
+            'Use formattedMetrics when mentioning numbers. Percent values must include %, money values must use compact dollar formatting, and do not put metric values in parentheses.',
+            'Do not include raw scores, confidence percentages, price targets, buy/sell instructions, or prediction language.',
+            'Do not use words like entry, target, guaranteed, likely, likelihood, probability, will pump, will dump, or price will.',
             'Mention no more than two prior events, and only if they change the interpretation.',
-            'Always include the contrary case in one short clause.',
-            'Do not mention index numbers. Do not use markdown. Do not give trading advice. Do not invent data.',
-            'Write one concise paragraph between 60 and 80 words.'
+            'Summary must be 45 to 75 words. Market bias must be descriptive, not predictive.',
+            'Invalidation must describe what would weaken the current interpretation.',
+            'Use concise institutional language. No markdown.'
           ].join('\n')
         },
         {
@@ -207,15 +394,16 @@ async function modelAssessment(tokenName: string, events: DetectionEvent[], cont
             latestEvent: compactEvent(events[0], 0),
             relevantPriorEvents: events.filter((event) => context.relevantPriorEventIds.includes(event.id)).map(compactEvent),
             recentHistory: events.slice(0, 5).map(compactEvent),
-            relationshipContext: context
+            relationshipContext: context,
+            fallbackShape: fallback
           })
         }
       ]
     })
   });
-  if (!response.ok) return '';
+  if (!response.ok) return null;
   const payload = await response.json().catch(() => null);
-  return normalizeAssessmentText(String(payload?.choices?.[0]?.message?.content || ''));
+  return parseAssessmentJson(String(payload?.choices?.[0]?.message?.content || ''), fallback);
 }
 
 export class DetectionRoutes {
@@ -323,11 +511,12 @@ export class DetectionRoutes {
       const recent = await this.getRecentTokenEvents(chain, address, pair, 5);
       const tokenName = recent.token?.tokenSymbol || recent.token?.tokenName || recent.events[0]?.token.ticker || 'This token';
       const context = classifyEventRelationship(recent.events);
-      const modelText = await modelAssessment(tokenName, recent.events, context).catch(() => '');
+      const fallback = localAssessment(tokenName, recent.events, context);
+      const modelResult = await modelAssessment(tokenName, recent.events, context, fallback).catch(() => null);
       const body: DetectionTokenAiAssessmentResponse = {
         ...recent,
-        assessment: modelText || localAssessment(tokenName, recent.events, context),
-        source: modelText ? 'model' : 'local',
+        assessment: modelResult || fallback,
+        source: modelResult ? 'model' : 'local',
         context
       };
       this.cacheResponse(cacheKey, body, TOKEN_ASSESSMENT_CACHE_TTL_MS);
