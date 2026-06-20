@@ -1,5 +1,4 @@
-import type { LabelResponse, ScannerResponse, WalletEntry } from '../../shared/insightx';
-import { normalizePercentValue } from './format';
+import type { AddressDetails, AddressMetadata, ClusterData, TokenHolder } from '../../shared/bubblemaps';
 
 export function endpointData<T>(result?: { status: string; data: T | null }) {
   return result?.status === 'available' ? result.data : null;
@@ -13,52 +12,115 @@ export function walletAddress(entry: unknown) {
 
 export function walletBalance(entry: unknown) {
   const row = entry as Record<string, unknown>;
-  return Number(row?.balance ?? row?.amount ?? row?.token_balance);
+  const holder = row?.holder_data as Record<string, unknown> | undefined;
+  return Number(holder?.amount ?? row?.balance ?? row?.amount ?? row?.token_balance);
 }
 
 export function supplyPercentField(entry: unknown) {
   const row = entry as Record<string, unknown>;
-  return row?.percentage ?? row?.pct ?? row?.supply_pct ?? row?.total_pct;
+  const holder = row?.holder_data as Record<string, unknown> | undefined;
+  const value = holder?.share ?? row?.share ?? row?.percentage ?? row?.pct ?? row?.supply_pct ?? row?.total_pct;
+  return typeof value === 'number' && value > 0 && value <= 1 ? value * 100 : value;
 }
 
-export function clusterMembers(cluster: unknown): WalletEntry[] {
+function medianTotal(totals: number[]) {
+  if (!totals.length) return null;
+  return totals.sort((left, right) => left - right)[Math.floor(totals.length / 2)];
+}
+
+function shareToPercent(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
+}
+
+function holderImpliedTotal(holder: unknown) {
+  const amount = walletBalance(holder);
+  const row = holder as Record<string, unknown>;
+  const holderData = row?.holder_data as Record<string, unknown> | undefined;
+  const share = Number(holderData?.share ?? row?.share);
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(share) || share <= 0) return null;
+  return share <= 1 ? amount / share : amount / (share / 100);
+}
+
+function clusterImpliedTotal(cluster: ClusterData, shareScale: 'fraction' | 'percent') {
+  const amount = Number(cluster.amount);
+  const share = Number(cluster.share);
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(share) || share <= 0) return null;
+  return shareScale === 'fraction' ? amount / share : amount / (share / 100);
+}
+
+export function inferredTotalSupply(clusters: unknown, holders: unknown[] = []) {
+  const holderTotals = holders
+    .map(holderImpliedTotal)
+    .filter((value): value is number => Boolean(value));
+  const holderTotal = medianTotal(holderTotals);
+  if (holderTotal) return holderTotal;
+
+  const rows = clusterList(clusters);
+  const percentTotals = rows
+    .map((cluster) => clusterImpliedTotal(cluster, 'percent'))
+    .filter((value): value is number => Boolean(value));
+  const fractionTotals = rows
+    .filter((cluster) => Number(cluster.share) > 0 && Number(cluster.share) <= 1)
+    .map((cluster) => clusterImpliedTotal(cluster, 'fraction'))
+    .filter((value): value is number => Boolean(value));
+  return medianTotal(fractionTotals.length ? fractionTotals : percentTotals);
+}
+
+export function holderSupplyPercent(holder: unknown, totalSupply: number | null): number | null {
+  const amount = walletBalance(holder);
+  if (totalSupply && Number.isFinite(amount) && amount >= 0) {
+    return (amount / totalSupply) * 100;
+  }
+  const fallback = supplyPercentField(holder);
+  return typeof fallback === 'number' && Number.isFinite(fallback) ? fallback : null;
+}
+
+export function clusterSupplyPercent(cluster: ClusterData, totalSupply: number | null) {
+  const amount = Number(cluster.amount);
+  if (totalSupply && Number.isFinite(amount) && amount >= 0 && Number(cluster.share) > 1) {
+    return (amount / totalSupply) * 100;
+  }
+  return shareToPercent(cluster.share);
+}
+
+export function clusterMembers(cluster: unknown): TokenHolder[] {
   const row = cluster as Record<string, unknown>;
-  if (Array.isArray(row?.members)) return row.members as WalletEntry[];
-  if (Array.isArray(row?.wallets)) return row.wallets as WalletEntry[];
-  if (Array.isArray(row?.cluster_addresses)) return row.cluster_addresses as WalletEntry[];
-  if (Array.isArray(row?.addresses)) return row.addresses as WalletEntry[];
-  if (Array.isArray(row?.holders)) return row.holders as WalletEntry[];
+  if (Array.isArray(row?.members)) return row.members as TokenHolder[];
+  if (Array.isArray(row?.wallets)) return row.wallets as TokenHolder[];
+  if (Array.isArray(row?.cluster_addresses)) return row.cluster_addresses as TokenHolder[];
+  if (Array.isArray(row?.addresses)) return row.addresses as TokenHolder[];
+  if (Array.isArray(row?.holders)) {
+    return row.holders.map((holder) => typeof holder === 'string' ? {
+      address: holder,
+      holder_data: { amount: 0, rank: 0, share: 0 }
+    } : holder) as TokenHolder[];
+  }
   return [];
 }
 
-export function clusterList(data: unknown): unknown[] {
+export function clusterList(data: unknown): ClusterData[] {
   const payload = data as Record<string, unknown>;
   if (!payload) return [];
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload.clusters)) return payload.clusters;
-  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload)) return payload as ClusterData[];
+  if (Array.isArray(payload.clusters)) return payload.clusters as ClusterData[];
+  if (Array.isArray(payload.data)) return payload.data as ClusterData[];
   return [];
 }
 
-export function labelMap(labels: LabelResponse[] | null) {
-  const map = new Map<string, LabelResponse>();
-  for (const label of labels || []) {
-    if (label.address) map.set(label.address.toLowerCase(), label);
+export function labelMap(rows: Array<TokenHolder | AddressMetadata> | null) {
+  const map = new Map<string, AddressMetadata>();
+  for (const row of rows || []) {
+    const address = row.address?.toLowerCase();
+    const addressDetails = 'address_details' in row ? row.address_details : null;
+    if (address && addressDetails) map.set(address, { address: row.address, address_details: addressDetails as AddressDetails });
   }
   return map;
 }
 
-export function collectLabels(data: unknown): LabelResponse[] {
-  if (Array.isArray(data)) return data as LabelResponse[];
-  const payload = data as Record<string, unknown>;
-  if (Array.isArray(payload?.labels)) return payload.labels as LabelResponse[];
-  if (Array.isArray(payload?.data)) return payload.data as LabelResponse[];
-  if (Array.isArray(payload?.items)) return payload.items as LabelResponse[];
-  return [];
-}
-
-export function enrichWalletRows(rows: WalletEntry[] = [], labels: Map<string, LabelResponse>) {
-  const unique = new Map<string, WalletEntry>();
+export function enrichWalletRows(rows: TokenHolder[] = [], labels: Map<string, AddressMetadata>) {
+  const unique = new Map<string, TokenHolder>();
   for (const row of rows) {
     const address = walletAddress(row);
     if (!address) continue;
@@ -71,65 +133,21 @@ export function enrichWalletRows(rows: WalletEntry[] = [], labels: Map<string, L
         ...existing,
         ...row,
         address,
-        label: label?.label || row.label,
-        tags: label?.tags || row.tags,
-        smart_contract: label?.smart_contract ?? row.smart_contract
+        address_details: row.address_details || label?.address_details || null
       });
     }
   }
   return [...unique.values()];
 }
 
-export function creatorSupplyShare(scanner: ScannerResponse | null, fallback?: unknown) {
-  const advanced = scanner?.results?.advanced as Record<string, unknown> | undefined;
-  const creator = advanced?.creator as Record<string, unknown> | undefined;
-  const creatorBalance = Number(creator?.balance);
-  const totalSupply = Number(scanner?.token?.total_supply);
-  if (Number.isFinite(creatorBalance) && creatorBalance >= 0 && Number.isFinite(totalSupply) && totalSupply > 0) {
-    return (creatorBalance / totalSupply) * 100;
-  }
-  return normalizePercentValue(fallback);
-}
-
-export function clusterSupplyBalance(clusters: unknown, totalSupply?: number | null, fallback?: unknown) {
-  const seen = new Set<string>();
+export function clusterSupplyBalance(clusters: unknown) {
   const total = clusterList(clusters).reduce<number>((sum, cluster) => {
-    const members = clusterMembers(cluster);
-    const memberTotal = members.reduce<number>((memberSum, member) => {
-      const address = walletAddress(member).toLowerCase();
-      if (address && seen.has(address)) return memberSum;
-      if (address) seen.add(address);
-      const balance = walletBalance(member);
-      return Number.isFinite(balance) && balance > 0 ? memberSum + balance : memberSum;
-    }, 0);
-    if (memberTotal > 0) return sum + memberTotal;
-    const directBalance = walletBalance(cluster);
-    return Number.isFinite(directBalance) && directBalance > 0 ? sum + directBalance : sum;
+    const amount = Number(cluster.amount);
+    return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
   }, 0);
-
-  const fallbackPercent = normalizePercentValue(fallback);
-  const supply = Number(totalSupply);
-  if (Number.isFinite(supply) && supply > 0 && fallbackPercent !== null) {
-    const fallbackBalance = (supply * fallbackPercent) / 100;
-    return total > 0 ? Math.max(total, fallbackBalance) : fallbackBalance;
-  }
   return total > 0 ? total : null;
 }
 
-export function inferSupplyFromClusters(clusters: unknown) {
-  const candidates: number[] = [];
-  for (const cluster of clusterList(clusters)) {
-    for (const source of [cluster, ...clusterMembers(cluster)]) {
-      const balance = walletBalance(source);
-      const percent = normalizePercentValue(supplyPercentField(source));
-      if (Number.isFinite(balance) && balance > 0 && percent && percent > 0) {
-        const inferred = balance / (percent / 100);
-        if (Number.isFinite(inferred) && inferred >= balance) candidates.push(inferred);
-      }
-    }
-  }
-  if (!candidates.length) return null;
-  const sorted = candidates.sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+export function largestCluster(clusters: unknown) {
+  return clusterList(clusters).slice().sort((left, right) => right.share - left.share)[0] || null;
 }

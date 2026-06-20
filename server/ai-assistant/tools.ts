@@ -14,6 +14,10 @@ export const ASSISTANT_TOOL_NAMES = [
   'explain_detection_event_type',
   'compare_detection_events',
   'run_safe_scan',
+  'get_safe_scan_brief',
+  'get_safe_scan_holders',
+  'get_safe_scan_clusters',
+  'explain_safe_scan_metric',
   'prepare_alert_setup',
   'get_smart_alert_status',
   'open_token_details'
@@ -41,6 +45,7 @@ export type AssistantToolArgs = {
   chain?: string;
   query?: string;
   eventType?: string;
+  metricName?: string;
   severity?: DetectionSeverity | 'all';
   sentiment?: DetectionSentiment | 'all';
   responseStyle?: 'brief' | 'detailed';
@@ -71,6 +76,11 @@ const detectionProperties = {
     enum: ['bullish', 'bearish', 'neutral', 'all'],
     description: 'Sentiment filter when the user asks for bullish, bearish, or neutral detections.'
   }
+};
+
+const safeScanProperties = {
+  ...optionalScopeProperties,
+  metricName: stringParam('Safe Scan metric name such as Bubblemaps score, Gini, HHI, Nakamoto, largest holder, largest cluster, or supply exposure.')
 };
 
 const schema = (properties: Record<string, unknown>, required: string[] = []): AssistantToolSchema => ({
@@ -148,8 +158,32 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
   {
     name: 'run_safe_scan',
     safety: 'read',
-    description: 'Use when the user asks about rug risk, scam risk, honeypot risk, liquidity locks, holder concentration, bundle risk, creator risk, or token safety.',
+    description: 'Backward-compatible Safe Scan entry point. Use get_safe_scan_brief for most Safe Scan, token safety, holder concentration, and Bubblemaps risk questions.',
     parameters: schema(optionalScopeProperties)
+  },
+  {
+    name: 'get_safe_scan_brief',
+    safety: 'read',
+    description: 'Use when the user asks for Safe Scan results, token safety, rug/scam risk, Bubblemaps score, holder concentration, supply exposure, decentralization, or whether a token looks safe.',
+    parameters: schema(safeScanProperties)
+  },
+  {
+    name: 'get_safe_scan_holders',
+    safety: 'read',
+    description: 'Use when the user asks who holds the token, top holders, largest holder, holder concentration, whale wallets, CEX/DEX/contract holder exposure, or holder table details.',
+    parameters: schema(safeScanProperties)
+  },
+  {
+    name: 'get_safe_scan_clusters',
+    safety: 'read',
+    description: 'Use when the user asks about Bubblemaps clusters, linked wallets, largest cluster, connected holders, wallet relationship graph, or whether holders are connected.',
+    parameters: schema(safeScanProperties)
+  },
+  {
+    name: 'explain_safe_scan_metric',
+    safety: 'read',
+    description: 'Use when the user asks what a Safe Scan or Bubblemaps metric means, such as score, Gini, HHI, Nakamoto, supply exposure, bundles, largest holder, or largest cluster.',
+    parameters: schema(safeScanProperties)
   },
   {
     name: 'get_wallet_deep_brief',
@@ -211,6 +245,7 @@ export function validateAssistantToolArgs(value: unknown): AssistantToolArgs {
   const chain = cleanString(raw.chain, 40);
   const query = cleanString(raw.query, 160);
   const eventType = cleanString(raw.eventType, 80);
+  const metricName = cleanString(raw.metricName, 80);
   const severity = enumValue(raw.severity, ['critical', 'high', 'medium', 'low', 'all'] as const);
   const sentiment = enumValue(raw.sentiment, ['bullish', 'bearish', 'neutral', 'all'] as const);
   const responseStyle = enumValue(raw.responseStyle, ['brief', 'detailed'] as const);
@@ -219,6 +254,7 @@ export function validateAssistantToolArgs(value: unknown): AssistantToolArgs {
   if (chain) args.chain = chain;
   if (query) args.query = query;
   if (eventType) args.eventType = eventType;
+  if (metricName) args.metricName = metricName;
   if (severity) args.severity = severity;
   if (sentiment) args.sentiment = sentiment;
   if (responseStyle) args.responseStyle = responseStyle;

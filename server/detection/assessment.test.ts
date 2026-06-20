@@ -57,6 +57,17 @@ describe('Detection AI assessment context', () => {
     expect(assessment.marketBias).toBe('Bullish / Unconfirmed');
     expect(assessment.invalidation).toContain('liquidity thinning');
     expect(assessment.supportingSignals).toContain('+6.85% 24h price change');
+    expect(assessment.supportingSignals.join(' ')).not.toMatch(/\$|net flow/i);
+  });
+
+  it('describes DEX flow without showing a flow figure', () => {
+    const events = [
+      event({ metrics: { volume24h: 100000, liquidity: 200000, marketCap: 1000000, priceChange24h: 0, netFlow: 12 } })
+    ];
+    const assessment = localAssessment('TEST', events, classifyEventRelationship(events));
+
+    expect(assessment.supportingSignals).toContain('Positive DEX flow');
+    expect(assessment.supportingSignals.join(' ')).not.toMatch(/net flow|\+12/i);
   });
 
   it('keeps market bias tied to the latest event when history is mixed', () => {
@@ -107,6 +118,23 @@ describe('Detection AI assessment context', () => {
 
     expect(parsed?.marketBias).toBe(fallback.marketBias);
     expect(parsed?.invalidation).toBe(fallback.invalidation);
+    expect(parsed?.supportingSignals).toEqual(fallback.supportingSignals);
+  });
+
+  it('removes net flow figures from parsed model text', () => {
+    const fallback = localAssessment('TEST', [event({})], classifyEventRelationship([event({})]));
+    const parsed = parseAssessmentJson(JSON.stringify({
+      state: 'Accumulation',
+      sequenceLabel: '1-event sequence',
+      summary: 'Accumulation is supported by a positive net flow of +$21 while price structure remains constructive. Confirmation still depends on liquidity holding and buyers continuing to absorb supply.',
+      marketBias: 'Bullish',
+      invalidation: 'anything',
+      supportingSignals: ['+$21 net flow'],
+      watchFor: ['anything']
+    }), fallback);
+
+    expect(parsed?.summary).toContain('positive DEX flow');
+    expect(parsed?.summary).not.toMatch(/\+\$21|net flow/i);
     expect(parsed?.supportingSignals).toEqual(fallback.supportingSignals);
   });
 });

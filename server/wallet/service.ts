@@ -1,5 +1,5 @@
 import { readEnv } from '../env';
-import { TtlCache } from '../insightx/cache';
+import { TtlCache } from '../shared/cache';
 
 type WalletChain = 'All Chains' | 'Ethereum' | 'Solana' | 'Base' | 'BSC' | 'Arbitrum' | 'Optimism' | 'Polygon' | 'Avalanche';
 type EvmWalletChain = Exclude<WalletChain, 'All Chains' | 'Solana'>;

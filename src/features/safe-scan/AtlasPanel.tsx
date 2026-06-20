@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from 'd3-force';
 import { Copy, Network } from 'lucide-react';
-import type { AtlasSnapshot } from '../../shared/insightx';
-import { formatCompact, formatNumber, formatPercent, shortenAddress } from './format';
-import { clusterList, clusterMembers, clusterSupplyBalance, supplyPercentField, walletAddress } from './safe-scan-data';
+import type { TokenMap } from '../../shared/bubblemaps';
+import { formatCompact, formatNumber, formatPercentPoints, shortenAddress } from './format';
+import { clusterList, clusterMembers, clusterSupplyBalance, holderSupplyPercent, inferredTotalSupply, walletAddress } from './safe-scan-data';
 import { Card, EmptyBlock, SectionHeader, type LabelMap } from './ui';
 
 const atlasPalette = ['#B02CFF', '#18C8FF', '#F97316', '#FFE600', '#12D69E', '#EF4BFF', '#6F8CFF', '#FF4FA3', '#A855F7', '#22D3EE'];
@@ -69,49 +69,39 @@ function hashString(value: string) {
   return hash;
 }
 
-function graphRows(atlas: AtlasSnapshot | null, key: 'nodes' | 'holders' | 'links' | 'edges') {
-  const direct = atlas?.[key];
-  if (Array.isArray(direct)) return direct;
-  const graph = atlas?.graph;
-  if (graph && typeof graph === 'object' && key in graph) {
-    const nested = (graph as Record<string, unknown>)[key];
-    return Array.isArray(nested) ? nested : [];
-  }
-  return [];
+function detailsTags(details: unknown) {
+  const row = details as Record<string, unknown> | null | undefined;
+  return [
+    row?.is_cex ? 'CEX' : '',
+    row?.is_dex ? 'DEX' : '',
+    row?.is_contract ? 'Contract' : '',
+    row?.is_supernode ? 'Supernode' : ''
+  ].filter(Boolean);
 }
 
-function readAtlasHolders(atlas: AtlasSnapshot | null): HolderNode[] {
-  const rows = graphRows(atlas, 'holders').length ? graphRows(atlas, 'holders') : graphRows(atlas, 'nodes');
-  return rows.slice(0, 250).map((value, index) => {
-    const row = value as Record<string, unknown>;
-    const rawId = Number(row.id);
-    const address = String(row.address || row.wallet || row.owner || row.id || index);
-    const tags = Array.isArray(row.tags) ? row.tags.filter(Boolean).map(String) : [];
+function readMapHolders(map: TokenMap | null): HolderNode[] {
+  const rows = map?.nodes?.top_holders || [];
+  return rows.slice(0, 250).map((row, index) => {
     return {
-      id: Number.isFinite(rawId) ? rawId : index,
+      id: index,
       rank: index + 1,
-      address,
-      label: typeof row.label === 'string' ? row.label : typeof row.name === 'string' ? row.name : null,
-      tags
+      address: row.address,
+      label: row.address_details?.label || null,
+      tags: detailsTags(row.address_details)
     };
   });
 }
 
-function readAtlasLinks(atlas: AtlasSnapshot | null): AtlasLink[] {
-  const direct = graphRows(atlas, 'links').length ? graphRows(atlas, 'links') : graphRows(atlas, 'edges');
-  const relationships = Array.isArray(atlas?.relationships)
-    ? atlas.relationships.flatMap((relationship) => {
-      const links = (relationship as Record<string, unknown>).links;
-      return Array.isArray(links) ? links : [];
-    })
-    : [];
-  return [...direct, ...relationships].slice(0, 1200).map((value, index) => {
-    const row = value as Record<string, unknown>;
+function readMapLinks(map: TokenMap | null, holders: HolderNode[]): AtlasLink[] {
+  const idByAddress = new Map(holders.map((holder) => [holder.address.toLowerCase(), holder.id]));
+  return (map?.relationships || []).slice(0, 1200).map((row, index) => {
+    const source = idByAddress.get(row.from_address.toLowerCase());
+    const target = idByAddress.get(row.to_address.toLowerCase());
     return {
-      id: `${row.source ?? row.from}-${row.target ?? row.to}-${index}`,
-      source: Number(row.source ?? row.from ?? row.source_id),
-      target: Number(row.target ?? row.to ?? row.target_id),
-      strength: Number(row.forward || 0) + Number(row.backward || 0) || Number(row.strength || row.weight || 1)
+      id: `${row.from_address}-${row.to_address}-${index}`,
+      source: Number(source),
+      target: Number(target),
+      strength: Math.max(1, Math.log10(Math.max(1, row.data.total_transfers)) + Math.log10(Math.max(1, row.data.total_value)) * 0.2)
     };
   }).filter((link) => Number.isFinite(link.source) && Number.isFinite(link.target));
 }
@@ -124,7 +114,7 @@ function syntheticHolders(clusters: unknown, labels: LabelMap): HolderNode[] {
         id: clusterIndex * 1000 + memberIndex,
         rank: clusterIndex * 28 + memberIndex + 1,
         address,
-        label: labels.get(address.toLowerCase())?.label || null,
+        label: labels.get(address.toLowerCase())?.address_details.label || null,
         tags: []
       };
     })
@@ -296,17 +286,14 @@ function buildVisualGroups(clusters: unknown) {
   return groupByAddress;
 }
 
-function memberShare(member: unknown) {
-  const percent = supplyPercentField(member);
-  return formatPercent(percent, 'N/A');
+function memberShare(member: unknown, totalSupply: number | null) {
+  return formatPercentPoints(holderSupplyPercent(member, totalSupply), 'N/A');
 }
 
-export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }: {
-  atlas: AtlasSnapshot | null;
-  timestamps?: unknown;
+export function AtlasPanel({ map, clusters, labels }: {
+  map: TokenMap | null;
   clusters: unknown;
   labels: LabelMap;
-  totalSupply?: number | null;
 }) {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const [chartSize, setChartSize] = useState({ width: 1200, height: 760 });
@@ -318,14 +305,15 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
   const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ pointerId: number; x: number; y: number; viewX: number; viewY: number } | null>(null);
 
-  const atlasHolders = useMemo(() => readAtlasHolders(atlas), [atlas]);
-  const holders = useMemo(() => atlasHolders.length ? atlasHolders : syntheticHolders(clusters, labels), [atlasHolders, clusters, labels]);
+  const mapHolders = useMemo(() => readMapHolders(map), [map]);
+  const holders = useMemo(() => mapHolders.length ? mapHolders : syntheticHolders(clusters, labels), [mapHolders, clusters, labels]);
   const links = useMemo(() => {
-    const atlasLinks = readAtlasLinks(atlas);
-    return atlasLinks.length ? atlasLinks : syntheticLinks(clusters);
-  }, [atlas, clusters]);
+    const mapLinks = readMapLinks(map, holders);
+    return mapLinks.length ? mapLinks : syntheticLinks(clusters);
+  }, [map, holders, clusters]);
   const layout = useMemo(() => buildAtlasLayout(holders, links), [holders, links]);
   const clustersRows = useMemo(() => clusterList(clusters), [clusters]);
+  const totalSupply = useMemo(() => inferredTotalSupply(clustersRows, holders), [clustersRows, holders]);
   const visualGroups = useMemo(() => buildVisualGroups(clusters), [clusters]);
   const hasRelatedGroups = visualGroups.size > 0;
   const displayNodes = useMemo(() => layout.nodes.map((node) => {
@@ -394,12 +382,7 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
   const visualClusterCount = hasRelatedGroups
     ? new Set(displayNodes.filter((node) => node.visualGroupIndex !== null).map((node) => node.visualGroup)).size
     : layout.components.filter((component) => component.size > 1).length;
-  const timestampList = Array.isArray(timestamps) ? timestamps : Array.isArray((timestamps as Record<string, unknown> | undefined)?.timestamps) ? (timestamps as { timestamps: unknown[] }).timestamps : [];
-  const snapshot = atlas?.snapshot as Record<string, unknown> | undefined;
-  const snapshotTime = snapshot?.timestamp || snapshot?.created_at;
-  const token = atlas?.token as Record<string, unknown> | undefined;
-  const network = atlas?.network as Record<string, unknown> | undefined;
-  const tokenLabel = [token?.symbol, network?.name].filter(Boolean).join(' on ');
+  const snapshotTime = map?.metadata.dt_update || map?.metadata.ts_update;
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -453,8 +436,8 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
     <Card>
       <SectionHeader
         icon={<Network size={19} />}
-        title="Holder's Graph"
-        eyebrow={tokenLabel || 'Openverse on Solana'}
+        title="Bubblemaps Graph"
+        eyebrow="Holder relationships"
         action={snapshotTime ? <span className="snapshot-pill">Snapshot {String(snapshotTime)}</span> : null}
       />
       <div className="atlas-layout">
@@ -476,7 +459,7 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
                 viewBox={`0 0 ${viewport.width} ${viewport.height}`}
                 className={`atlas-svg ${dragStart ? 'dragging' : ''}`}
                 role="img"
-                aria-label="Atlas wallet relationship bubble map"
+                aria-label="Bubblemaps wallet relationship bubble map"
                 onClick={() => setSelectedNodeId(null)}
                 onPointerDown={(event) => {
                   event.currentTarget.setPointerCapture(event.pointerId);
@@ -568,13 +551,13 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
               ) : null}
             </>
           ) : (
-            <EmptyBlock title="Atlas snapshot unavailable" body="No graph nodes for this token." />
+            <EmptyBlock title="Graph unavailable" body="No graph nodes for this token." />
           )}
         </div>
         <div className="cluster-list">
           <div className="cluster-list-head">
             <strong>{clustersRows.length ? 'Cluster List' : 'Address List'}</strong>
-            <span>{clustersRows.length ? 'Expand clusters to inspect wallet members' : 'Ranked holders and cluster colors'}</span>
+            <span>{clustersRows.length ? 'Open a cluster to view wallets' : 'Ranked holders and cluster colors'}</span>
           </div>
           <div className="cluster-list-scroll">
             {clustersRows.length ? clusterBrowserItems.slice(0, 60).map((item, index) => {
@@ -603,7 +586,7 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
                       <strong>{item.name}</strong>
                       <small>{formatNumber(members.length)} wallets</small>
                     </span>
-                    <b>{item.cluster ? `${formatCompact(clusterSupplyBalance([item.cluster], totalSupply))} supply` : 'Mixed'}</b>
+                    <b>{item.cluster ? `${formatCompact(clusterSupplyBalance([item.cluster]))} tokens` : 'Mixed'}</b>
                     <em>{expanded ? 'Close' : 'View'}</em>
                   </button>
                   {expanded ? (
@@ -633,8 +616,8 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
                             onMouseLeave={() => setHoveredNodeId(null)}
                           >
                             <span>{node ? `#${node.rank}` : `#${memberIndex + 1}`}</span>
-                            <strong>{label?.label || shortenAddress(address)}</strong>
-                            <b>{memberShare(member)}</b>
+                            <strong>{label?.address_details.label || shortenAddress(address)}</strong>
+                            <b>{memberShare(member, totalSupply)}</b>
                           </button>
                         );
                       })}
@@ -656,7 +639,7 @@ export function AtlasPanel({ atlas, timestamps, clusters, labels, totalSupply }:
           <div className="atlas-stats">
             <div><strong>{formatNumber(holders.length)}</strong><span>Nodes</span></div>
             <div><strong>{formatNumber(links.length)}</strong><span>Links</span></div>
-            <div><strong>{formatNumber(timestampList.length)}</strong><span>History</span></div>
+            <div><strong>{formatNumber(map?.nodes?.time_nodes?.length || 0)}</strong><span>Time nodes</span></div>
           </div>
         </div>
       </div>

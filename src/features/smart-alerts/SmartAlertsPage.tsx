@@ -816,9 +816,6 @@ export const SmartAlerts: React.FC = () => {
             <div className="smart-alert-setup-panel">
                 <div className="smart-alert-setup-copy">
                     <div>Select token for this alert</div>
-                    <p>
-                        Paste the token contract address below, then search to select the token you want to create an alert for.
-                    </p>
                 </div>
                 <div className="smart-alert-search-row">
                     <div className="smart-alert-search-control">
@@ -901,18 +898,18 @@ export const SmartAlerts: React.FC = () => {
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
                 <div className="flex flex-col gap-6 lg:col-span-2">
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3">
                         <h3 className="flex items-center gap-2 text-lg font-bold text-text-light">
                             <Bell size={18} className="text-primary-green" />
                             Alert Types
                         </h3>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                             {BASIC_ALERT_TYPES.map((item) => (
                                 <button
                                     key={item.id}
                                     type="button"
                                     onClick={() => openSetupModal(item)}
-                                    className={`green-corner-card group cursor-pointer rounded-xl border p-5 text-left transition-colors hover:bg-card-hover ${activeTypeKey === item.id ? 'border-primary-green/40 bg-card-hover' : 'border-border bg-card hover:border-text-dark/50'}`}
+                                    className={`green-corner-card smart-alert-type-card group cursor-pointer rounded-xl border p-5 text-left transition-colors hover:bg-card-hover ${activeTypeKey === item.id ? 'border-primary-green/40 bg-card-hover' : 'border-border bg-card hover:border-text-dark/50'}`}
                                 >
                                     <div className="flex items-start gap-4">
                                         <div className="rounded-lg border border-border/50 bg-main p-3 text-primary-green">

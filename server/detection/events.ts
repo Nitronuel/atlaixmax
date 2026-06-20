@@ -23,10 +23,16 @@ export function shouldCreateDetectionEvent(classification: FinalClassification, 
 }
 
 export function buildDetectionEvent(record: TokenRecord, classification: FinalClassification, classificationId: string): DetectionEvent {
-  const raw = record.snapshot.raw as { logo?: string | null; overview?: { logo?: string } } | null;
+  const raw = record.snapshot.raw as { logo?: string | null; overview?: { logo?: string; dexFlowUsd24h?: number } } | null;
   const volume24h = record.snapshot.volume24h || 0;
   const liquidity = record.snapshot.liquidityUsd || 0;
   const marketCap = record.snapshot.marketCap || 0;
+  const overviewNetFlow = Number(raw?.overview?.dexFlowUsd24h);
+  const totalTxns5m = record.snapshot.buys5m + record.snapshot.sells5m;
+  const estimatedBuyVolume5m = totalTxns5m > 0 ? record.snapshot.volume5m * (record.snapshot.buys5m / totalTxns5m) : record.snapshot.volume5m / 2;
+  const estimatedSellVolume5m = Math.max(0, record.snapshot.volume5m - estimatedBuyVolume5m);
+  const estimatedNetFlow5m = estimatedBuyVolume5m - estimatedSellVolume5m;
+  const netFlow = Number.isFinite(overviewNetFlow) && overviewNetFlow !== 0 ? overviewNetFlow : estimatedNetFlow5m;
 
   return {
     id: classificationId,
@@ -49,7 +55,7 @@ export function buildDetectionEvent(record: TokenRecord, classification: FinalCl
       liquidity,
       marketCap,
       priceChange24h: record.snapshot.priceChange24h,
-      netFlow: record.snapshot.buys5m - record.snapshot.sells5m
+      netFlow
     },
     classificationId,
     dedupeKey: dedupeKeyFor(record.token.tokenId, classification),

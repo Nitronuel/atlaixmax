@@ -1,5 +1,5 @@
 import { apiUrl } from '../../config';
-import type { InsightXNetwork, SafeScanReport } from '../../shared/insightx';
+import type { BubblemapsChain, BubblemapsScanReport } from '../../shared/bubblemaps';
 
 export type DexPairDetails = {
   chainId?: string;
@@ -52,8 +52,8 @@ export const TokenDetailsService = {
     return fetchJson<TokenDetailsResponse>(`/api/overview/token?${params.toString()}`);
   },
 
-  getInsightXReport(network: InsightXNetwork, address: string) {
-    const params = new URLSearchParams({ network, address });
-    return fetchJson<SafeScanReport>(`/api/insightx/report?${params.toString()}`);
+  getBubblemapsReport(chain: BubblemapsChain, address: string) {
+    const params = new URLSearchParams({ chain, address });
+    return fetchJson<BubblemapsScanReport>(`/api/bubblemaps/report?${params.toString()}`);
   }
 };

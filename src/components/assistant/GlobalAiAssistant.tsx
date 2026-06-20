@@ -393,7 +393,7 @@ const toolLabel = (tool?: string) => {
     if (tool === 'get_platform_updates') return 'Platform Update';
     if (tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return 'Detection';
     if (tool === 'dashboard_feed') return 'Live Alpha Feed';
-    if (tool === 'run_safe_scan') return 'Safe Scan';
+    if (tool === 'run_safe_scan' || tool?.startsWith('get_safe_scan_') || tool === 'explain_safe_scan_metric') return 'Safe Scan';
     if (tool === 'get_token_activity') return 'Activity';
     if (tool === 'get_smart_alert_status' || tool === 'alert_setup' || tool === 'alert_setup_needs_token') return 'Smart Alerts';
     if (tool === 'error') return 'Needs Attention';
@@ -403,7 +403,7 @@ const toolLabel = (tool?: string) => {
 const toolIcon = (tool?: string) => {
     if (tool === 'get_token_deep_brief') return <Activity size={14} />;
     if (tool === 'get_wallet_deep_brief') return <Wallet size={14} />;
-    if (tool === 'run_safe_scan') return <ShieldCheck size={14} />;
+    if (tool === 'run_safe_scan' || tool?.startsWith('get_safe_scan_') || tool === 'explain_safe_scan_metric') return <ShieldCheck size={14} />;
     if (tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return <Radar size={14} />;
     if (tool === 'get_smart_alert_status' || tool === 'alert_setup' || tool === 'alert_setup_needs_token') return <Bell size={14} />;
     if (tool === 'get_platform_updates') return <Radar size={14} />;
@@ -516,19 +516,25 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
     }
 
     if (pathname.startsWith('/safe-scan')) {
+        const scanAddress = searchParams.get('address') || '';
+        const scanChain = searchParams.get('chain') || searchParams.get('network') || '';
         return {
             title: 'Safe Scan',
-            subtitle: 'Risk workflow',
-            systemContext: 'The user is on the Safe Scan page. Help them reason about token safety, risk, and scanner workflows.',
+            subtitle: scanAddress ? `${shortAddress(scanAddress)}${scanChain ? ` on ${scanChain}` : ''}` : 'Risk workflow',
+            systemContext: scanAddress
+                ? `The user is on the Safe Scan page for token address: ${scanAddress}. Chain: ${scanChain || 'unknown'}. Use Safe Scan tools for questions about this scan, Bubblemaps score, holders, supply exposure, clusters, linked wallets, Gini, HHI, and Nakamoto.`
+                : 'The user is on the Safe Scan page. Help them reason about token safety, Bubblemaps score, holder concentration, clusters, and scanner workflows.',
             subjectKind: 'scan',
+            subjectAddress: scanAddress,
+            subjectChain: scanChain,
             module: 'safe-scan',
-            preferredTools: ['run_safe_scan', 'get_token_deep_brief', 'get_token_holders'],
+            preferredTools: ['get_safe_scan_brief', 'get_safe_scan_holders', 'get_safe_scan_clusters', 'explain_safe_scan_metric'],
             icon: <ShieldCheck size={18} />,
             prompts: [
-                'Help me run a Safe Scan',
-                'What risks should I check?',
-                'Explain token risk signals',
-                'How should I read scan results?'
+                scanAddress ? 'Explain this Safe Scan' : 'Help me run a Safe Scan',
+                'What holder risks should I check?',
+                'Explain the Bubblemaps score',
+                'Are the top holders connected?'
             ]
         };
     }
@@ -634,6 +640,14 @@ const buildAssistantRequestText = (text: string, context: RouteContext) => {
 
     if (context.subjectKind === 'detection' && context.subjectAddress && hasContextReference(trimmed)) {
         return `${trimmed} Token or detection query: ${context.subjectAddress}.`;
+    }
+
+    if (context.subjectKind === 'scan' && context.subjectAddress && hasContextReference(trimmed)) {
+        return [
+            trimmed,
+            `Safe Scan token address: ${context.subjectAddress}.`,
+            context.subjectChain ? `Chain: ${context.subjectChain}.` : ''
+        ].filter(Boolean).join(' ');
     }
 
     return trimmed;

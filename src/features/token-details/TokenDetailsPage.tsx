@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { IconType } from 'react-icons';
 import { SiDiscord, SiFacebook, SiFarcaster, SiGithub, SiGitbook, SiInstagram, SiLinktree, SiMedium, SiNotion, SiReddit, SiSubstack, SiTelegram, SiThreads, SiTiktok, SiX, SiYoutube } from 'react-icons/si';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import type { SafeScanReport, WalletEntry } from '../../shared/insightx';
-import { normalizeInsightXNetwork } from '../../shared/insightx';
+import type { BubblemapsScanReport, TokenHolder } from '../../shared/bubblemaps';
+import { normalizeBubblemapsChain } from '../../shared/bubblemaps';
 import { formatPercentValue, formatPrice, formatUsd } from '../overview/overview-utils';
 import { formatCompact, formatPercent } from '../safe-scan/format';
 import { supplyPercentField, walletAddress, walletBalance } from '../safe-scan/safe-scan-data';
@@ -26,11 +26,7 @@ function getAgeLabel(timestamp?: number) {
 }
 
 function getSafeScanChain(chain?: string) {
-  const normalized = (chain || '').toLowerCase();
-  if (normalized === 'solana') return 'sol';
-  if (normalized === 'ethereum') return 'eth';
-  if (normalized === 'bsc') return 'bsc';
-  return normalized || 'sol';
+  return normalizeBubblemapsChain(chain) || 'solana';
 }
 
 function getDexChartUrl(chain?: string, pairAddress?: string, theme: 'light' | 'dark' = 'dark') {
@@ -125,20 +121,21 @@ function changeAccent(value: unknown) {
   return numeric >= 0 ? 'positive' : 'negative';
 }
 
-function scannerTopHolders(report: SafeScanReport) {
-  const scanner = report.endpoints.scanner.data as { results?: { advanced?: Record<string, unknown> }; top_holders?: WalletEntry[] } | null;
-  const advanced = scanner?.results?.advanced;
-  const rows = advanced?.top_holders || scanner?.top_holders;
-  return Array.isArray(rows) ? rows as WalletEntry[] : [];
+function scannerTopHolders(report: BubblemapsScanReport) {
+  const rows = report.endpoints.holders.data || report.endpoints.map.data?.nodes?.top_holders || [];
+  return Array.isArray(rows) ? rows : [];
 }
 
 function getExplorerAddressUrl(chain: string, address: string) {
-  const normalized = normalizeInsightXNetwork(chain);
+  const normalized = normalizeBubblemapsChain(chain);
   if (!address) return '';
-  if (normalized === 'sol') return `https://solscan.io/account/${encodeURIComponent(address)}`;
+  if (normalized === 'solana') return `https://solscan.io/account/${encodeURIComponent(address)}`;
   if (normalized === 'eth') return `https://etherscan.io/address/${encodeURIComponent(address)}`;
   if (normalized === 'base') return `https://basescan.org/address/${encodeURIComponent(address)}`;
   if (normalized === 'bsc') return `https://bscscan.com/address/${encodeURIComponent(address)}`;
+  if (normalized === 'arbitrum') return `https://arbiscan.io/address/${encodeURIComponent(address)}`;
+  if (normalized === 'polygon') return `https://polygonscan.com/address/${encodeURIComponent(address)}`;
+  if (normalized === 'avalanche') return `https://snowtrace.io/address/${encodeURIComponent(address)}`;
   return '';
 }
 
@@ -156,7 +153,7 @@ export function TokenDetailsPage() {
   const [chartLoaded, setChartLoaded] = useState(false);
   const [chartExpanded, setChartExpanded] = useState(false);
   const [marketPanelTab, setMarketPanelTab] = useState<'activity' | 'holders'>('holders');
-  const [topHolders, setTopHolders] = useState<WalletEntry[]>([]);
+  const [topHolders, setTopHolders] = useState<TokenHolder[]>([]);
   const [holdersLoading, setHoldersLoading] = useState(false);
   const [holdersError, setHoldersError] = useState('');
   const [holdersExpanded, setHoldersExpanded] = useState(false);
@@ -220,7 +217,7 @@ export function TokenDetailsPage() {
   const imageUrl = pair?.info?.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(symbol)}&background=0f5132&color=fff`;
   const chartUrl = getDexChartUrl(pair?.chainId, pair?.pairAddress, chartTheme);
   const expandedChartUrl = getDexChartUrl(pair?.chainId, pair?.pairAddress, chartTheme);
-  const holderNetwork = normalizeInsightXNetwork(pair?.chainId || chain);
+  const holderNetwork = normalizeBubblemapsChain(pair?.chainId || chain);
   const externalLinks = useMemo(() => pair ? bestExternalLinks(pair) : [], [pair]);
   const visibleTopHolders = holdersExpanded ? topHolders : topHolders.slice(0, 10);
   const quickActions = [
@@ -267,7 +264,7 @@ export function TokenDetailsPage() {
     setHoldersError('');
     setHoldersExpanded(false);
 
-    TokenDetailsService.getInsightXReport(holderNetwork, tokenAddress)
+    TokenDetailsService.getBubblemapsReport(holderNetwork, tokenAddress)
       .then((report) => {
         if (cancelled) return;
         setTopHolders(scannerTopHolders(report));
@@ -463,7 +460,7 @@ export function TokenDetailsPage() {
                 {holdersLoading ? (
                   <div className="token-holder-empty">
                     <RefreshCw size={20} className="spin" />
-                    <span>Loading InsightX holders</span>
+                    <span>Loading Bubblemaps holders</span>
                   </div>
                 ) : holdersError ? (
                   <div className="token-holder-empty">{holdersError}</div>

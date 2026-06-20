@@ -1,66 +1,129 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, Shield } from 'lucide-react';
 import {
-  type AtlasSnapshot,
-  type BundlersResponse,
-  type DexMetrics,
-  type InsightXNetwork,
-  type InsidersResponse,
-  type SafeScanReport,
-  type ScannerResponse,
-  type SnipersResponse,
-  isLikelyInsightXAddress,
-  normalizeInsightXNetwork
-} from '../../shared/insightx';
+  type BubblemapsChain,
+  type BubblemapsScanReport,
+  type ClusterData,
+  type TokenMetrics,
+  getBubblemapsChainLabel,
+  isLikelyBubblemapsAddress,
+  normalizeBubblemapsChain
+} from '../../shared/bubblemaps';
 import { AtlasPanel } from './AtlasPanel';
-import { formatAge, formatCompact, formatCurrencyCompact, formatPercent, shortenAddress } from './format';
-import {
-  clusterSupplyBalance,
-  collectLabels,
-  creatorSupplyShare,
-  endpointData,
-  inferSupplyFromClusters,
-  labelMap
-} from './safe-scan-data';
-import { type DetectedTokenNetwork, type LiveTokenLiquidity, SafeScanService } from './safe-scan-service';
+import { formatCompact, formatNumber, formatPercent, formatPercentPoints, normalizePercentValue, shortenAddress } from './format';
+import { clusterSupplyPercent, endpointData, inferredTotalSupply, labelMap, largestCluster } from './safe-scan-data';
+import { type DetectedTokenNetwork, SafeScanService } from './safe-scan-service';
 import { SafeScanEmptyState } from './SafeScanEmptyState';
 import {
-  DrainRiskSummary,
-  LiquidityAndHoldersPanel,
-  LiquidityLockSummary,
-  ManipulationPanel,
-  ScannerPanel
+  ClusterRiskPanel,
+  HolderConcentrationPanel,
+  ScorePanel,
+  SupplyExposurePanel
 } from './SafeScanPanels';
-import { Card, MetricCard } from './ui';
+import { Card, MetricCard, SectionHeader } from './ui';
+
+function formatDate(value?: string | null) {
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
+
+function distributionRead(value: number) {
+  if (!Number.isFinite(value)) return 'an unavailable distribution profile';
+  const score = value > 0 && value <= 1 ? value * 100 : value;
+  if (score < 40) return 'a weak distribution profile';
+  if (score < 65) return 'a mixed distribution profile';
+  return 'a healthier distribution profile';
+}
+
+function holderControlRead(inequality: number, concentration: number, entityThreshold: number) {
+  if (Number.isFinite(entityThreshold) && entityThreshold <= 1) {
+    return 'One connected holder group appears large enough to cross the main control threshold, so users should treat the supply as dependent on a single dominant group.';
+  }
+  if (Number.isFinite(entityThreshold) && entityThreshold <= 3) {
+    return 'Only a few connected holder groups appear needed to reach the main control threshold, so ownership is still narrow.';
+  }
+  if (Number.isFinite(concentration) && concentration >= 0.3) {
+    return 'Holder control still looks concentrated, with a small group carrying much of the visible supply.';
+  }
+  if (Number.isFinite(inequality) && inequality >= 0.65) {
+    return 'Holder balances are uneven, so the map still deserves a concentration check.';
+  }
+  return 'Holder control looks more spread out than a tightly concentrated map.';
+}
+
+function bundleRead(value: number | null) {
+  if (value === null || value <= 0) return 'No material bundle exposure is visible.';
+  if (value >= 50) return `The bundle figure is ${formatPercent(value)}, a high share that can point to related launch wallets or coordinated holder groups.`;
+  if (value >= 15) return `The bundle figure is ${formatPercent(value)}, a meaningful share that users should read as possible related-wallet exposure.`;
+  return `The bundle figure is ${formatPercent(value)}, which keeps bundled-wallet exposure limited.`;
+}
+
+function clusterRead(cluster: ClusterData | null | undefined, share: number | null) {
+  if (!cluster) return 'No linked holder cluster was returned, so the scan cannot show a dominant connected wallet group.';
+  return `The largest visible cluster controls ${formatPercentPoints(share)} across ${formatNumber(cluster.holder_count)} holders, so those wallets should be read as one connected supply group.`;
+}
+
+function buildAiAssessment({
+  tokenLabel,
+  chainLabel,
+  metrics,
+  largest,
+  totalSupply
+}: {
+  tokenLabel: string;
+  chainLabel: string;
+  metrics: TokenMetrics | null;
+  largest?: ClusterData | null;
+  totalSupply: number | null;
+}) {
+  if (!metrics) {
+    return `Key read: ${tokenLabel} on ${chainLabel} does not have enough distribution data for a full holder-structure read. The scan can only use any returned bundle or cluster data, so users should treat the assessment as limited and non-predictive.`;
+  }
+
+  const score = Number(metrics.scores.bubblemaps_score);
+  const gini = Number(metrics.scores.gini_index);
+  const hhi = Number(metrics.scores.herfindahl_hirschman_index);
+  const nakamoto = Number(metrics.scores.nakamoto_coefficient);
+  const supply = metrics.supply_stats;
+  const largestClusterPercent = largest ? clusterSupplyPercent(largest, totalSupply) : null;
+  const bundlePercent = normalizePercentValue(supply.bundles);
+
+  return `Key read: ${tokenLabel} on ${chainLabel} has ${distributionRead(score)}, with ownership leaning toward connected-wallet concentration. ${holderControlRead(gini, hhi, nakamoto)} ${bundleRead(bundlePercent)} ${clusterRead(largest, largestClusterPercent)} This is a holder-structure read, not a price prediction.`;
+}
 
 export function SafeScanPage() {
   const [searchParams] = useState(() => new URLSearchParams(window.location.search));
   const [address, setAddress] = useState('');
-  const [network, setNetwork] = useState<InsightXNetwork>('sol');
+  const [chain, setChain] = useState<BubblemapsChain>('eth');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [report, setReport] = useState<SafeScanReport | null>(null);
-  const [liveLiquidity, setLiveLiquidity] = useState<LiveTokenLiquidity | null>(null);
-  const [liquidityLoading, setLiquidityLoading] = useState(false);
-  const [liquidityError, setLiquidityError] = useState<string | null>(null);
+  const [report, setReport] = useState<BubblemapsScanReport | null>(null);
   const [detectedNetwork, setDetectedNetwork] = useState<DetectedTokenNetwork | null>(null);
   const [detectingNetwork, setDetectingNetwork] = useState(false);
+  const [manualChainOverride, setManualChainOverride] = useState(false);
 
   const normalizedAddress = address.trim();
-  const addressSupported = !normalizedAddress || isLikelyInsightXAddress(normalizedAddress, network);
-  const scanner = endpointData<ScannerResponse>(report?.endpoints.scanner);
-  const overview = endpointData<DexMetrics>(report?.endpoints.overview);
-  const snipers = endpointData<SnipersResponse>(report?.endpoints.snipers);
-  const bundlers = endpointData<BundlersResponse>(report?.endpoints.bundlers);
-  const insiders = endpointData<InsidersResponse>(report?.endpoints.insiders);
-  const clusters = endpointData<unknown>(report?.endpoints.clusters);
-  const atlas = endpointData<AtlasSnapshot>(report?.endpoints.atlasLatest);
-  const atlasTimestamps = endpointData<unknown>(report?.endpoints.atlasTimestamps);
-  const labels = useMemo(() => labelMap(collectLabels(endpointData(report?.endpoints.labels))), [report]);
-  const inferredSupply = useMemo(() => inferSupplyFromClusters(clusters), [clusters]);
-  const tokenTotalSupply = Number(scanner?.token?.total_supply) > 0 ? Number(scanner?.token?.total_supply) : inferredSupply ?? undefined;
-  const detectedClusterBalance = clusterSupplyBalance(clusters, tokenTotalSupply, overview?.cluster_pct);
-  const clusterUsd = detectedClusterBalance !== null && liveLiquidity?.tokenPriceUsd ? detectedClusterBalance * liveLiquidity.tokenPriceUsd : null;
+  const addressSupported = !normalizedAddress || isLikelyBubblemapsAddress(normalizedAddress, chain);
+  const token = endpointData(report?.endpoints.token);
+  const metrics = endpointData(report?.endpoints.metrics);
+  const holders = endpointData(report?.endpoints.holders) || [];
+  const map = endpointData(report?.endpoints.map);
+  const clusters = map?.clusters || [];
+  const totalSupply = useMemo(() => inferredTotalSupply(clusters, [...(map?.nodes?.top_holders || []), ...holders]), [clusters, holders, map]);
+  const labels = useMemo(() => labelMap([...(map?.nodes?.top_holders || []), ...holders]), [holders, map]);
+  const topHolder = holders[0];
+  const largest = largestCluster(clusters);
+  const tokenLabel = token?.metadata.name || token?.metadata.symbol || 'This token';
+  const chainLabel = report ? getBubblemapsChainLabel(report.chain) : getBubblemapsChainLabel(chain);
+  const aiAssessment = report ? buildAiAssessment({
+    tokenLabel,
+    chainLabel,
+    metrics,
+    largest,
+    totalSupply
+  }) : '';
 
   useEffect(() => {
     if (!normalizedAddress || loading) {
@@ -69,68 +132,49 @@ export function SafeScanPage() {
       return;
     }
 
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       setDetectingNetwork(true);
       SafeScanService.detectTokenNetwork(normalizedAddress)
         .then((detection) => {
+          if (cancelled) return;
           setDetectedNetwork(detection);
-          if (detection && detection.network !== network) setNetwork(detection.network);
+          if (detection && detection.chain !== chain && !manualChainOverride) setChain(detection.chain);
         })
-        .catch(() => setDetectedNetwork(null))
-        .finally(() => setDetectingNetwork(false));
+        .catch(() => {
+          if (!cancelled) setDetectedNetwork(null);
+        })
+        .finally(() => {
+          if (!cancelled) setDetectingNetwork(false);
+        });
     }, 350);
-
-    return () => window.clearTimeout(timer);
-  }, [normalizedAddress, loading]);
-
-  useEffect(() => {
-    if (!report) {
-      setLiveLiquidity(null);
-      setLiquidityError(null);
-      setLiquidityLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLiquidityLoading(true);
-    setLiquidityError(null);
-    setLiveLiquidity(null);
-    SafeScanService.getLiveTokenLiquidity(report.network, report.address)
-      .then((liquidity) => {
-        if (!cancelled) setLiveLiquidity(liquidity);
-      })
-      .catch((nextError) => {
-        if (!cancelled) setLiquidityError(nextError instanceof Error ? nextError.message : 'Live liquidity is unavailable.');
-      })
-      .finally(() => {
-        if (!cancelled) setLiquidityLoading(false);
-      });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
-  }, [report]);
+  }, [normalizedAddress, loading, chain, manualChainOverride]);
 
   useEffect(() => {
     const queryAddress = searchParams.get('address')?.trim() || '';
-    const queryNetwork = normalizeInsightXNetwork(searchParams.get('chain')) || 'sol';
+    const queryChain = normalizeBubblemapsChain(searchParams.get('chain') || searchParams.get('network')) || 'eth';
     if (!queryAddress) return;
 
     setAddress(queryAddress);
-    setNetwork(queryNetwork);
-    if (searchParams.get('autoScan') === '1' && isLikelyInsightXAddress(queryAddress, queryNetwork)) {
-      void runScan(queryNetwork, queryAddress);
+    setChain(queryChain);
+    if (searchParams.get('autoScan') === '1' && isLikelyBubblemapsAddress(queryAddress, queryChain)) {
+      void runScan(queryChain, queryAddress);
     }
   }, []);
 
-  async function runScan(scanNetwork = network, scanAddress = normalizedAddress) {
-    if (!scanAddress || !isLikelyInsightXAddress(scanAddress, scanNetwork)) return;
+  async function runScan(scanChain = chain, scanAddress = normalizedAddress) {
+    if (!scanAddress || !isLikelyBubblemapsAddress(scanAddress, scanChain)) return;
     setLoading(true);
     setError(null);
     try {
-      setReport(await SafeScanService.scanToken(scanNetwork, scanAddress));
+      setReport(await SafeScanService.scanToken(scanChain, scanAddress));
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Safety Scan failed.');
+      setError(nextError instanceof Error ? nextError.message : 'Bubblemaps scan failed.');
     } finally {
       setLoading(false);
     }
@@ -139,26 +183,31 @@ export function SafeScanPage() {
   function reset() {
     setReport(null);
     setError(null);
-    setLiveLiquidity(null);
-    setLiquidityError(null);
     setDetectedNetwork(null);
     setDetectingNetwork(false);
+    setManualChainOverride(false);
     setAddress('');
-    setNetwork('sol');
+    setChain('eth');
   }
 
   if (!report) {
     return (
       <SafeScanEmptyState
         address={address}
-        network={network}
+        chain={chain}
         loading={loading}
         error={error}
         detectedNetwork={detectedNetwork}
         detectingNetwork={detectingNetwork}
         addressSupported={addressSupported}
-        onAddressChange={setAddress}
-        onNetworkChange={setNetwork}
+        onAddressChange={(nextAddress) => {
+          setAddress(nextAddress);
+          setManualChainOverride(false);
+        }}
+        onChainChange={(nextChain) => {
+          setChain(nextChain);
+          setManualChainOverride(true);
+        }}
         onSubmit={(event) => {
           event?.preventDefault();
           void runScan();
@@ -171,51 +220,46 @@ export function SafeScanPage() {
     <div className="safe-scan-results">
       <Card className="result-hero">
         <div>
-          <h1>Safety Scan</h1>
-          <p>Review contract flags, holder concentration, launch wallets, labels, and graph links.</p>
+          <h1>Bubblemaps Safe Scan</h1>
+          <p>Holder concentration, linked wallets, supply exposure, and transfer relationships.</p>
         </div>
         <button type="button" className="primary-button compact" onClick={reset}>
           <Shield size={18} /> New scan
         </button>
       </Card>
 
-      <div className="top-grid">
-        <Card className="token-card">
-          <div className="token-heading">
-            <div className="token-logo">{scanner?.token?.logo ? <img src={scanner.token.logo} alt="" /> : (scanner?.token?.symbol || 'IX').slice(0, 2)}</div>
-            <div>
-              <h2>{scanner?.token?.name || 'Token report'}</h2>
-              <div className="token-meta">
-                <span>{scanner?.token?.symbol || 'N/A'}</span>
-                <button type="button" onClick={() => navigator.clipboard?.writeText(report.address)} aria-label="Copy token address">
-                  {shortenAddress(report.address)} <Copy size={14} />
-                </button>
-              </div>
+      <Card className="token-card">
+        <div className="token-heading">
+          <div className="token-logo">{token?.metadata.img_url ? <img src={token.metadata.img_url} alt="" /> : (token?.metadata.symbol || 'BM').slice(0, 2)}</div>
+          <div>
+            <h2>{token?.metadata.name || 'Token report'}</h2>
+            <div className="token-meta">
+              <span>{token?.metadata.symbol || 'N/A'}</span>
+              <span>{getBubblemapsChainLabel(report.chain)}</span>
+              <button type="button" onClick={() => navigator.clipboard?.writeText(report.address)} aria-label="Copy token address">
+                {shortenAddress(report.address)} <Copy size={14} />
+              </button>
             </div>
           </div>
-          <div className="metric-grid">
-            <MetricCard label="Supply" value={formatCompact(tokenTotalSupply)} />
-            <MetricCard label="Token age" value={formatAge(scanner?.token?.age)} />
-            <MetricCard
-              label="Cluster supply"
-              value={<span className="metric-split"><span>{formatPercent(overview?.cluster_pct)}</span><small className="metric-side-value">{formatCurrencyCompact(clusterUsd)}</small></span>}
-              detail="Supply held by wallet clusters"
-            />
-            <MetricCard label="Dev holdings" value={formatPercent(creatorSupplyShare(scanner, overview?.dev_pct))} detail="Creator/deployer exposure" />
-          </div>
-        </Card>
-        <div className="side-stack">
-          <LiquidityLockSummary scanner={scanner} />
-          <DrainRiskSummary clusterBalance={detectedClusterBalance} totalSupply={tokenTotalSupply} liquidity={liveLiquidity} loading={liquidityLoading} error={liquidityError} />
         </div>
-      </div>
+        <div className="metric-grid token-metric-strip">
+          <MetricCard label="Indexed" value={token ? (token.metadata.is_indexed ? 'Yes' : 'No') : 'N/A'} detail="Token index status" />
+          <MetricCard label="Transfers" value={formatCompact(token?.stats?.transfers_count)} detail="Indexed transfers" />
+          <MetricCard label="First activity" value={formatDate(token?.stats?.min_date)} detail="Earliest indexed transfer" />
+          <MetricCard label="Latest activity" value={formatDate(token?.stats?.max_date)} detail="Latest indexed transfer" />
+        </div>
+      </Card>
 
-      <ScannerPanel scanner={scanner} result={report.endpoints.scanner} />
-      <LiquidityAndHoldersPanel scanner={scanner} labels={labels} totalSupply={tokenTotalSupply} />
-      {report.network === 'sol' ? (
-        <ManipulationPanel overview={overview} snipers={snipers} bundlers={bundlers} insiders={insiders} labels={labels} totalSupply={tokenTotalSupply} tokenPriceUsd={liveLiquidity?.tokenPriceUsd} />
-      ) : null}
-      <AtlasPanel atlas={atlas} timestamps={atlasTimestamps} clusters={clusters} labels={labels} totalSupply={tokenTotalSupply} />
+      <Card className="ai-assessment-card">
+        <SectionHeader icon={<Shield size={20} />} title="AI Assessment" eyebrow="Safe Scan read" />
+        <p>{aiAssessment}</p>
+      </Card>
+
+      <ScorePanel metrics={metrics} />
+      <SupplyExposurePanel metrics={metrics} topHolder={topHolder} largestCluster={largest} totalSupply={totalSupply} />
+      <HolderConcentrationPanel holders={holders} labels={labels} totalSupply={totalSupply} />
+      <ClusterRiskPanel map={map} holders={holders} labels={labels} totalSupply={totalSupply} />
+      <AtlasPanel map={map} clusters={clusters} labels={labels} />
     </div>
   );
 }

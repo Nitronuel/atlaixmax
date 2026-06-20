@@ -57,16 +57,16 @@ function formatCompactUsd(value: number) {
   return `${sign}$${absolute.toFixed(0)}`;
 }
 
-function formatSignedNumber(value: number) {
-  const numeric = Number(value || 0);
-  if (!Number.isFinite(numeric)) return '0';
-  return `${numeric > 0 ? '+' : ''}${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
-
 function formatPercent(value: number) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric)) return '0%';
   return `${numeric > 0 ? '+' : ''}${numeric.toFixed(Math.abs(numeric) >= 10 ? 1 : 2)}%`;
+}
+
+function flowTone(value: number) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || Math.abs(numeric) < 1) return 'Flat DEX flow';
+  return numeric > 0 ? 'Positive DEX flow' : 'Negative DEX flow';
 }
 
 function compactEvent(event: DetectionEvent, index: number) {
@@ -82,13 +82,13 @@ function compactEvent(event: DetectionEvent, index: number) {
       volume24h: event.metrics.volume24h,
       liquidity: event.metrics.liquidity,
       priceChange24h: event.metrics.priceChange24h,
-      netFlow: event.metrics.netFlow
+      netFlow: flowTone(event.metrics.netFlow)
     },
     formattedMetrics: {
       volume24h: formatCompactUsd(event.metrics.volume24h),
       liquidity: formatCompactUsd(event.metrics.liquidity),
       priceChange24h: formatPercent(event.metrics.priceChange24h),
-      netFlow: formatSignedNumber(event.metrics.netFlow)
+      netFlow: flowTone(event.metrics.netFlow)
     },
     lifecycleStatus: event.lifecycleStatus || '',
     scoreDelta: event.scoreDelta ?? null
@@ -245,7 +245,7 @@ function supportingSignalsFor(events: DetectionEvent[], context: DetectionTokenA
   if (context.relationship === 'sequential_recovery') signals.add('Recent sequence shows recovery pressure');
   if (context.relationship === 'sequential_deterioration') signals.add('Recent sequence shows weakening structure');
   if (latest.metrics.priceChange24h) signals.add(`${formatPercent(latest.metrics.priceChange24h)} 24h price change`);
-  if (latest.metrics.netFlow) signals.add(`${formatSignedNumber(latest.metrics.netFlow)} net flow`);
+  if (latest.metrics.netFlow) signals.add(flowTone(latest.metrics.netFlow));
   if (latest.metrics.liquidity) signals.add(`${formatCompactUsd(latest.metrics.liquidity)} liquidity depth`);
   if (latest?.severity === 'high' || latest?.severity === 'critical') signals.add(`${severityTone(latest)} event intensity`);
   return [...signals].slice(0, 3);
@@ -307,6 +307,8 @@ function sanitizeAssessmentString(value: unknown, maxLength: number) {
   const cleaned = normalized
     .replace(/\bscore\s*\d+(\.\d+)?\b/gi, '')
     .replace(/\b\d+(\.\d+)?\s*%\s*(chance|confidence|probability)\b/gi, '')
+    .replace(/\b(?:positive|negative)?\s*(?:net|dex)\s+flow\s+of\s+[+-]?\$?\d+(?:\.\d+)?\s*[kmb]?\b/gi, (match) => (match.toLowerCase().includes('negative') ? 'negative DEX flow' : 'positive DEX flow'))
+    .replace(/\b[+-]?\$?\d+(?:\.\d+)?\s*[kmb]?\s*(?:net|dex)\s+flow\b/gi, (match) => (match.trim().startsWith('-') ? 'negative DEX flow' : 'positive DEX flow'))
     .replace(/\s+/g, ' ')
     .trim();
   if (cleaned.length <= maxLength) return cleaned;
@@ -379,6 +381,7 @@ async function modelAssessment(tokenName: string, events: DetectionEvent[], cont
             'Lead with the latest event. Use severity as an intensity dial, not as a displayed score.',
             'Market bias and invalidation are controlled by fallbackShape; keep their meaning unchanged.',
             'Use formattedMetrics when mentioning numbers. Percent values must include %, money values must use compact dollar formatting, and do not put metric values in parentheses.',
+            'Never display a number for net flow or DEX flow. Describe flow only as positive DEX flow, negative DEX flow, flat DEX flow, fading buy-side flow, or improving buy-side flow.',
             'Do not include raw scores, confidence percentages, price targets, buy/sell instructions, or prediction language.',
             'Do not use words like entry, target, guaranteed, likely, likelihood, probability, will pump, will dump, or price will.',
             'Mention no more than two prior events, and only if they change the interpretation.',

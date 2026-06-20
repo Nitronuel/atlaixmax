@@ -4,6 +4,8 @@ import { ASSISTANT_TOOLS, OPENROUTER_TOOLS, isAssistantToolName, validateAssista
 describe('AI assistant tool registry', () => {
   it('exposes assistant-level tools to the model', () => {
     expect(isAssistantToolName('get_token_profile')).toBe(true);
+    expect(isAssistantToolName('get_safe_scan_brief')).toBe(true);
+    expect(isAssistantToolName('get_safe_scan_clusters')).toBe(true);
     expect(isAssistantToolName('/api/overview/feed')).toBe(false);
     expect(OPENROUTER_TOOLS.length).toBe(ASSISTANT_TOOLS.length);
   });
@@ -21,6 +23,7 @@ describe('AI assistant tool registry', () => {
       address: ` ${'a'.repeat(200)} `,
       chain: ' base ',
       query: ' pepe ',
+      metricName: ' Nakamoto ',
       severity: 'critical',
       sentiment: 'bearish',
       responseStyle: 'verbose',
@@ -30,6 +33,7 @@ describe('AI assistant tool registry', () => {
     expect(args.address).toHaveLength(140);
     expect(args.chain).toBe('base');
     expect(args.query).toBe('pepe');
+    expect(args.metricName).toBe('Nakamoto');
     expect(args.severity).toBe('critical');
     expect(args.sentiment).toBe('bearish');
     expect(args.responseStyle).toBeUndefined();

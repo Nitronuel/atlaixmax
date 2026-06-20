@@ -3,10 +3,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readEnv } from '../env';
 import type { DetectionEvent, DetectionSeverity, DetectionSentiment } from '../../src/shared/detection';
 import { detectionEventAssessmentForLabel, detectionEventSummaryForLabel } from '../../src/shared/detection-copy';
+import type { BubblemapsChain, BubblemapsScanReport, ClusterData, TokenHolder } from '../../src/shared/bubblemaps';
 import { DetectionStore } from '../detection/store';
 import { sendJson, sendNotFound } from '../http/response';
-import { InsightXClient } from '../insightx/client';
-import { InsightXReportService } from '../insightx/report-service';
+import { BubblemapsClient } from '../bubblemaps/client';
+import { BubblemapsReportService } from '../bubblemaps/report-service';
 import { getOverviewFeed, getOverviewTokenDetails, searchOverviewTokens } from '../overview/database';
 import type { SmartAlertRoutes } from '../smart-alerts/routes';
 import { WalletPortfolioService } from '../wallet/service';
@@ -71,6 +72,10 @@ type AiAssistantToolName =
   | 'explain_detection_event_type'
   | 'compare_detection_events'
   | 'run_safe_scan'
+  | 'get_safe_scan_brief'
+  | 'get_safe_scan_holders'
+  | 'get_safe_scan_clusters'
+  | 'explain_safe_scan_metric'
   | 'prepare_alert_setup'
   | 'get_smart_alert_status'
   | 'open_token_details';
@@ -81,6 +86,7 @@ type AiAssistantToolRequest = {
   chain?: string;
   query?: string;
   eventType?: string;
+  metricName?: string;
   severity?: DetectionSeverity | 'all';
   sentiment?: DetectionSentiment | 'all';
   responseStyle?: 'brief' | 'detailed';
@@ -101,8 +107,11 @@ const NETWORK_BY_CHAIN: Record<string, string> = {
   base: 'base',
   bsc: 'bsc',
   binance: 'bsc',
-  solana: 'sol',
-  sol: 'sol'
+  solana: 'solana',
+  sol: 'solana',
+  polygon: 'polygon',
+  avalanche: 'avalanche',
+  arbitrum: 'arbitrum'
 };
 
 const DETECTION_TOOL_NAMES = new Set([
@@ -113,6 +122,14 @@ const DETECTION_TOOL_NAMES = new Set([
   'get_detection_event_detail',
   'explain_detection_event_type',
   'compare_detection_events'
+]);
+
+const SAFE_SCAN_TOOL_NAMES = new Set([
+  'run_safe_scan',
+  'get_safe_scan_brief',
+  'get_safe_scan_holders',
+  'get_safe_scan_clusters',
+  'explain_safe_scan_metric'
 ]);
 
 async function readJsonBody(request: IncomingMessage) {
@@ -157,10 +174,10 @@ function normalizeChain(value = '') {
   return chain;
 }
 
-function toInsightXNetwork(chain = '', address = '') {
+function toBubblemapsChain(chain = '', address = ''): BubblemapsChain {
   const normalized = normalizeChain(chain);
-  if (NETWORK_BY_CHAIN[normalized]) return NETWORK_BY_CHAIN[normalized];
-  return SOLANA_ADDRESS_REGEX.test(address) && !address.startsWith('0x') ? 'sol' : 'eth';
+  if (NETWORK_BY_CHAIN[normalized]) return NETWORK_BY_CHAIN[normalized] as BubblemapsChain;
+  return SOLANA_ADDRESS_REGEX.test(address) && !address.startsWith('0x') ? 'solana' : 'eth';
 }
 
 function extractAddress(message: string) {
@@ -222,6 +239,115 @@ function formatPercent(value: unknown) {
   const numeric = typeof value === 'number' ? value : parseNumber(value);
   if (!Number.isFinite(numeric)) return 'unavailable';
   return `${numeric > 0 ? '+' : ''}${numeric.toFixed(Math.abs(numeric) >= 10 ? 1 : 2)}%`;
+}
+
+function formatScanPercent(value: unknown) {
+  const numeric = typeof value === 'number' ? value : parseNumber(value);
+  if (!Number.isFinite(numeric)) return 'unavailable';
+  const percent = numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
+  return `${percent.toFixed(percent >= 10 ? 1 : 2)}%`;
+}
+
+function normalizeScanPercentNumber(value: unknown) {
+  const numeric = typeof value === 'number' ? value : parseNumber(value);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
+}
+
+function holderAddress(holder: TokenHolder | undefined | null) {
+  return String(holder?.address || '').trim();
+}
+
+function holderAmount(holder: TokenHolder | undefined | null) {
+  const numeric = Number(holder?.holder_data?.amount);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function holderPercent(holder: TokenHolder | undefined | null) {
+  return normalizeScanPercentNumber(holder?.holder_data?.share);
+}
+
+function clusterPercent(cluster: ClusterData | undefined | null) {
+  return normalizeScanPercentNumber(cluster?.share);
+}
+
+function formatTokenAmount(value: unknown) {
+  const numeric = typeof value === 'number' ? value : parseNumber(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 'unavailable';
+  if (numeric >= 1e12) return `${(numeric / 1e12).toFixed(2)}T`;
+  if (numeric >= 1e9) return `${(numeric / 1e9).toFixed(2)}B`;
+  if (numeric >= 1e6) return `${(numeric / 1e6).toFixed(2)}M`;
+  if (numeric >= 1e3) return `${(numeric / 1e3).toFixed(2)}K`;
+  return numeric.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function safeScanFacts(report: BubblemapsScanReport) {
+  const token = report.endpoints.token.data;
+  const metrics = report.endpoints.metrics.data || report.endpoints.map.data?.metrics || null;
+  const holders = (report.endpoints.holders.data || report.endpoints.map.data?.nodes?.top_holders || [])
+    .slice()
+    .sort((left, right) => Number(right.holder_data?.share || 0) - Number(left.holder_data?.share || 0));
+  const clusters = (report.endpoints.map.data?.clusters || [])
+    .slice()
+    .sort((left, right) => Number(right.share || 0) - Number(left.share || 0));
+  const largestHolder = holders[0];
+  const largestCluster = clusters[0];
+  const score = metrics?.scores?.bubblemaps_score;
+  const supply = metrics?.supply_stats;
+
+  return {
+    chain: report.chain,
+    address: report.address,
+    label: token?.metadata?.symbol || token?.metadata?.name || compactAddress(report.address),
+    tokenName: token?.metadata?.name || '',
+    tokenSymbol: token?.metadata?.symbol || '',
+    indexed: token?.metadata?.is_indexed,
+    transfers: token?.stats?.transfers_count,
+    score: typeof score === 'number' ? score : null,
+    gini: metrics?.scores?.gini_index ?? null,
+    hhi: metrics?.scores?.herfindahl_hirschman_index ?? null,
+    nakamoto: metrics?.scores?.nakamoto_coefficient ?? null,
+    supply,
+    holders,
+    clusters,
+    largestHolder,
+    largestCluster,
+    endpointStatus: {
+      token: report.endpoints.token.status,
+      metrics: report.endpoints.metrics.status,
+      holders: report.endpoints.holders.status,
+      map: report.endpoints.map.status
+    }
+  };
+}
+
+function safeScanRiskRead(facts: ReturnType<typeof safeScanFacts>) {
+  const warnings: string[] = [];
+  const score = Number(facts.score);
+  const nakamoto = Number(facts.nakamoto);
+  const largestClusterShare = clusterPercent(facts.largestCluster);
+  const largestHolderShare = holderPercent(facts.largestHolder);
+
+  if (Number.isFinite(score) && score < 40) warnings.push('low Bubblemaps score');
+  if (Number.isFinite(nakamoto) && nakamoto <= 1) warnings.push('one entity may control 50% of supply');
+  else if (Number.isFinite(nakamoto) && nakamoto <= 3) warnings.push('few entities may control 50% of supply');
+  if (largestClusterShare !== null && largestClusterShare >= 50) warnings.push(`largest cluster controls ${formatScanPercent(largestClusterShare)}`);
+  if (largestHolderShare !== null && largestHolderShare >= 10) warnings.push(`largest holder controls ${formatScanPercent(largestHolderShare)}`);
+
+  if (!warnings.length) return 'No single Safe Scan metric is flashing severe concentration risk, but still compare holder clusters with liquidity and recent trading.';
+  return `Main Safe Scan concern: ${warnings.join(', ')}.`;
+}
+
+function safeScanMetricExplanation(metricName = '') {
+  const key = metricName.toLowerCase();
+  if (key.includes('gini')) return 'Gini measures holder inequality. Higher values mean ownership is less evenly distributed.';
+  if (key.includes('hhi') || key.includes('concentration')) return 'HHI measures concentration. Higher values mean fewer wallets or entities dominate supply.';
+  if (key.includes('nakamoto')) return 'Nakamoto shows how many entities are needed to control 50% of supply. A value of 1 is a major centralization warning.';
+  if (key.includes('score')) return 'Bubblemaps score summarizes distribution quality. Lower scores point to concentration or connected-wallet risk.';
+  if (key.includes('cluster')) return 'A cluster is a group of linked wallets. A large cluster can mean one coordinated entity controls more supply than it appears.';
+  if (key.includes('holder')) return 'Largest holder shows direct single-wallet exposure. Large holder share raises sell-pressure and control risk.';
+  if (key.includes('supply') || key.includes('cex') || key.includes('dex') || key.includes('contract') || key.includes('bundle')) return 'Supply exposure shows where token supply sits: exchanges, DEX wallets, contracts, fresh wallets, bundled holders, and adjusted top holders.';
+  return 'Safe Scan reads token distribution, holder concentration, supply exposure, and linked wallet clusters from Bubblemaps.';
 }
 
 function formatAge(timestamp: number) {
@@ -346,9 +472,12 @@ async function chooseToolWithModel(
 
   const baseUrl = readEnv('OPENROUTER_BASE_URL') || 'https://openrouter.ai/api/v1';
   const explicitDetectionEngine = /\bdetection engine\b/i.test(message) || pageContext?.module === 'detection';
+  const explicitSafeScan = /\b(safe\s*scan|bubblemaps?|holder concentration|largest holder|largest cluster|nakamoto|gini|hhi|supply exposure|linked wallets?)\b/i.test(message) || pageContext?.module === 'safe-scan';
   const wantsLatestDetectionEvent = explicitDetectionEngine && /\b(latest|most recent|newest|current)\b/i.test(message) && /\b(event|events)\b/i.test(message);
   const tools = explicitDetectionEngine
     ? OPENROUTER_TOOLS.filter((tool) => wantsLatestDetectionEvent ? tool.function.name === 'get_detection_events' : DETECTION_TOOL_NAMES.has(tool.function.name))
+    : explicitSafeScan
+      ? OPENROUTER_TOOLS.filter((tool) => SAFE_SCAN_TOOL_NAMES.has(tool.function.name))
     : OPENROUTER_TOOLS;
   const system = [
     'You are Atlaix AI inside a crypto intelligence app.',
@@ -356,6 +485,7 @@ async function chooseToolWithModel(
     'Use page context for phrases such as "this token", "this wallet", "that one", or "it".',
     'Detection Engine questions about latest events, flagged tokens, event detail, scores, severity, or signals must use a Detection tool.',
     'For broad Detection Engine questions like "latest event" or "what is Detection seeing", no token is required.',
+    'Safe Scan questions about Bubblemaps score, Gini, HHI, Nakamoto, holders, supply exposure, clusters, linked wallets, or token safety must use a Safe Scan tool.',
     'Smart Alert tools are only for alert setup, saved alert rules, alert runner status, and alert health. They are not Detection Engine event tools.',
     'Platform update tools are for broad market updates only. They are not Detection Engine event tools.',
     'Use prepare_alert_setup only to draft alert setup. The user must confirm before anything is saved.',
@@ -376,7 +506,7 @@ async function chooseToolWithModel(
     body: JSON.stringify({
       model,
       temperature: 0.15,
-      tool_choice: explicitDetectionEngine ? 'required' : 'auto',
+      tool_choice: explicitDetectionEngine || explicitSafeScan ? 'required' : 'auto',
       tools,
       messages: [
         { role: 'system', content: system },
@@ -481,7 +611,7 @@ async function synthesize(message: string, history: AiAssistantConversationMessa
 export class AiAssistantRoutes {
   private readonly detectionStore = new DetectionStore();
   private readonly walletService = new WalletPortfolioService();
-  private readonly safeScanService = new InsightXReportService(new InsightXClient());
+  private readonly safeScanService = new BubblemapsReportService(new BubblemapsClient());
 
   constructor(private readonly smartAlerts: SmartAlertRoutes) {}
 
@@ -794,6 +924,161 @@ export class AiAssistantRoutes {
     };
   }
 
+  private async resolveSafeScanReport(request: AiAssistantToolRequest, pageContext: AiAssistantPageContext | null) {
+    const query = request.address || request.query || pageContext?.subjectAddress || '';
+    const chain = request.chain || pageContext?.subjectChain || '';
+    const token = query ? await resolveToken(query, chain, pageContext?.pairAddress).catch(() => null) : null;
+    const pair = token?.pair as any;
+    const address = request.address || pair?.baseToken?.address || query;
+    if (!address || !EVM_ADDRESS_REGEX.test(address) && !SOLANA_ADDRESS_REGEX.test(address)) {
+      return { error: 'I need a valid token contract or mint address before I can read Safe Scan data.' };
+    }
+    const network = toBubblemapsChain(pair?.chainId || chain, address);
+    const report = await this.safeScanService.buildReport(network, address);
+    return { report, network, address, token };
+  }
+
+  private safeScanActions(address: string, chain: BubblemapsChain): AiAssistantAction[] {
+    return [{ label: 'Open Safe Scan', href: `/safe-scan?${new URLSearchParams({ address, chain, autoScan: '1' }).toString()}`, kind: 'navigate' }];
+  }
+
+  private async answerSafeScanBrief(request: AiAssistantToolRequest, pageContext: AiAssistantPageContext | null): Promise<AiAssistantToolResult> {
+    const resolved = await this.resolveSafeScanReport(request, pageContext);
+    if ('error' in resolved) {
+      return {
+        answer: resolved.error || 'I need a valid token contract or mint address before I can read Safe Scan data.',
+        tool: 'safe_scan_needs_address',
+        actions: [{ label: 'Open Safe Scan', href: '/safe-scan', kind: 'navigate' }]
+      };
+    }
+
+    const facts = safeScanFacts(resolved.report);
+    const supply = facts.supply;
+    const answer = [
+      `Safe Scan read for ${facts.label} on ${facts.chain}.`,
+      `Bubblemaps score: ${facts.score === null ? 'unavailable' : facts.score}. Gini: ${facts.gini ?? 'unavailable'}. HHI: ${facts.hhi ?? 'unavailable'}. Nakamoto: ${facts.nakamoto ?? 'unavailable'}.`,
+      `Largest holder: ${facts.largestHolder ? `${compactAddress(holderAddress(facts.largestHolder))} at ${formatScanPercent(holderPercent(facts.largestHolder))}` : 'unavailable'}. Largest cluster: ${facts.largestCluster ? `${formatScanPercent(clusterPercent(facts.largestCluster))} across ${facts.largestCluster.holder_count} linked holders` : 'unavailable'}.`,
+      supply ? `Supply exposure: CEX ${formatScanPercent(supply.cexs)}, DEX ${formatScanPercent(supply.dexs)}, contracts ${formatScanPercent(supply.contracts)}, fresh wallets ${formatScanPercent(supply.fresh_wallets)}, bundles ${formatScanPercent(supply.bundles)}, top 10 adjusted ${formatScanPercent(supply.top_10_adjusted)}.` : 'Supply exposure is unavailable.',
+      safeScanRiskRead(facts)
+    ].join('\n');
+
+    return {
+      answer,
+      tool: request.tool === 'run_safe_scan' ? 'run_safe_scan' : 'get_safe_scan_brief',
+      data: {
+        token: {
+          name: facts.tokenName,
+          symbol: facts.tokenSymbol,
+          chain: facts.chain,
+          address: facts.address,
+          indexed: facts.indexed,
+          transfers: facts.transfers
+        },
+        scores: {
+          bubblemapsScore: facts.score,
+          gini: facts.gini,
+          hhi: facts.hhi,
+          nakamoto: facts.nakamoto
+        },
+        supplyExposure: facts.supply,
+        largestHolder: facts.largestHolder,
+        largestCluster: facts.largestCluster,
+        endpointStatus: facts.endpointStatus
+      },
+      actions: this.safeScanActions(resolved.address, resolved.network)
+    };
+  }
+
+  private async answerSafeScanHolders(request: AiAssistantToolRequest, pageContext: AiAssistantPageContext | null): Promise<AiAssistantToolResult> {
+    const resolved = await this.resolveSafeScanReport(request, pageContext);
+    if ('error' in resolved) {
+      return { answer: resolved.error || 'I need a valid token contract or mint address before I can read Safe Scan data.', tool: 'safe_scan_needs_address', actions: [{ label: 'Open Safe Scan', href: '/safe-scan', kind: 'navigate' }] };
+    }
+
+    const facts = safeScanFacts(resolved.report);
+    const holders = facts.holders.slice(0, request.responseStyle === 'detailed' ? 10 : 5);
+    const rows = holders.map((holder, index) => {
+      const details = holder.address_details;
+      const flags = [
+        details?.label,
+        details?.is_cex ? 'CEX' : '',
+        details?.is_dex ? 'DEX' : '',
+        details?.is_contract ? 'Contract' : ''
+      ].filter(Boolean).join(', ');
+      return `${index + 1}. ${compactAddress(holderAddress(holder))}: ${formatScanPercent(holderPercent(holder))}, ${formatTokenAmount(holderAmount(holder))} tokens${flags ? `, ${flags}` : ''}.`;
+    });
+
+    return {
+      answer: [
+        `${facts.label} has ${facts.holders.length} holder rows from Bubblemaps.`,
+        rows.length ? rows.join('\n') : 'Holder details are unavailable for this token.',
+        facts.largestHolder ? `Largest holder read: ${compactAddress(holderAddress(facts.largestHolder))} controls ${formatScanPercent(holderPercent(facts.largestHolder))}.` : '',
+        facts.supply ? `Adjusted top 10 holder share: ${formatScanPercent(facts.supply.top_10_adjusted)}.` : ''
+      ].filter(Boolean).join('\n'),
+      tool: 'get_safe_scan_holders',
+      data: { holders: facts.holders.slice(0, 25), supplyExposure: facts.supply, endpointStatus: facts.endpointStatus },
+      actions: this.safeScanActions(resolved.address, resolved.network)
+    };
+  }
+
+  private async answerSafeScanClusters(request: AiAssistantToolRequest, pageContext: AiAssistantPageContext | null): Promise<AiAssistantToolResult> {
+    const resolved = await this.resolveSafeScanReport(request, pageContext);
+    if ('error' in resolved) {
+      return { answer: resolved.error || 'I need a valid token contract or mint address before I can read Safe Scan data.', tool: 'safe_scan_needs_address', actions: [{ label: 'Open Safe Scan', href: '/safe-scan', kind: 'navigate' }] };
+    }
+
+    const facts = safeScanFacts(resolved.report);
+    const clusters = facts.clusters.slice(0, request.responseStyle === 'detailed' ? 8 : 5);
+    const rows = clusters.map((cluster, index) =>
+      `${index + 1}. Cluster ${index + 1}: ${formatScanPercent(clusterPercent(cluster))}, ${formatTokenAmount(cluster.amount)} tokens, ${cluster.holder_count} linked holders.`
+    );
+
+    return {
+      answer: [
+        `${facts.label} has ${facts.clusters.length} linked holder cluster${facts.clusters.length === 1 ? '' : 's'} from Bubblemaps.`,
+        rows.length ? rows.join('\n') : 'Cluster details are unavailable for this token.',
+        facts.largestCluster ? `Largest cluster implication: ${formatScanPercent(clusterPercent(facts.largestCluster))} of supply sits in one linked group.` : '',
+        safeScanRiskRead(facts)
+      ].filter(Boolean).join('\n'),
+      tool: 'get_safe_scan_clusters',
+      data: { clusters: facts.clusters.slice(0, 25), endpointStatus: facts.endpointStatus },
+      actions: this.safeScanActions(resolved.address, resolved.network)
+    };
+  }
+
+  private async answerSafeScanMetric(request: AiAssistantToolRequest, pageContext: AiAssistantPageContext | null): Promise<AiAssistantToolResult> {
+    const metricName = request.metricName || request.query || 'Safe Scan';
+    const resolved = await this.resolveSafeScanReport(request, pageContext);
+    if ('error' in resolved) {
+      return {
+        answer: safeScanMetricExplanation(metricName),
+        tool: 'explain_safe_scan_metric'
+      };
+    }
+
+    const facts = safeScanFacts(resolved.report);
+    return {
+      answer: [
+        safeScanMetricExplanation(metricName),
+        `Current ${facts.label} values: score ${facts.score ?? 'unavailable'}, Gini ${facts.gini ?? 'unavailable'}, HHI ${facts.hhi ?? 'unavailable'}, Nakamoto ${facts.nakamoto ?? 'unavailable'}, largest holder ${facts.largestHolder ? formatScanPercent(holderPercent(facts.largestHolder)) : 'unavailable'}, largest cluster ${facts.largestCluster ? formatScanPercent(clusterPercent(facts.largestCluster)) : 'unavailable'}.`,
+        safeScanRiskRead(facts)
+      ].join('\n'),
+      tool: 'explain_safe_scan_metric',
+      data: {
+        metricName,
+        scores: {
+          bubblemapsScore: facts.score,
+          gini: facts.gini,
+          hhi: facts.hhi,
+          nakamoto: facts.nakamoto
+        },
+        largestHolder: facts.largestHolder,
+        largestCluster: facts.largestCluster
+      },
+      actions: this.safeScanActions(resolved.address, resolved.network)
+    };
+  }
+
   private async answerTokenProfile(request: AiAssistantToolRequest, pageContext: AiAssistantPageContext | null): Promise<AiAssistantToolResult> {
     const profile = await this.resolveTokenProfile(request, pageContext);
     const pair = profile.pair as any;
@@ -903,6 +1188,22 @@ export class AiAssistantRoutes {
       return this.answerTokenProfile(request, pageContext);
     }
 
+    if (request.tool === 'run_safe_scan' || request.tool === 'get_safe_scan_brief') {
+      return this.answerSafeScanBrief(request, pageContext);
+    }
+
+    if (request.tool === 'get_safe_scan_holders') {
+      return this.answerSafeScanHolders(request, pageContext);
+    }
+
+    if (request.tool === 'get_safe_scan_clusters') {
+      return this.answerSafeScanClusters(request, pageContext);
+    }
+
+    if (request.tool === 'explain_safe_scan_metric') {
+      return this.answerSafeScanMetric(request, pageContext);
+    }
+
     if (request.tool === 'get_platform_updates') {
       const feed = await getOverviewFeed(false).catch(() => ({ tokens: [] as any[] }));
       const tokens = Array.isArray((feed as any).tokens) ? (feed as any).tokens.slice(0, 5).map((token: any) => ({
@@ -1000,36 +1301,9 @@ export class AiAssistantRoutes {
         data: token,
         actions: [
           { label: 'Open Token Details', href: `/token/${encodeURIComponent(pair.baseToken?.address || query)}?${params.toString()}`, kind: 'navigate' },
-          { label: 'Run Safe Scan', href: `/safe-scan?${new URLSearchParams({ address: pair.baseToken?.address || query, chain: toInsightXNetwork(pair.chainId || chain), autoScan: '1' }).toString()}`, kind: 'draft', confirmationRequired: true },
+          { label: 'Run Safe Scan', href: `/safe-scan?${new URLSearchParams({ address: pair.baseToken?.address || query, chain: toBubblemapsChain(pair.chainId || chain, pair.baseToken?.address || query), autoScan: '1' }).toString()}`, kind: 'draft', confirmationRequired: true },
           { label: 'Create Smart Alert', href: `/smart-alerts?${new URLSearchParams({ address: pair.baseToken?.address || query, chain: pair.chainId || chain, source: 'assistant' }).toString()}`, kind: 'draft', confirmationRequired: true }
         ]
-      };
-    }
-
-    if (request.tool === 'run_safe_scan') {
-      const token = query ? await resolveToken(query, chain, pageContext?.pairAddress).catch(() => null) : null;
-      const pair = token?.pair as any;
-      const address = request.address || pair?.baseToken?.address || query;
-      if (!address || !EVM_ADDRESS_REGEX.test(address) && !SOLANA_ADDRESS_REGEX.test(address)) {
-        return {
-          answer: 'I can run a Safe Scan, but I need a valid token contract or mint address first.',
-          tool: 'safe_scan_needs_address',
-          actions: [{ label: 'Open Safe Scan', href: '/safe-scan', kind: 'navigate' }]
-        };
-      }
-      const network = toInsightXNetwork(pair?.chainId || chain, address) as never;
-      const report = await this.safeScanService.buildReport(network, address);
-      const intelligence = (report as any).bundleIntelligence || {};
-      const holder = (report as any).holderConcentration || {};
-      return {
-        answer: [
-          `Safe Scan completed for ${(report as any).tokenSymbol || (report as any).tokenName || compactAddress(address)}.`,
-          `Risk level: ${intelligence.riskLevel || 'unknown'} with ${intelligence.confidence || 'unknown'} confidence.`,
-          `Top 10 holder concentration: ${Number(holder.top10Pct || 0).toFixed(2)}%.`
-        ].join('\n'),
-        tool: 'run_safe_scan',
-        data: report,
-        actions: [{ label: 'Open Safe Scan', href: `/safe-scan?${new URLSearchParams({ address, chain: network, autoScan: '1' }).toString()}`, kind: 'navigate' }]
       };
     }
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import type { EndpointResult, LabelResponse } from '../../shared/insightx';
+import type { AddressMetadata, EndpointResult } from '../../shared/bubblemaps';
 
-export type LabelMap = Map<string, LabelResponse>;
+export type LabelMap = Map<string, AddressMetadata>;
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <section className={`card ${className}`}>{children}</section>;

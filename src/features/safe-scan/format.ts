@@ -21,6 +21,15 @@ export function formatPercent(value: unknown, fallback = 'N/A') {
   return `${numeric.toFixed(numeric >= 10 ? 1 : 2)}%`;
 }
 
+export function formatPercentPoints(value: unknown, fallback = 'N/A') {
+  if (value === null || value === undefined || value === '') return fallback;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return `${new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 2
+  }).format(numeric)}%`;
+}
+
 export function formatCurrencyCompact(value: unknown, fallback = 'N/A') {
   if (value === null || value === undefined || value === '') return fallback;
   const numeric = Number(value);

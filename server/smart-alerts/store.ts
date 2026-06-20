@@ -51,6 +51,7 @@ type LocalAlertState = {
 };
 
 const LOCAL_USER_ID = '00000000-0000-4000-8000-000000000001';
+const SUPABASE_TIMEOUT_MS = 12_000;
 const RULE_COLUMNS = 'id,user_id,alert_type,target,chain_id,token_address,condition,threshold_kind,threshold,trigger_label,notification_channels,cooldown_minutes,enabled,last_checked_at,last_triggered_at,last_observed_value,last_observed_at,baseline_value,baseline_observed_at,trigger_count,last_error,metadata,created_at,updated_at';
 const TRIGGER_COLUMNS = 'id,alert_rule_id,user_id,alert_type,title,message,observed_value,threshold,source,dedupe_key,metadata,created_at';
 
@@ -91,25 +92,32 @@ function writeLocalState(state: LocalAlertState) {
 async function supabaseFetch(path: string, init: RequestInit = {}) {
   const { url, key } = getSupabaseConfig();
   if (!url || !key) throw new Error('Supabase is not configured for Smart Alerts.');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
 
-  const response = await fetch(`${url}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init.headers || {})
+  try {
+    const response = await fetch(`${url}/rest/v1/${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.headers || {})
+      }
+    });
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => '');
+      throw new Error(`Supabase Smart Alerts request failed (${response.status}). ${message}`.trim());
     }
-  });
 
-  if (!response.ok) {
-    const message = await response.text().catch(() => '');
-    throw new Error(`Supabase Smart Alerts request failed (${response.status}). ${message}`.trim());
+    if (response.status === 204) return null;
+    return response.json().catch(() => null);
+  } finally {
+    clearTimeout(timeout);
   }
-
-  if (response.status === 204) return null;
-  return response.json().catch(() => null);
 }
 
 function normalizeChannels(value: unknown) {
