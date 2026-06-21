@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Copy, Shield } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import {
   type BubblemapsChain,
   type BubblemapsScanReport,
@@ -9,25 +9,21 @@ import {
   isLikelyBubblemapsAddress,
   normalizeBubblemapsChain
 } from '../../shared/bubblemaps';
+import type { SecurityScannerReport } from '../../shared/security-scanner';
 import { AtlasPanel } from './AtlasPanel';
-import { formatCompact, formatNumber, formatPercent, formatPercentPoints, normalizePercentValue, shortenAddress } from './format';
+import { formatNumber, formatPercent, formatPercentPoints, normalizePercentValue } from './format';
 import { clusterSupplyPercent, endpointData, inferredTotalSupply, labelMap, largestCluster } from './safe-scan-data';
-import { type DetectedTokenNetwork, SafeScanService } from './safe-scan-service';
+import { type DetectedTokenNetwork, type LiveTokenLiquidity, SafeScanService } from './safe-scan-service';
 import { SafeScanEmptyState } from './SafeScanEmptyState';
 import {
-  ClusterRiskPanel,
   HolderConcentrationPanel,
+  LiquidityPoolLockPanel,
   ScorePanel,
-  SupplyExposurePanel
+  SecurityScannerPanel,
+  SupplyExposurePanel,
+  TokenSafetyReportPanel
 } from './SafeScanPanels';
-import { Card, MetricCard, SectionHeader } from './ui';
-
-function formatDate(value?: string | null) {
-  if (!value) return 'N/A';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'N/A';
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
-}
+import { Card, SectionHeader } from './ui';
 
 function distributionRead(value: number) {
   if (!Number.isFinite(value)) return 'an unavailable distribution profile';
@@ -100,6 +96,12 @@ export function SafeScanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<BubblemapsScanReport | null>(null);
+  const [liveLiquidity, setLiveLiquidity] = useState<LiveTokenLiquidity | null>(null);
+  const [liquidityLoading, setLiquidityLoading] = useState(false);
+  const [liquidityError, setLiquidityError] = useState<string | null>(null);
+  const [securityReport, setSecurityReport] = useState<SecurityScannerReport | null>(null);
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
   const [detectedNetwork, setDetectedNetwork] = useState<DetectedTokenNetwork | null>(null);
   const [detectingNetwork, setDetectingNetwork] = useState(false);
   const [manualChainOverride, setManualChainOverride] = useState(false);
@@ -167,12 +169,84 @@ export function SafeScanPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!report) {
+      setLiveLiquidity(null);
+      setLiquidityLoading(false);
+      setLiquidityError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLiquidityLoading(true);
+    setLiquidityError(null);
+    SafeScanService.getLiveTokenLiquidity(report.chain, report.address)
+      .then((liquidity) => {
+        if (!cancelled) setLiveLiquidity(liquidity);
+      })
+      .catch((nextError) => {
+        if (!cancelled) setLiquidityError(nextError instanceof Error ? nextError.message : 'Could not load live liquidity.');
+      })
+      .finally(() => {
+        if (!cancelled) setLiquidityLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [report]);
+
+  useEffect(() => {
+    if (!report) {
+      setSecurityReport(null);
+      setSecurityLoading(false);
+      setSecurityError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSecurityLoading(true);
+    setSecurityError(null);
+    SafeScanService.getSecurityScannerReport(report.chain, report.address)
+      .then((nextReport) => {
+        if (!cancelled) setSecurityReport(nextReport);
+      })
+      .catch((nextError) => {
+        if (!cancelled) setSecurityError(nextError instanceof Error ? nextError.message : 'Could not load contract checks.');
+      })
+      .finally(() => {
+        if (!cancelled) setSecurityLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [report]);
+
   async function runScan(scanChain = chain, scanAddress = normalizedAddress) {
-    if (!scanAddress || !isLikelyBubblemapsAddress(scanAddress, scanChain)) return;
+    if (!scanAddress) return;
     setLoading(true);
     setError(null);
     try {
-      setReport(await SafeScanService.scanToken(scanChain, scanAddress));
+      let nextChain = scanChain;
+      if (!manualChainOverride) {
+        const detection = detectedNetwork || await SafeScanService.detectTokenNetwork(scanAddress).catch(() => null);
+        if (detection && isLikelyBubblemapsAddress(scanAddress, detection.chain)) {
+          nextChain = detection.chain;
+          setDetectedNetwork(detection);
+          setChain(detection.chain);
+        }
+      }
+      if (!isLikelyBubblemapsAddress(scanAddress, nextChain)) return;
+      const nextReport = await SafeScanService.scanToken(nextChain, scanAddress);
+      const hasUsableData = endpointData(nextReport.endpoints.token) ||
+        endpointData(nextReport.endpoints.metrics) ||
+        (endpointData(nextReport.endpoints.holders) || []).length ||
+        endpointData(nextReport.endpoints.map);
+      if (!hasUsableData) {
+        throw new Error(`No Bubblemaps data was found for this token on ${getBubblemapsChainLabel(nextChain)}. Try another chain or a token that is indexed by Bubblemaps.`);
+      }
+      setReport(nextReport);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Bubblemaps scan failed.');
     } finally {
@@ -182,6 +256,12 @@ export function SafeScanPage() {
 
   function reset() {
     setReport(null);
+    setLiveLiquidity(null);
+    setLiquidityLoading(false);
+    setLiquidityError(null);
+    setSecurityReport(null);
+    setSecurityLoading(false);
+    setSecurityError(null);
     setError(null);
     setDetectedNetwork(null);
     setDetectingNetwork(false);
@@ -220,7 +300,7 @@ export function SafeScanPage() {
     <div className="safe-scan-results">
       <Card className="result-hero">
         <div>
-          <h1>Bubblemaps Safe Scan</h1>
+          <h1>Safe Scan</h1>
           <p>Holder concentration, linked wallets, supply exposure, and transfer relationships.</p>
         </div>
         <button type="button" className="primary-button compact" onClick={reset}>
@@ -228,37 +308,38 @@ export function SafeScanPage() {
         </button>
       </Card>
 
-      <Card className="token-card">
-        <div className="token-heading">
-          <div className="token-logo">{token?.metadata.img_url ? <img src={token.metadata.img_url} alt="" /> : (token?.metadata.symbol || 'BM').slice(0, 2)}</div>
-          <div>
-            <h2>{token?.metadata.name || 'Token report'}</h2>
-            <div className="token-meta">
-              <span>{token?.metadata.symbol || 'N/A'}</span>
-              <span>{getBubblemapsChainLabel(report.chain)}</span>
-              <button type="button" onClick={() => navigator.clipboard?.writeText(report.address)} aria-label="Copy token address">
-                {shortenAddress(report.address)} <Copy size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="metric-grid token-metric-strip">
-          <MetricCard label="Indexed" value={token ? (token.metadata.is_indexed ? 'Yes' : 'No') : 'N/A'} detail="Token index status" />
-          <MetricCard label="Transfers" value={formatCompact(token?.stats?.transfers_count)} detail="Indexed transfers" />
-          <MetricCard label="First activity" value={formatDate(token?.stats?.min_date)} detail="Earliest indexed transfer" />
-          <MetricCard label="Latest activity" value={formatDate(token?.stats?.max_date)} detail="Latest indexed transfer" />
-        </div>
-      </Card>
+      <div className="safe-scan-safety-grid">
+        <TokenSafetyReportPanel
+          token={token}
+          address={report.address}
+          chainLabel={getBubblemapsChainLabel(report.chain)}
+          clusters={clusters}
+          totalSupply={totalSupply}
+        />
+        <LiquidityPoolLockPanel
+          clusters={clusters}
+          totalSupply={totalSupply}
+          liquidity={liveLiquidity}
+          lockReport={securityReport?.liquidityLock || null}
+          lockLoading={securityLoading}
+          lockError={securityError}
+          loading={liquidityLoading}
+          error={liquidityError}
+        />
+      </div>
+
+      <SecurityScannerPanel report={securityReport} loading={securityLoading} error={securityError} />
 
       <Card className="ai-assessment-card">
         <SectionHeader icon={<Shield size={20} />} title="AI Assessment" eyebrow="Safe Scan read" />
         <p>{aiAssessment}</p>
       </Card>
 
-      <ScorePanel metrics={metrics} />
-      <SupplyExposurePanel metrics={metrics} topHolder={topHolder} largestCluster={largest} totalSupply={totalSupply} />
+      <div className="safe-scan-intelligence-grid">
+        <ScorePanel metrics={metrics} />
+        <SupplyExposurePanel metrics={metrics} topHolder={topHolder} largestCluster={largest} totalSupply={totalSupply} />
+      </div>
       <HolderConcentrationPanel holders={holders} labels={labels} totalSupply={totalSupply} />
-      <ClusterRiskPanel map={map} holders={holders} labels={labels} totalSupply={totalSupply} />
       <AtlasPanel map={map} clusters={clusters} labels={labels} />
     </div>
   );

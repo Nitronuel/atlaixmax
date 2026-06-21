@@ -51,7 +51,7 @@ export function SafeScanEmptyState({
             <input value={address} onChange={(event) => onAddressChange(event.target.value)} placeholder="Enter token contract address" disabled={loading} />
           </div>
         </label>
-        <button type="submit" className="primary-button" disabled={loading || !normalizedAddress || !addressSupported}>
+        <button type="submit" className="primary-button" disabled={loading || !normalizedAddress || (!addressSupported && !detectingNetwork)}>
           {loading ? <Loader2 size={20} className="spin" /> : <Shield size={20} />}
           {loading ? 'Analyzing...' : 'Analyze Distribution'}
         </button>
@@ -64,7 +64,7 @@ export function SafeScanEmptyState({
             : `Detected ${detectionLabel} from ${detectedNetwork.source}.`}
         </div>
       ) : null}
-      {!addressSupported ? <div className="form-error">{chain === 'solana' ? 'Solana scans require a valid Solana token address.' : chain === 'tron' ? 'Tron scans require a valid Tron token address.' : chain === 'ton' ? 'TON scans require a valid TON token address.' : 'EVM scans require a valid 0x token address.'}</div> : null}
+      {!addressSupported && !detectingNetwork ? <div className="form-error">{chain === 'solana' ? 'Solana scans require a valid Solana token address.' : chain === 'tron' ? 'Tron scans require a valid Tron token address.' : chain === 'ton' ? 'TON scans require a valid TON token address.' : 'EVM scans require a valid 0x token address.'}</div> : null}
       {error ? <div className="form-error" role="alert">{error}</div> : null}
       <Card className="analysis-card">
         <div className="analysis-icon">{loading ? <Loader2 size={36} className="spin" /> : <ShieldAlert size={36} />}</div>

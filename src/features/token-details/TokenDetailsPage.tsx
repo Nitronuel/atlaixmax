@@ -318,26 +318,29 @@ export function TokenDetailsPage() {
       <section className="token-detail-hero">
         <div className="token-detail-identity">
           <img src={imageUrl} alt="" onError={(event) => { event.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(symbol)}&background=0f5132&color=fff`; }} />
-          <div>
-            <div className="token-detail-title-row">
-              <h2>{name}</h2>
-              <span>{symbol}</span>
-              <em>{pair?.chainId || chain}</em>
+          <div className="token-detail-copy">
+            <div className="token-detail-copy-main">
+              <div className="token-detail-title-row">
+                <h2>{name}</h2>
+                <span>{symbol}</span>
+                <em>{pair?.chainId || chain}</em>
+              </div>
+              <p>{pair?.dexId || 'DEX'} liquidity pair</p>
+              <button type="button" onClick={copyAddress} className="token-detail-address">
+                <span className="token-detail-address-full">{shortAddress(tokenAddress, 14, 10)}</span>
+                <span className="token-detail-address-compact">{shortAddress(tokenAddress, 7, 5)}</span>
+                <Copy size={14} />
+                {copied ? <b>Copied</b> : null}
+              </button>
             </div>
-            <p>{pair?.dexId || 'DEX'} liquidity pair</p>
-            <button type="button" onClick={copyAddress} className="token-detail-address">
-              <span>{shortAddress(tokenAddress, 14, 10)}</span>
-              <Copy size={14} />
-              {copied ? <b>Copied</b> : null}
-            </button>
+            <div className="token-project-icons" aria-label="Project links">
+              {externalLinks.map((link) => (
+                <a key={`${link.label}:${link.url}`} href={link.url} target="_blank" rel="noreferrer" aria-label={link.label} title={link.label}>
+                  <ProjectLinkIcon label={link.label} url={link.url} />
+                </a>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="token-project-icons" aria-label="Project links">
-          {externalLinks.map((link) => (
-            <a key={`${link.label}:${link.url}`} href={link.url} target="_blank" rel="noreferrer" aria-label={link.label} title={link.label}>
-              <ProjectLinkIcon label={link.label} url={link.url} />
-            </a>
-          ))}
         </div>
         <div className="token-detail-hero-market">
           <div className="token-detail-hero-metrics">

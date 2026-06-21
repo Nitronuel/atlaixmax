@@ -7,7 +7,21 @@ export function endpointData<T>(result?: { status: string; data: T | null }) {
 export function walletAddress(entry: unknown) {
   if (typeof entry === 'string') return entry.trim();
   const row = entry as Record<string, unknown>;
-  return String(row?.address ?? row?.wallet ?? row?.owner ?? row?.account ?? '').trim();
+  const holder = row?.holder_data as Record<string, unknown> | undefined;
+  return String(
+    row?.address ??
+    row?.wallet_address ??
+    row?.walletAddress ??
+    row?.wallet ??
+    row?.owner_address ??
+    row?.owner ??
+    row?.account_address ??
+    row?.account ??
+    holder?.address ??
+    holder?.wallet_address ??
+    holder?.walletAddress ??
+    ''
+  ).trim();
 }
 
 export function walletBalance(entry: unknown) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clusterSupplyBalance, clusterSupplyPercent, enrichWalletRows, holderSupplyPercent, inferredTotalSupply, labelMap, largestCluster, supplyPercentField } from './safe-scan-data';
+import { clusterSupplyBalance, clusterSupplyPercent, enrichWalletRows, holderSupplyPercent, inferredTotalSupply, labelMap, largestCluster, supplyPercentField, walletAddress } from './safe-scan-data';
 
 describe('Safe Scan Bubblemaps data helpers', () => {
   it('sums cluster token amounts from Bubblemaps clusters', () => {
@@ -18,6 +18,11 @@ describe('Safe Scan Bubblemaps data helpers', () => {
 
   it('normalizes holder share into percent scale', () => {
     expect(supplyPercentField({ holder_data: { amount: 100, rank: 1, share: 0.25 } })).toBe(25);
+  });
+
+  it('reads wallet addresses from common holder field names', () => {
+    expect(walletAddress({ wallet_address: '0xabc' })).toBe('0xabc');
+    expect(walletAddress({ holder_data: { walletAddress: '0xdef' } })).toBe('0xdef');
   });
 
   it('infers total supply from holder amount and share before using clusters', () => {

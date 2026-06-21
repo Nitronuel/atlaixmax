@@ -12,6 +12,7 @@ import { DetectionRoutes } from './detection/routes';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { startOverviewIngestionScheduler } from './overview/database';
 import { OverviewRoutes } from './overview/routes';
+import { SecurityScannerRoutes } from './security-scanner/routes';
 import { SmartAlertRoutes } from './smart-alerts/routes';
 import { SmartMoneyRoutes } from './smart-money/routes';
 import { WalletRoutes } from './wallet/routes';
@@ -29,6 +30,7 @@ const aiAssistantRoutes = new AiAssistantRoutes(smartAlertRoutes);
 const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
 const detectionRoutes = new DetectionRoutes();
+const securityScannerRoutes = new SecurityScannerRoutes();
 const clientRoot = resolve(process.cwd(), 'dist');
 
 const contentTypes: Record<string, string> = {
@@ -118,6 +120,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/detection')) {
       await detectionRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/security-scanner')) {
+      await securityScannerRoutes.handle(request, response, requestUrl);
       return;
     }
 

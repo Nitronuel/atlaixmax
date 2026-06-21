@@ -67,10 +67,24 @@ const columns: FeedColumn[] = [
   { label: 'Event', key: 'event', width: 180 }
 ];
 
-function ColGroup() {
+const mobileColumns: FeedColumn[] = [
+  { label: 'Chain', key: 'chain', className: 'chain-col', width: 44 },
+  { label: 'Token', key: 'symbol', className: 'token-col', width: 112 },
+  { label: 'Price', key: 'priceUsd', width: 82, align: 'right' },
+  { label: 'Chg 24h', key: 'change24h', width: 72, align: 'right' },
+  { label: 'MCap', key: 'marketCapUsd', width: 88, align: 'right' },
+  { label: 'DEX Volume', key: 'volume24hUsd', width: 96, align: 'right' },
+  { label: 'Liquidity', key: 'liquidityUsd', width: 94, align: 'right' },
+  { label: 'DEX Buys', key: 'dexBuys24h', width: 70, align: 'right' },
+  { label: 'DEX Sells', key: 'dexSells24h', width: 74, align: 'right' },
+  { label: 'DEX Flow', key: 'dexFlowUsd24h', width: 104, align: 'right' },
+  { label: 'Event', key: 'event', width: 112 }
+];
+
+function ColGroup({ tableColumns }: { tableColumns: FeedColumn[] }) {
   return (
     <colgroup>
-      {columns.map((column) => (
+      {tableColumns.map((column) => (
         <col key={column.key} style={{ width: column.width }} />
       ))}
     </colgroup>
@@ -86,10 +100,10 @@ function SortGlyph({ direction }: { direction?: 'asc' | 'desc' }) {
   );
 }
 
-function HeaderRow({ sortConfig, onSort }: { sortConfig: SortConfig; onSort: (key: OverviewSortKey) => void }) {
+function HeaderRow({ tableColumns, sortConfig, onSort }: { tableColumns: FeedColumn[]; sortConfig: SortConfig; onSort: (key: OverviewSortKey) => void }) {
   return (
     <tr>
-      {columns.map((column) => {
+      {tableColumns.map((column) => {
         const key = column.key;
         const active = sortConfig?.key === key;
         const direction = active ? sortConfig?.direction : undefined;
@@ -193,6 +207,7 @@ export function LiveAlphaFeed({
 }) {
   const [sortConfig, setSortConfig] = useState<SortConfig>(null);
   const [page, setPage] = useState(1);
+  const [isMobileTable, setIsMobileTable] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches);
   const feedRef = useRef<HTMLElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -217,12 +232,21 @@ export function LiveAlphaFeed({
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
   const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlowUsd24h))), [pageRows]);
-  const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
+  const tableColumns = isMobileTable ? mobileColumns : columns;
+  const tableWidth = tableColumns.reduce((sum, column) => sum + column.width, 0);
 
   useEffect(() => setPage(1), [filters, searchQuery, sortConfig]);
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 720px)');
+    const update = () => setIsMobileTable(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
 
   useLayoutEffect(() => {
     const feed = feedRef.current;
@@ -287,8 +311,8 @@ export function LiveAlphaFeed({
 
       <div ref={headerRef} onScroll={() => syncScroll(headerRef.current)} className="overview-column-head">
         <table style={{ minWidth: tableWidth }}>
-          <ColGroup />
-          <thead><HeaderRow sortConfig={sortConfig} onSort={toggleSort} /></thead>
+          <ColGroup tableColumns={tableColumns} />
+          <thead><HeaderRow tableColumns={tableColumns} sortConfig={sortConfig} onSort={toggleSort} /></thead>
         </table>
       </div>
 
@@ -304,7 +328,7 @@ export function LiveAlphaFeed({
           </div>
         ) : (
           <table style={{ minWidth: tableWidth }}>
-            <ColGroup />
+            <ColGroup tableColumns={tableColumns} />
             <tbody>
               {pageRows.map((token) => (
                 <tr key={token.id} onClick={() => openToken(token)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openToken(token)}>
