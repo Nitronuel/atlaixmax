@@ -1,5 +1,6 @@
 import type { SavedWallet } from '../../src/features/wallet-tracker/wallet-types';
 import { readEnv } from '../env';
+import { SmartMoneyQualificationService } from './qualification-service';
 
 type SmartMoneyRow = {
   wallet_address: string;
@@ -58,10 +59,6 @@ function mapRowToWallet(row: SmartMoneyRow): SavedWallet {
   };
 }
 
-function isQualified(wallet: SavedWallet) {
-  return Boolean(wallet.addr?.trim() && wallet.qualification?.qualified && wallet.qualification.score >= 65);
-}
-
 export const SmartMoneyDatabase = {
   async listWallets() {
     const rows = await supabaseJson<SmartMoneyRow[]>(
@@ -75,7 +72,8 @@ export const SmartMoneyDatabase = {
       throw new Error('Wallet payload is required.');
     }
 
-    if (!isQualified(wallet)) {
+    const qualification = await SmartMoneyQualificationService.evaluateWallet(wallet);
+    if (!wallet.addr?.trim() || !qualification.qualified) {
       throw new Error('Wallet does not meet Smart Money qualification requirements.');
     }
 
@@ -90,8 +88,8 @@ export const SmartMoneyDatabase = {
       last_balance: wallet.lastBalance || null,
       last_win_rate: wallet.lastWinRate || null,
       last_pnl: wallet.lastPnl || null,
-      smart_money_score: wallet.qualification?.score || 0,
-      qualification: wallet.qualification,
+      smart_money_score: qualification.score,
+      qualification,
       source: 'wallet-tracker',
       promotion_scope: 'global',
       last_verified_at: new Date().toISOString(),

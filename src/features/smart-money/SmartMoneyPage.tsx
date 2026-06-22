@@ -440,7 +440,7 @@ function SmartWalletProfile({ address }: { address: string }) {
         </dl>
       </section>
       <section className="smart-profile-reasons" aria-label="Smart Money qualification reasons">
-        {qualification?.reasons.length ? qualification.reasons.map((reason) => (
+        {qualification?.reasons.length ? qualification.reasons.map((reason: string) => (
           <span key={reason}>{reason}</span>
         )) : (
           <span>Awaiting enough wallet performance data.</span>

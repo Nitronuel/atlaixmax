@@ -410,11 +410,9 @@ function WalletProfile({ address }: { address: string }) {
       pnl: portfolioState.stats.totalPnl,
       qualification
     });
-    if (qualification.qualified) {
-      const wallet = WalletStorage.get(address);
-      if (wallet) {
-        SmartMoneyService.promoteWallet(wallet).catch(() => undefined);
-      }
+    const wallet = WalletStorage.get(address);
+    if (wallet) {
+      SmartMoneyService.promoteWallet(wallet).catch(() => undefined);
     }
   }, [address, portfolioState.loading, portfolioState.stats, validation.isValid]);
 

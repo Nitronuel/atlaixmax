@@ -1,4 +1,5 @@
 import type { SmartMoneyQualification, SupportedWalletChain, WalletAddressType, WalletAsset, WalletCategory, WalletChain, WalletStats } from './wallet-types';
+import { evaluateSmartMoneyWallet } from '../../shared/smart-money-qualification';
 
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
@@ -92,93 +93,20 @@ export function parsePercentValue(value?: string | number) {
   return Number(value.replace('%', '').replace('+', '').trim()) || 0;
 }
 
-function roundScore(value: number) {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
 export function evaluateSmartMoney(stats: WalletStats): SmartMoneyQualification {
   const netWorthUsd = parseCurrencyValue(stats.netWorth);
   const winRate = parsePercentValue(stats.winRate);
   const pnlPercent = parsePercentValue(stats.totalPnl);
   const activePositions = typeof stats.activePositions === 'number' ? stats.activePositions : Number.parseInt(String(stats.activePositions), 10) || 0;
   const profitablePositions = Number.parseInt(stats.profitablePositions, 10) || 0;
-  const reasons: string[] = [];
-  let score = 0;
 
-  if (netWorthUsd >= 100_000) {
-    score += 25;
-    reasons.push(`Strong capital base with ${stats.netWorth} in tracked value`);
-  } else if (netWorthUsd >= 25_000) {
-    score += 18;
-    reasons.push(`Healthy capital base with ${stats.netWorth} in tracked value`);
-  } else if (netWorthUsd >= 10_000) {
-    score += 10;
-  }
-
-  if (winRate >= 75) {
-    score += 25;
-    reasons.push(`High win rate at ${stats.winRate}`);
-  } else if (winRate >= 60) {
-    score += 18;
-    reasons.push(`Solid win rate at ${stats.winRate}`);
-  } else if (winRate >= 50) {
-    score += 10;
-  }
-
-  if (pnlPercent >= 50) {
-    score += 25;
-    reasons.push(`Exceptional PnL at ${stats.totalPnl}`);
-  } else if (pnlPercent >= 20) {
-    score += 18;
-    reasons.push(`Positive PnL at ${stats.totalPnl}`);
-  } else if (pnlPercent >= 10) {
-    score += 10;
-  }
-
-  if (activePositions >= 8) {
-    score += 15;
-    reasons.push(`${activePositions} active positions show broad activity`);
-  } else if (activePositions >= 4) {
-    score += 10;
-    reasons.push(`${activePositions} active positions provide enough activity to assess`);
-  } else if (activePositions >= 2) {
-    score += 5;
-  }
-
-  if (profitablePositions >= 5) {
-    score += 10;
-    reasons.push(`${profitablePositions} profitable positions support consistency`);
-  } else if (profitablePositions >= 3) {
-    score += 7;
-  } else if (profitablePositions >= 1) {
-    score += 3;
-  }
-
-  if (pnlPercent < 0) score -= 15;
-  if (winRate > 0 && winRate < 35) score -= 10;
-  if (netWorthUsd > 0 && netWorthUsd < 2_500) score -= 10;
-
-  const normalizedScore = roundScore(score);
-  const qualified = netWorthUsd >= 100_000 &&
-    winRate >= 55 &&
-    pnlPercent >= 10 &&
-    activePositions >= 3 &&
-    profitablePositions >= 2 &&
-    normalizedScore >= 65;
-
-  return {
-    score: normalizedScore,
-    qualified,
-    reasons: reasons.slice(0, 4),
-    evaluatedAt: Date.now(),
-    metrics: {
-      netWorthUsd,
-      winRate,
-      pnlPercent,
-      activePositions,
-      profitablePositions
-    }
-  };
+  return evaluateSmartMoneyWallet({
+    netWorthUsd,
+    winRate,
+    pnlPercent,
+    activePositions,
+    profitablePositions
+  });
 }
 
 export function buildWalletStats(assets: WalletAsset[], fallbackNetWorth = '$0.00'): WalletStats {

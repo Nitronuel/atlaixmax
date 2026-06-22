@@ -20,7 +20,7 @@ describe('wallet utilities', () => {
     expect(normalizeWalletChain('missing')).toBe('All Chains');
   });
 
-  it('qualifies strong tracked wallets for Smart Money', () => {
+  it('keeps portfolio-only scores out of Smart Money qualification', () => {
     const result = evaluateSmartMoney({
       netWorth: '$125,000.00',
       winRate: '67%',
@@ -30,8 +30,8 @@ describe('wallet utilities', () => {
       avgHoldTime: 'N/A'
     });
 
-    expect(result.qualified).toBe(true);
-    expect(result.score).toBeGreaterThanOrEqual(65);
+    expect(result.qualified).toBe(false);
+    expect(result.hardFailures).toContain('Needs at least 30 completed trades');
   });
 
   it('rejects weak tracked wallets from Smart Money', () => {
