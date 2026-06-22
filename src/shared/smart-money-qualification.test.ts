@@ -14,7 +14,12 @@ const baseEvidence = {
   profitFactor: 2.2,
   rugExposureRate: 0.04,
   severeLossRate: 0.08,
-  largestTradeProfitShare: 0.28
+  largestTradeProfitShare: 0.28,
+  averageWinnerRoi: 36,
+  medianWinnerRoi: 24,
+  profitableTokenRate: 0.44,
+  profitableTokenCount: 7,
+  highRoiWinnerCount: 3
 };
 
 describe('smart money qualification', () => {
@@ -22,7 +27,7 @@ describe('smart money qualification', () => {
     const result = evaluateSmartMoneyWallet(baseEvidence);
 
     expect(result.qualified).toBe(true);
-    expect(result.tier).toBe('strong');
+    expect(result.tier).toBe('elite');
     expect(result.hardFailures).toEqual([]);
   });
 
@@ -38,6 +43,7 @@ describe('smart money qualification', () => {
       winRate: 44,
       profitFactor: 0.9,
       rugExposureRate: 0,
+      severeLossRate: 0,
       largestTradeProfitShare: 0
     });
 
@@ -58,10 +64,20 @@ describe('smart money qualification', () => {
     expect(result.reasons).toContain('Lower win rate is offset by strong winners');
   });
 
+  it('rejects positive but tiny realized PnL', () => {
+    const result = evaluateSmartMoneyWallet({
+      ...baseEvidence,
+      realizedPnl90d: 9_999
+    });
+
+    expect(result.qualified).toBe(false);
+    expect(result.hardFailures).toContain('Needs at least $10,000 realized PnL in 90 days');
+  });
+
   it('rejects wallets that rely on one winning trade', () => {
     const result = evaluateSmartMoneyWallet({
       ...baseEvidence,
-      largestTradeProfitShare: 0.72
+      largestTradeProfitShare: 0.36
     });
 
     expect(result.qualified).toBe(false);
@@ -76,5 +92,30 @@ describe('smart money qualification', () => {
 
     expect(result.qualified).toBe(false);
     expect(result.hardFailures).toContain('Rug exposure is too high');
+  });
+
+  it('rejects weak token-level performance', () => {
+    const result = evaluateSmartMoneyWallet({
+      ...baseEvidence,
+      profitableTokenRate: 0.25,
+      averageWinnerRoi: 22,
+      highRoiWinnerCount: 1
+    });
+
+    expect(result.qualified).toBe(false);
+    expect(result.hardFailures).toContain('Needs at least 30% profitable traded tokens');
+    expect(result.hardFailures).toContain('Needs average winning token ROI of at least 30%');
+    expect(result.hardFailures).toContain('Needs at least 2 winning tokens above 30% ROI');
+  });
+
+  it('rejects lower win rate without exceptional profit factor', () => {
+    const result = evaluateSmartMoneyWallet({
+      ...baseEvidence,
+      winRate: 46,
+      profitFactor: 2.4
+    });
+
+    expect(result.qualified).toBe(false);
+    expect(result.hardFailures).toContain('Needs at least 50% win rate, or 45% with 2.5x profit factor');
   });
 });

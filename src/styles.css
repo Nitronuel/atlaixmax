@@ -10340,9 +10340,14 @@ main {
   color: #a46405;
 }
 
-.wallet-performance-status.no-basis {
+.wallet-performance-status.cost-basis-missing {
   background: rgba(98, 108, 118, 0.12);
   color: var(--text-dark);
+}
+
+.wallet-performance-status.open-position {
+  background: rgba(24, 139, 74, 0.1);
+  color: var(--brand-green-dark);
 }
 
 @media (max-width: 1180px) {

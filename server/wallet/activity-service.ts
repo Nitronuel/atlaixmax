@@ -30,6 +30,7 @@ export type WalletActivityItem = {
   usdValue?: number;
   protocol?: string;
   counterparty?: string;
+  blockNumber?: string;
   explorerUrl: string;
   confidence: WalletActivityConfidence;
   source: WalletActivitySource;
@@ -101,23 +102,29 @@ type RpcResponse<T> = {
 };
 
 const WALLET_ACTIVITY_CACHE_TTL_MS = 45_000;
+const WALLET_ACTIVITY_LIMIT = 500;
+const PROVIDER_PAGE_SIZE = 100;
+const MAX_PROVIDER_PAGES = 5;
+const ACTIVITY_PRICE_ENRICHMENT_LIMIT = 80;
+const ACTIVITY_PRICE_CACHE_TTL_MS = 6 * 60 * 60_000;
 const MORALIS_EVM_BASE_URL = 'https://deep-index.moralis.io/api/v2.2';
 const MORALIS_SOLANA_BASE_URL = 'https://solana-gateway.moralis.io';
 const cache = new TtlCache();
+const priceCache = new TtlCache();
 const pending = new Map<string, Promise<WalletActivityResponse>>();
 
-const evmChainMap: Record<EvmWalletChain, { moralis: string; alchemy?: string; explorer: string; nativeSymbol: string }> = {
-  Ethereum: { moralis: 'eth', alchemy: 'eth-mainnet', explorer: 'https://etherscan.io/tx/', nativeSymbol: 'ETH' },
-  Base: { moralis: 'base', alchemy: 'base-mainnet', explorer: 'https://basescan.org/tx/', nativeSymbol: 'ETH' },
-  BSC: { moralis: 'bsc', explorer: 'https://bscscan.com/tx/', nativeSymbol: 'BNB' },
-  Arbitrum: { moralis: 'arbitrum', alchemy: 'arb-mainnet', explorer: 'https://arbiscan.io/tx/', nativeSymbol: 'ETH' },
-  Optimism: { moralis: 'optimism', alchemy: 'opt-mainnet', explorer: 'https://optimistic.etherscan.io/tx/', nativeSymbol: 'ETH' },
-  Polygon: { moralis: 'polygon', alchemy: 'polygon-mainnet', explorer: 'https://polygonscan.com/tx/', nativeSymbol: 'MATIC' },
-  Avalanche: { moralis: 'avalanche', explorer: 'https://snowtrace.io/tx/', nativeSymbol: 'AVAX' }
+const evmChainMap: Record<EvmWalletChain, { moralis: string; alchemy?: string; explorer: string; nativeSymbol: string; wrappedNative: string }> = {
+  Ethereum: { moralis: 'eth', alchemy: 'eth-mainnet', explorer: 'https://etherscan.io/tx/', nativeSymbol: 'ETH', wrappedNative: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' },
+  Base: { moralis: 'base', alchemy: 'base-mainnet', explorer: 'https://basescan.org/tx/', nativeSymbol: 'ETH', wrappedNative: '0x4200000000000000000000000000000000000006' },
+  BSC: { moralis: 'bsc', explorer: 'https://bscscan.com/tx/', nativeSymbol: 'BNB', wrappedNative: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' },
+  Arbitrum: { moralis: 'arbitrum', alchemy: 'arb-mainnet', explorer: 'https://arbiscan.io/tx/', nativeSymbol: 'ETH', wrappedNative: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' },
+  Optimism: { moralis: 'optimism', alchemy: 'opt-mainnet', explorer: 'https://optimistic.etherscan.io/tx/', nativeSymbol: 'ETH', wrappedNative: '0x4200000000000000000000000000000000000006' },
+  Polygon: { moralis: 'polygon', alchemy: 'polygon-mainnet', explorer: 'https://polygonscan.com/tx/', nativeSymbol: 'MATIC', wrappedNative: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270' },
+  Avalanche: { moralis: 'avalanche', explorer: 'https://snowtrace.io/tx/', nativeSymbol: 'AVAX', wrappedNative: '0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7' }
 };
 
 const evmAggregateChains: EvmWalletChain[] = ['Ethereum', 'Base', 'BSC', 'Arbitrum', 'Optimism', 'Polygon', 'Avalanche'];
-const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'USDS']);
+const STABLE_SYMBOLS = new Set(['USDC', 'USDT', 'DAI', 'USDE', 'FDUSD', 'USDS', 'TUSD']);
 const NATIVE_ADDRESSES = new Set(['native', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee']);
 
 function getMoralisKey() {
@@ -171,6 +178,46 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function activityBlockNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) return String(Math.trunc(value));
+    if (typeof value === 'string' && value.trim()) {
+      if (value.startsWith('0x')) {
+        try {
+          return BigInt(value).toString();
+        } catch {
+          return '';
+        }
+      }
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return String(Math.trunc(parsed));
+    }
+  }
+  return '';
+}
+
+function parseTokenAmount(value?: string) {
+  if (!value) return 0;
+  const parsed = Number(value.replace(/,/g, '').trim());
+  return Number.isFinite(parsed) ? Math.abs(parsed) : 0;
+}
+
+function tokenPriceAddress(token: WalletActivityToken, chain: WalletChain) {
+  if (chain === 'Solana') return token.address || '';
+  if (!(chain in evmChainMap)) return token.address || '';
+  const address = (token.address || '').toLowerCase();
+  const nativeSymbol = evmChainMap[chain as EvmWalletChain].nativeSymbol.toUpperCase();
+  if (!address || NATIVE_ADDRESSES.has(address) || token.symbol.toUpperCase() === nativeSymbol) {
+    return evmChainMap[chain as EvmWalletChain].wrappedNative;
+  }
+  return token.address || '';
+}
+
+function priceCacheKey(chain: WalletChain, address: string, blockNumber?: string, timestamp?: number) {
+  const timeBucket = timestamp ? Math.floor(timestamp / 3_600_000) : 0;
+  return `${chain}:${address.toLowerCase()}:${blockNumber || timeBucket}`;
+}
+
 function shortHash(hash: string) {
   return hash.length > 12 ? `${hash.slice(0, 6)}...${hash.slice(-4)}` : hash;
 }
@@ -197,6 +244,56 @@ async function moralisJson<T>(url: string) {
   const apiKey = getMoralisKey();
   if (!apiKey) throw new Error('Moralis API key is missing.');
   return fetchJson<T>(url, { 'X-API-Key': apiKey });
+}
+
+async function fetchMoralisDateToBlock(chain: EvmWalletChain, timestampMs: number) {
+  if (!getMoralisKey() || !timestampMs) return '';
+  const cacheKey = `date-to-block:${chain}:${Math.floor(timestampMs / 3_600_000)}`;
+  const cached = priceCache.get(cacheKey);
+  if (cached) return String(cached.value || '');
+
+  const url = new URL(`${MORALIS_EVM_BASE_URL}/dateToBlock`);
+  url.searchParams.set('chain', evmChainMap[chain].moralis);
+  url.searchParams.set('date', new Date(timestampMs).toISOString());
+
+  try {
+    const data = await moralisJson<{ block?: number | string; block_number?: number | string }>(url.toString());
+    const block = activityBlockNumber(data.block ?? data.block_number);
+    priceCache.set(cacheKey, block, ACTIVITY_PRICE_CACHE_TTL_MS);
+    return block;
+  } catch {
+    priceCache.set(cacheKey, '', 10 * 60_000);
+    return '';
+  }
+}
+
+async function fetchMoralisActivityPrice(address: string, chain: WalletChain, blockNumber?: string, timestamp?: number) {
+  if (!getMoralisKey() || !address) return 0;
+  const normalizedBlock = chain !== 'Solana' && !blockNumber && timestamp && chain in evmChainMap
+    ? await fetchMoralisDateToBlock(chain as EvmWalletChain, timestamp)
+    : blockNumber;
+  const cacheKey = priceCacheKey(chain, address, normalizedBlock, timestamp);
+  const cached = priceCache.get(cacheKey);
+  if (cached) return Number(cached.value || 0);
+
+  const isSolana = chain === 'Solana';
+  if (!isSolana && !(chain in evmChainMap)) return 0;
+  const url = new URL(isSolana
+    ? `${MORALIS_SOLANA_BASE_URL}/token/mainnet/${address}/price`
+    : `${MORALIS_EVM_BASE_URL}/erc20/${address}/price`);
+  if (!isSolana) url.searchParams.set('chain', evmChainMap[chain as EvmWalletChain].moralis);
+  if (normalizedBlock && !isSolana) url.searchParams.set('to_block', normalizedBlock);
+  if (timestamp && isSolana) url.searchParams.set('toDate', new Date(timestamp).toISOString());
+
+  try {
+    const data = await moralisJson<{ usdPrice?: number; usd_price?: number }>(url.toString());
+    const price = parseNumber(data.usdPrice ?? data.usd_price);
+    priceCache.set(cacheKey, price, ACTIVITY_PRICE_CACHE_TTL_MS);
+    return price;
+  } catch {
+    priceCache.set(cacheKey, 0, 10 * 60_000);
+    return 0;
+  }
 }
 
 async function alchemyRpc<T>(network: string, method: string, params: unknown[]) {
@@ -261,6 +358,7 @@ function historyKind(row: MoralisHistoryRow): WalletActivityKind {
 function normalizeMoralisHistory(row: MoralisHistoryRow, chain: EvmWalletChain): WalletActivityItem | null {
   const hash = firstString(row.hash, row.transaction_hash, row.transactionHash);
   const timestamp = parseTimestamp(row.block_timestamp ?? row.blockTimestamp ?? row.timestamp);
+  const blockNumber = activityBlockNumber(row.block_number, row.blockNumber, row.block);
   if (!hash || !timestamp) return null;
 
   const kind = historyKind(row);
@@ -284,6 +382,7 @@ function normalizeMoralisHistory(row: MoralisHistoryRow, chain: EvmWalletChain):
     usdValue: usdValue || undefined,
     protocol: firstString(row.protocol_name, row.protocolName, row.method_label, row.methodLabel) || undefined,
     counterparty: firstString(row.to_address, row.toAddress, row.from_address, row.fromAddress) || undefined,
+    blockNumber: blockNumber || undefined,
     explorerUrl: explorerUrl(chain, hash),
     confidence: kind === 'unknown' ? 'low' : 'high',
     source: 'moralis_history'
@@ -301,6 +400,7 @@ function normalizeSwapToken(row: MoralisSwapRow, keys: string[]) {
 function normalizeMoralisSwap(row: MoralisSwapRow, chain: EvmWalletChain): WalletActivityItem | null {
   const hash = firstString(row.transactionHash, row.transaction_hash, row.hash);
   const timestamp = parseTimestamp(row.blockTimestamp ?? row.block_timestamp ?? row.timestamp);
+  const blockNumber = activityBlockNumber(row.blockNumber, row.block_number, row.block);
   if (!hash || !timestamp) return null;
 
   const tokenIn = normalizeSwapToken(row, ['sold', 'tokenIn', 'fromToken', 'baseToken']);
@@ -326,6 +426,7 @@ function normalizeMoralisSwap(row: MoralisSwapRow, chain: EvmWalletChain): Walle
     tokens,
     usdValue: usdValue || tokenIn?.usdValue || tokenOut?.usdValue,
     protocol: firstString(row.exchangeName, row.exchange_name, row.protocol, row.market) || undefined,
+    blockNumber: blockNumber || undefined,
     explorerUrl: explorerUrl(chain, hash),
     confidence: 'high',
     source: 'moralis_swaps'
@@ -345,6 +446,7 @@ function alchemyTransferToken(transfer: AlchemyTransfer, chain: EvmWalletChain):
 function normalizeAlchemyTransfer(transfer: AlchemyTransfer, chain: EvmWalletChain, walletAddress: string): WalletActivityItem | null {
   const hash = transfer.hash || '';
   const timestamp = parseTimestamp(transfer.metadata?.blockTimestamp);
+  const blockNumber = activityBlockNumber(transfer.blockNum);
   if (!hash || !timestamp) return null;
   const isIncoming = String(transfer.to || '').toLowerCase() === walletAddress.toLowerCase();
   const kind: WalletActivityKind = isIncoming ? 'receive' : 'send';
@@ -360,6 +462,7 @@ function normalizeAlchemyTransfer(transfer: AlchemyTransfer, chain: EvmWalletCha
     summary: `${token.amount || 'Unknown amount'} ${token.symbol}`,
     tokens: [token],
     counterparty: isIncoming ? transfer.from : transfer.to,
+    blockNumber: blockNumber || undefined,
     explorerUrl: explorerUrl(chain, hash),
     confidence: 'medium',
     source: 'alchemy_transfers'
@@ -368,31 +471,48 @@ function normalizeAlchemyTransfer(transfer: AlchemyTransfer, chain: EvmWalletCha
 
 async function fetchMoralisHistory(address: string, chain: EvmWalletChain, limit: number) {
   if (!getMoralisKey()) return [];
-  const url = new URL(`${MORALIS_EVM_BASE_URL}/wallets/${address}/history`);
-  url.searchParams.set('chain', evmChainMap[chain].moralis);
-  url.searchParams.set('order', 'DESC');
-  url.searchParams.set('limit', String(Math.min(limit, 100)));
+  const rows: MoralisHistoryRow[] = [];
+  let cursor = '';
+  for (let page = 0; page < MAX_PROVIDER_PAGES && rows.length < limit; page += 1) {
+    const url = new URL(`${MORALIS_EVM_BASE_URL}/wallets/${address}/history`);
+    url.searchParams.set('chain', evmChainMap[chain].moralis);
+    url.searchParams.set('order', 'DESC');
+    url.searchParams.set('limit', String(Math.min(PROVIDER_PAGE_SIZE, limit - rows.length)));
+    if (cursor) url.searchParams.set('cursor', cursor);
 
-  const data = await moralisJson<{ result?: MoralisHistoryRow[] } | MoralisHistoryRow[]>(url.toString());
-  const rows = Array.isArray(data) ? data : data.result || [];
-  return rows.map((row) => normalizeMoralisHistory(row, chain)).filter((item): item is WalletActivityItem => Boolean(item));
+    const data = await moralisJson<{ result?: MoralisHistoryRow[]; cursor?: string } | MoralisHistoryRow[]>(url.toString());
+    const pageRows = Array.isArray(data) ? data : data.result || [];
+    rows.push(...pageRows);
+    cursor = Array.isArray(data) ? '' : firstString(data.cursor);
+    if (!cursor || !pageRows.length) break;
+  }
+  return rows.slice(0, limit).map((row) => normalizeMoralisHistory(row, chain)).filter((item): item is WalletActivityItem => Boolean(item));
 }
 
 async function fetchMoralisSwaps(address: string, chain: EvmWalletChain, limit: number) {
   if (!getMoralisKey()) return [];
-  const url = new URL(`${MORALIS_EVM_BASE_URL}/wallets/${address}/swaps`);
-  url.searchParams.set('chain', evmChainMap[chain].moralis);
-  url.searchParams.set('order', 'DESC');
-  url.searchParams.set('limit', String(Math.min(limit, 100)));
+  const rows: MoralisSwapRow[] = [];
+  let cursor = '';
+  for (let page = 0; page < MAX_PROVIDER_PAGES && rows.length < limit; page += 1) {
+    const url = new URL(`${MORALIS_EVM_BASE_URL}/wallets/${address}/swaps`);
+    url.searchParams.set('chain', evmChainMap[chain].moralis);
+    url.searchParams.set('order', 'DESC');
+    url.searchParams.set('limit', String(Math.min(PROVIDER_PAGE_SIZE, limit - rows.length)));
+    if (cursor) url.searchParams.set('cursor', cursor);
 
-  const data = await moralisJson<{ result?: MoralisSwapRow[] } | MoralisSwapRow[]>(url.toString());
-  const rows = Array.isArray(data) ? data : data.result || [];
-  return rows.map((row) => normalizeMoralisSwap(row, chain)).filter((item): item is WalletActivityItem => Boolean(item));
+    const data = await moralisJson<{ result?: MoralisSwapRow[]; cursor?: string } | MoralisSwapRow[]>(url.toString());
+    const pageRows = Array.isArray(data) ? data : data.result || [];
+    rows.push(...pageRows);
+    cursor = Array.isArray(data) ? '' : firstString(data.cursor);
+    if (!cursor || !pageRows.length) break;
+  }
+  return rows.slice(0, limit).map((row) => normalizeMoralisSwap(row, chain)).filter((item): item is WalletActivityItem => Boolean(item));
 }
 
 function normalizeMoralisSolanaSwap(row: MoralisSwapRow): WalletActivityItem | null {
   const hash = firstString(row.transactionHash, row.transaction_hash, row.hash);
   const timestamp = parseTimestamp(row.blockTimestamp ?? row.block_timestamp ?? row.timestamp);
+  const blockNumber = activityBlockNumber(row.slot, row.blockNumber, row.block_number, row.block);
   if (!hash || !timestamp) return null;
 
   const tokenIn = normalizeSwapToken(row, ['sold', 'tokenIn', 'fromToken', 'baseToken']);
@@ -417,6 +537,7 @@ function normalizeMoralisSolanaSwap(row: MoralisSwapRow): WalletActivityItem | n
     tokens,
     usdValue: usdValue || tokenIn?.usdValue || tokenOut?.usdValue,
     protocol: firstString(row.exchangeName, row.exchange_name, row.protocol, row.market) || undefined,
+    blockNumber: blockNumber || undefined,
     explorerUrl: solanaExplorerUrl(hash),
     confidence: 'high',
     source: 'moralis_swaps'
@@ -425,12 +546,20 @@ function normalizeMoralisSolanaSwap(row: MoralisSwapRow): WalletActivityItem | n
 
 async function fetchMoralisSolanaSwaps(address: string, limit: number) {
   if (!getMoralisKey()) return [];
-  const url = new URL(`${MORALIS_SOLANA_BASE_URL}/account/mainnet/${address}/swaps`);
-  url.searchParams.set('limit', String(Math.min(limit, 100)));
+  const rows: MoralisSwapRow[] = [];
+  let cursor = '';
+  for (let page = 0; page < MAX_PROVIDER_PAGES && rows.length < limit; page += 1) {
+    const url = new URL(`${MORALIS_SOLANA_BASE_URL}/account/mainnet/${address}/swaps`);
+    url.searchParams.set('limit', String(Math.min(PROVIDER_PAGE_SIZE, limit - rows.length)));
+    if (cursor) url.searchParams.set('cursor', cursor);
 
-  const data = await moralisJson<{ result?: MoralisSwapRow[] } | MoralisSwapRow[]>(url.toString());
-  const rows = Array.isArray(data) ? data : data.result || [];
-  return rows.map(normalizeMoralisSolanaSwap).filter((item): item is WalletActivityItem => Boolean(item));
+    const data = await moralisJson<{ result?: MoralisSwapRow[]; cursor?: string } | MoralisSwapRow[]>(url.toString());
+    const pageRows = Array.isArray(data) ? data : data.result || [];
+    rows.push(...pageRows);
+    cursor = Array.isArray(data) ? '' : firstString(data.cursor);
+    if (!cursor || !pageRows.length) break;
+  }
+  return rows.slice(0, limit).map(normalizeMoralisSolanaSwap).filter((item): item is WalletActivityItem => Boolean(item));
 }
 
 async function fetchAlchemyTransfers(address: string, chain: EvmWalletChain, limit: number) {
@@ -443,7 +572,7 @@ async function fetchAlchemyTransfers(address: string, chain: EvmWalletChain, lim
     category: ['external', 'internal', 'erc20'],
     excludeZeroValue: true,
     withMetadata: true,
-    maxCount: `0x${Math.min(limit, 100).toString(16)}`,
+    maxCount: `0x${Math.min(limit, PROVIDER_PAGE_SIZE).toString(16)}`,
     order: 'desc'
   };
 
@@ -474,6 +603,51 @@ function dedupeActivities(activities: WalletActivityItem[]) {
   });
 
   return [...byKey.values()].sort((left, right) => right.timestamp - left.timestamp);
+}
+
+function setStableTokenValue(token: WalletActivityToken) {
+  if (token.usdValue || !STABLE_SYMBOLS.has(token.symbol.toUpperCase())) return;
+  const amount = parseTokenAmount(token.amount);
+  if (amount > 0) token.usdValue = amount;
+}
+
+function inferActivityValue(activity: WalletActivityItem) {
+  if (activity.usdValue) return;
+  activity.tokens.forEach(setStableTokenValue);
+  const tokenValue = Math.max(...activity.tokens.map((token) => token.usdValue || 0), 0);
+  if (tokenValue > 0) activity.usdValue = tokenValue;
+}
+
+async function enrichTokenValue(token: WalletActivityToken, activity: WalletActivityItem) {
+  if (token.usdValue) return;
+  setStableTokenValue(token);
+  if (token.usdValue) return;
+
+  const amount = parseTokenAmount(token.amount);
+  const address = tokenPriceAddress(token, activity.chain);
+  if (!amount || !address) return;
+
+  let price = await fetchMoralisActivityPrice(address, activity.chain, activity.blockNumber, activity.timestamp);
+  const isRecent = activity.timestamp > Date.now() - 24 * 60 * 60_000;
+  if (!price && isRecent) price = await fetchMoralisActivityPrice(address, activity.chain);
+  if (price > 0) token.usdValue = amount * price;
+}
+
+async function enrichActivityValues(activities: WalletActivityItem[]) {
+  activities.forEach(inferActivityValue);
+  const candidates = activities
+    .filter((activity) => !activity.usdValue && activity.tokens.some((token) => parseTokenAmount(token.amount) > 0))
+    .slice(0, ACTIVITY_PRICE_ENRICHMENT_LIMIT);
+
+  for (const activity of candidates) {
+    for (const token of activity.tokens) {
+      await enrichTokenValue(token, activity);
+      inferActivityValue(activity);
+      if (activity.usdValue) break;
+    }
+  }
+
+  return activities;
 }
 
 function matchesKind(activity: WalletActivityItem, kind: string) {
@@ -572,8 +746,10 @@ async function loadEvmChainActivity(address: string, chain: EvmWalletChain, limi
 async function loadActivity(address: string, chain: WalletChain, options: ActivityOptions): Promise<WalletActivityResponse> {
   if (chain === 'Solana') {
     if (!getMoralisKey()) return providerMissing('Add MORALIS_API_KEY to .env to load Solana wallet swaps.');
-    const activities = dedupeActivities(await fetchMoralisSolanaSwaps(address, options.limit))
+    const periodActivities = dedupeActivities(await fetchMoralisSolanaSwaps(address, options.limit))
       .filter((activity) => matchesPeriod(activity, options.period))
+      .slice(0, options.limit);
+    const activities = (await enrichActivityValues(periodActivities))
       .filter((activity) => matchesKind(activity, options.kind))
       .slice(0, options.limit);
     const tradedTokens = buildTradedTokens(activities);
@@ -594,8 +770,10 @@ async function loadActivity(address: string, chain: WalletChain, options: Activi
   const chains = chain === 'All Chains' ? evmAggregateChains : [chain as EvmWalletChain];
   const perChainLimit = chain === 'All Chains' ? Math.max(12, Math.ceil(options.limit / chains.length)) : options.limit;
   const results = await Promise.allSettled(chains.map((item) => loadEvmChainActivity(address, item, perChainLimit)));
-  const activities = dedupeActivities(results.flatMap((result) => result.status === 'fulfilled' ? result.value : []))
+  const periodActivities = dedupeActivities(results.flatMap((result) => result.status === 'fulfilled' ? result.value : []))
     .filter((activity) => matchesPeriod(activity, options.period))
+    .slice(0, options.limit);
+  const activities = (await enrichActivityValues(periodActivities))
     .filter((activity) => matchesKind(activity, options.kind))
     .slice(0, options.limit);
   const tradedTokens = buildTradedTokens(activities);
@@ -612,14 +790,18 @@ async function loadActivity(address: string, chain: WalletChain, options: Activi
 
 export class WalletActivityService {
   async getActivity(address: string, chain: WalletChain, options: ActivityOptions) {
-    const key = `${chain}:${address.toLowerCase()}:${options.period}:${options.kind}:${options.limit}`;
+    const safeOptions = {
+      ...options,
+      limit: Math.max(10, Math.min(options.limit || WALLET_ACTIVITY_LIMIT, WALLET_ACTIVITY_LIMIT))
+    };
+    const key = `${chain}:${address.toLowerCase()}:${safeOptions.period}:${safeOptions.kind}:${safeOptions.limit}`;
     const cached = cache.get(key);
     if (cached) return cached.value as WalletActivityResponse;
 
     const existing = pending.get(key);
     if (existing) return existing;
 
-    const request = loadActivity(address, chain, options)
+    const request = loadActivity(address, chain, safeOptions)
       .then((activity) => {
         cache.set(key, activity, WALLET_ACTIVITY_CACHE_TTL_MS, activity.generatedAt);
         return activity;

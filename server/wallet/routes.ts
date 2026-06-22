@@ -48,7 +48,7 @@ export class WalletRoutes {
 
     if (requestUrl.pathname === '/api/wallet/activity') {
       const kind = requestUrl.searchParams.get('kind')?.trim() || 'all';
-      const limit = Math.max(10, Math.min(Number(requestUrl.searchParams.get('limit')) || 250, 250));
+      const limit = Math.max(10, Math.min(Number(requestUrl.searchParams.get('limit')) || 500, 500));
 
       if (!SUPPORTED_ACTIVITY_KINDS.has(kind)) {
         sendJson(response, 400, { error: 'Unsupported wallet activity filter.' });

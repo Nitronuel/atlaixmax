@@ -14,6 +14,11 @@ export type SmartMoneyEvidence = {
   rugExposureRate?: number;
   severeLossRate?: number;
   largestTradeProfitShare?: number;
+  averageWinnerRoi?: number;
+  medianWinnerRoi?: number;
+  profitableTokenRate?: number;
+  profitableTokenCount?: number;
+  highRoiWinnerCount?: number;
   entryAlpha24h?: number;
   entryAlpha7d?: number;
   activePositions?: number;
@@ -42,6 +47,11 @@ export type SmartMoneyQualification = {
     rugExposureRate: number;
     severeLossRate: number;
     largestTradeProfitShare: number;
+    averageWinnerRoi: number;
+    medianWinnerRoi: number;
+    profitableTokenRate: number;
+    profitableTokenCount: number;
+    highRoiWinnerCount: number;
     entryAlpha24h?: number;
     entryAlpha7d?: number;
     activePositions: number;
@@ -51,13 +61,23 @@ export type SmartMoneyQualification = {
 };
 
 const HARD_FILTERS = {
+  netWorthUsd: 25_000,
   completedTrades: 30,
   uniqueTokens: 10,
   activeAgeDays: 30,
   recentTrades30d: 3,
-  profitFactor: 1.5,
-  rugExposureRate: 0.15,
-  largestTradeProfitShare: 0.5
+  realizedPnl90d: 10_000,
+  profitFactor: 1.8,
+  strongProfitFactor: 2.5,
+  minimumWinRate: 50,
+  flexibleWinRate: 45,
+  rugExposureRate: 0.1,
+  severeLossRate: 0.1,
+  largestTradeProfitShare: 0.35,
+  averageWinnerRoi: 30,
+  profitableTokenRate: 0.3,
+  profitableTokenCount: 4,
+  highRoiWinnerCount: 2
 };
 
 function numberOrZero(value: number | undefined) {
@@ -70,6 +90,10 @@ function roundScore(value: number) {
 
 function positive(value: number) {
   return value > 0;
+}
+
+function formatUsd(value: number) {
+  return value.toLocaleString('en-US', { maximumFractionDigits: 0, style: 'currency', currency: 'USD' });
 }
 
 function classify(score: number, hardFailures: string[], netWorthUsd: number): SmartMoneyTier {
@@ -95,6 +119,11 @@ export function evaluateSmartMoneyWallet(evidence: SmartMoneyEvidence): SmartMon
     rugExposureRate: numberOrZero(evidence.rugExposureRate),
     severeLossRate: numberOrZero(evidence.severeLossRate),
     largestTradeProfitShare: numberOrZero(evidence.largestTradeProfitShare),
+    averageWinnerRoi: numberOrZero(evidence.averageWinnerRoi),
+    medianWinnerRoi: numberOrZero(evidence.medianWinnerRoi),
+    profitableTokenRate: numberOrZero(evidence.profitableTokenRate),
+    profitableTokenCount: numberOrZero(evidence.profitableTokenCount),
+    highRoiWinnerCount: numberOrZero(evidence.highRoiWinnerCount),
     entryAlpha24h: evidence.entryAlpha24h,
     entryAlpha7d: evidence.entryAlpha7d,
     activePositions: numberOrZero(evidence.activePositions),
@@ -103,30 +132,45 @@ export function evaluateSmartMoneyWallet(evidence: SmartMoneyEvidence): SmartMon
   };
 
   const hardFailures: string[] = [];
+  if (metrics.netWorthUsd < HARD_FILTERS.netWorthUsd) hardFailures.push('Needs at least $25,000 in tracked capital');
   if (metrics.completedTrades < HARD_FILTERS.completedTrades) hardFailures.push('Needs at least 30 completed trades');
   if (metrics.uniqueTokens < HARD_FILTERS.uniqueTokens) hardFailures.push('Needs at least 10 unique traded tokens');
   if (metrics.activeAgeDays < HARD_FILTERS.activeAgeDays) hardFailures.push('Needs at least 30 days of wallet activity');
   if (metrics.recentTrades30d < HARD_FILTERS.recentTrades30d) hardFailures.push('Needs at least 3 recent trades in 30 days');
   if (!positive(metrics.realizedPnl30d)) hardFailures.push('Needs positive 30d realized PnL');
-  if (!positive(metrics.realizedPnl90d)) hardFailures.push('Needs positive 90d realized PnL');
-  if (metrics.profitFactor < HARD_FILTERS.profitFactor) hardFailures.push('Needs profit factor of at least 1.5x');
+  if (metrics.realizedPnl90d < HARD_FILTERS.realizedPnl90d) hardFailures.push('Needs at least $10,000 realized PnL in 90 days');
+  if (metrics.profitFactor < HARD_FILTERS.profitFactor) hardFailures.push('Needs profit factor of at least 1.8x');
+  if (metrics.winRate < HARD_FILTERS.minimumWinRate && !(metrics.winRate >= HARD_FILTERS.flexibleWinRate && metrics.profitFactor >= HARD_FILTERS.strongProfitFactor)) hardFailures.push('Needs at least 50% win rate, or 45% with 2.5x profit factor');
   if (metrics.rugExposureRate > HARD_FILTERS.rugExposureRate) hardFailures.push('Rug exposure is too high');
+  if (metrics.severeLossRate > HARD_FILTERS.severeLossRate) hardFailures.push('Severe loss exposure is too high');
   if (metrics.largestTradeProfitShare > HARD_FILTERS.largestTradeProfitShare) hardFailures.push('Depends too much on one winning trade');
+  if (metrics.profitableTokenCount < HARD_FILTERS.profitableTokenCount) hardFailures.push('Needs at least 4 profitable tokens');
+  if (metrics.profitableTokenRate < HARD_FILTERS.profitableTokenRate) hardFailures.push('Needs at least 30% profitable traded tokens');
+  if (metrics.averageWinnerRoi < HARD_FILTERS.averageWinnerRoi) hardFailures.push('Needs average winning token ROI of at least 30%');
+  if (metrics.highRoiWinnerCount < HARD_FILTERS.highRoiWinnerCount) hardFailures.push('Needs at least 2 winning tokens above 30% ROI');
 
   const reasons: string[] = [];
   let score = 0;
 
+  if (metrics.realizedPnl90d >= 50_000) {
+    score += 15;
+    reasons.push(`90d realized PnL is ${formatUsd(metrics.realizedPnl90d)}`);
+  } else if (metrics.realizedPnl90d >= 10_000) {
+    score += 10;
+    reasons.push(`90d realized PnL is ${formatUsd(metrics.realizedPnl90d)}`);
+  }
+
   if (metrics.realizedRoi90d >= 100) {
-    score += 30;
+    score += 20;
     reasons.push(`90d realized ROI is ${metrics.realizedRoi90d.toFixed(1)}%`);
   } else if (metrics.realizedRoi90d >= 50) {
-    score += 24;
+    score += 16;
     reasons.push(`Strong 90d realized ROI at ${metrics.realizedRoi90d.toFixed(1)}%`);
   } else if (metrics.realizedRoi90d >= 20) {
-    score += 18;
+    score += 12;
     reasons.push(`Positive 90d realized ROI at ${metrics.realizedRoi90d.toFixed(1)}%`);
   } else if (metrics.realizedPnl90d > 0) {
-    score += 10;
+    score += 6;
   }
 
   if (metrics.profitFactor >= 3) {
@@ -135,7 +179,7 @@ export function evaluateSmartMoneyWallet(evidence: SmartMoneyEvidence): SmartMon
   } else if (metrics.profitFactor >= 2) {
     score += 12;
     reasons.push(`Profit factor is ${metrics.profitFactor.toFixed(2)}x`);
-  } else if (metrics.profitFactor >= 1.5) {
+  } else if (metrics.profitFactor >= 1.8) {
     score += 8;
   }
 
@@ -146,7 +190,7 @@ export function evaluateSmartMoneyWallet(evidence: SmartMoneyEvidence): SmartMon
     score += 8;
   } else if (metrics.winRate >= 55) {
     score += 5;
-  } else if (metrics.winRate >= 45 && metrics.profitFactor >= 2) {
+  } else if (metrics.winRate >= 45 && metrics.profitFactor >= 2.5) {
     score += 4;
     reasons.push('Lower win rate is offset by strong winners');
   }
@@ -156,13 +200,11 @@ export function evaluateSmartMoneyWallet(evidence: SmartMoneyEvidence): SmartMon
     reasons.push('Realized PnL is positive across 30d and 90d');
   }
 
-  if (metrics.rugExposureRate <= 0.05 && metrics.severeLossRate <= 0.1) {
+  if (metrics.rugExposureRate <= 0.05 && metrics.severeLossRate <= 0.05) {
     score += 15;
     reasons.push('Risk exposure is controlled');
-  } else if (metrics.rugExposureRate <= 0.1 && metrics.severeLossRate <= 0.2) {
+  } else if (metrics.rugExposureRate <= 0.1 && metrics.severeLossRate <= 0.1) {
     score += 10;
-  } else if (metrics.rugExposureRate <= 0.15) {
-    score += 5;
   }
 
   if (metrics.completedTrades >= 75 && metrics.uniqueTokens >= 20) {
@@ -176,6 +218,19 @@ export function evaluateSmartMoneyWallet(evidence: SmartMoneyEvidence): SmartMon
     score += 8;
   } else if (metrics.recentTrades30d >= 3 && metrics.activeAgeDays >= 30) {
     score += 5;
+  }
+
+  if (metrics.averageWinnerRoi >= 50 && metrics.profitableTokenRate >= 0.4) {
+    score += 10;
+    reasons.push(`Average winning token ROI is ${metrics.averageWinnerRoi.toFixed(1)}%`);
+  } else if (metrics.averageWinnerRoi >= 30 && metrics.profitableTokenRate >= 0.3) {
+    score += 7;
+    reasons.push(`Average winning token ROI is ${metrics.averageWinnerRoi.toFixed(1)}%`);
+  }
+
+  if (metrics.profitableTokenCount >= 4 && metrics.uniqueTokens > 0) {
+    score += 5;
+    reasons.push(`${metrics.profitableTokenCount} profitable tokens out of ${metrics.uniqueTokens} traded`);
   }
 
   if (typeof metrics.entryAlpha7d === 'number' && metrics.entryAlpha7d >= 20) {

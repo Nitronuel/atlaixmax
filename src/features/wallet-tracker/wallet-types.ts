@@ -82,6 +82,7 @@ export type WalletActivityItem = {
   usdValue?: number;
   protocol?: string;
   counterparty?: string;
+  blockNumber?: string;
   explorerUrl: string;
   confidence: 'high' | 'medium' | 'low';
   source: 'moralis_history' | 'moralis_swaps' | 'alchemy_transfers';

@@ -92,7 +92,7 @@ export const WalletPortfolioService = {
       chain,
       period: timeFilter,
       kind,
-      limit: '250'
+      limit: '500'
     });
 
     return fetch(apiUrl(`/api/wallet/activity?${params.toString()}`), { signal })

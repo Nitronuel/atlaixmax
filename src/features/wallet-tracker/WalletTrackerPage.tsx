@@ -98,7 +98,7 @@ function formatExactActivityTime(timestamp: number) {
 }
 
 function formatActivityUsd(value: number | undefined) {
-  if (!value) return 'N/A';
+  if (!value) return 'No USD quote';
   return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: value >= 1 ? 0 : 2 });
 }
 
@@ -230,7 +230,7 @@ function buildTradePerformanceRows(activity: WalletActivity) {
       const returnPct = hasMatchedTrade && row.cost ? ((row.proceeds - row.cost) / row.cost) * 100 : undefined;
       const remainingQty = row.boughtQty - row.soldQty;
       const status = !hasMatchedTrade
-        ? row.proceeds > 0 ? 'No basis' : 'Open'
+        ? row.proceeds > 0 ? 'Cost basis missing' : 'Open position'
         : remainingQty > Math.max(row.boughtQty * 0.05, 0.000001) ? 'Partial' : 'Closed';
 
       return {
@@ -738,10 +738,16 @@ function TradePerformancePanel({ activity }: { activity: WalletActivity }) {
             </span>
           </div>
           <small>
-            <span className={row.realizedPnl && row.realizedPnl > 0 ? 'positive' : row.realizedPnl && row.realizedPnl < 0 ? 'negative' : ''}>{formatPerformanceUsd(row.realizedPnl)}</span>
-            <span className={row.returnPct && row.returnPct > 0 ? 'positive' : row.returnPct && row.returnPct < 0 ? 'negative' : ''}>({formatPerformanceReturn(row.returnPct)})</span>
+            {row.realizedPnl === undefined ? (
+              <span>{row.status}</span>
+            ) : (
+              <>
+                <span className={row.realizedPnl > 0 ? 'positive' : row.realizedPnl < 0 ? 'negative' : ''}>{formatPerformanceUsd(row.realizedPnl)}</span>
+                <span className={row.returnPct && row.returnPct > 0 ? 'positive' : row.returnPct && row.returnPct < 0 ? 'negative' : ''}>({formatPerformanceReturn(row.returnPct)})</span>
+              </>
+            )}
           </small>
-          <span className={`wallet-performance-status ${row.status.toLowerCase().replace(' ', '-')}`}>{row.status}</span>
+          <span className={`wallet-performance-status ${row.status.toLowerCase().replace(/\s+/g, '-')}`}>{row.status}</span>
         </div>
       )) : (
         <p>No completed trade data yet.</p>
@@ -785,7 +791,7 @@ function ActivityTokenFlow({ item }: { item: WalletActivityItem }) {
     );
   }
 
-  if (!item.tokens.length) return <span className="wallet-activity-token-flow muted">N/A</span>;
+  if (!item.tokens.length) return <span className="wallet-activity-token-flow muted">No token movement</span>;
 
   return (
     <span className="wallet-activity-token-flow">

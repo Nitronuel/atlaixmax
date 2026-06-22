@@ -127,11 +127,23 @@ function sumWindow(states: TokenTradeState[], start: number) {
   return states.reduce((total, state) => state.lastActivityAt >= start ? total + state.realizedPnl : total, 0);
 }
 
+function median(values: number[]) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
 function buildEvidence(wallet: SavedWallet, activities: WalletActivityItem[]): SmartMoneyEvidence {
   const states = new Map<string, TokenTradeState>();
   activities.forEach((item) => applyActivity(states, item));
   const trades = [...states.values()];
   const completed = trades.filter((trade) => trade.completedTrades > 0);
+  const tokenRois = completed
+    .filter((trade) => trade.realizedCost > 0)
+    .map((trade) => (trade.realizedPnl / trade.realizedCost) * 100);
+  const winnerRois = tokenRois.filter((roi) => roi > 0);
+  const profitableTokenCount = winnerRois.length;
   const firstActivityAt = activities.reduce((oldest, item) => Math.min(oldest, item.timestamp || oldest), Date.now());
   const now = Date.now();
   const realizedPnl = completed.reduce((total, trade) => total + trade.realizedPnl, 0);
@@ -160,6 +172,11 @@ function buildEvidence(wallet: SavedWallet, activities: WalletActivityItem[]): S
     rugExposureRate: completed.length ? severeLosses / completed.length : 0,
     severeLossRate: completed.length ? severeLosses / completed.length : 0,
     largestTradeProfitShare: grossProfit > 0 ? largestProfit / grossProfit : 0,
+    averageWinnerRoi: winnerRois.length ? winnerRois.reduce((total, roi) => total + roi, 0) / winnerRois.length : 0,
+    medianWinnerRoi: median(winnerRois),
+    profitableTokenRate: trades.length ? profitableTokenCount / trades.length : 0,
+    profitableTokenCount,
+    highRoiWinnerCount: winnerRois.filter((roi) => roi >= 30).length,
     activePositions: wallet.qualification?.metrics.activePositions,
     profitablePositions: wallet.qualification?.metrics.profitablePositions,
     pnlPercent: wallet.qualification?.metrics.pnlPercent
@@ -171,7 +188,7 @@ export const SmartMoneyQualificationService = {
     const activity = await activityService.getActivity(wallet.addr, wallet.chain, {
       period: 'ALL',
       kind: 'all',
-      limit: 250
+      limit: 500
     });
 
     if (activity.providerStatus === 'provider_missing' || activity.providerStatus === 'error') {
