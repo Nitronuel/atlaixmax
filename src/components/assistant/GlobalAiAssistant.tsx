@@ -454,7 +454,7 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
             subtitle: address ? shortAddress(address) : 'Wallet intelligence',
             systemContext: address
                 ? `The user is viewing wallet intelligence for wallet address: ${address}.`
-                : 'The user is on the Wallet Tracker page.',
+                : 'The user is on the Wallet Intelligence page.',
             subjectKind: address ? 'wallet' : undefined,
             subjectAddress: address,
             subjectChain: chain,

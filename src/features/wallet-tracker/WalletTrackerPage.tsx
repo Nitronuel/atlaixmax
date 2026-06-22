@@ -1,8 +1,9 @@
-import { ArrowLeft, Check, CheckCircle, ChevronDown, Clock, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Check, CheckCircle, ChevronDown, Clock, ExternalLink, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SmartMoneyService } from '../smart-money/smart-money-service';
-import type { SavedWallet, WalletCategory, WalletChain, WalletTimeFilter } from './wallet-types';
+import type { SavedWallet, WalletActivity, WalletActivityItem, WalletActivityToken, WalletCategory, WalletChain, WalletTimeFilter, WalletTradedToken } from './wallet-types';
+import { useWalletActivity } from './useWalletActivity';
 import { useWalletPortfolio } from './useWalletPortfolio';
 import { WalletStorage } from './wallet-storage';
 import {
@@ -69,6 +70,183 @@ function tokenDetailsPath(asset: ReturnType<typeof useWalletPortfolio>['portfoli
 
   const params = new URLSearchParams({ chain: tokenChain });
   return `/token/${encodeURIComponent(address)}?${params.toString()}`;
+}
+
+function activityTokenDetailsPath(token: WalletActivityToken, chain: WalletChain) {
+  const tokenChain = TOKEN_DETAILS_CHAINS[chain];
+  if (!tokenChain || !token.address || token.address.includes(':native')) return '';
+
+  const params = new URLSearchParams({ chain: tokenChain });
+  return `/token/${encodeURIComponent(token.address)}?${params.toString()}`;
+}
+
+function formatActivityTime(timestamp: number) {
+  if (!timestamp) return 'No timestamp';
+  const diff = Date.now() - timestamp;
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return 'Just now';
+  if (diff < hour) return `${Math.floor(diff / minute)}m ago`;
+  if (diff < day) return `${Math.floor(diff / hour)}h ago`;
+  if (diff < 7 * day) return `${Math.floor(diff / day)}d ago`;
+  return new Date(timestamp).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatExactActivityTime(timestamp: number) {
+  return timestamp ? new Date(timestamp).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : 'No timestamp';
+}
+
+function formatActivityUsd(value: number | undefined) {
+  if (!value) return 'N/A';
+  return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: value >= 1 ? 0 : 2 });
+}
+
+function trimFormattedDecimal(value: string) {
+  return value.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+}
+
+function formatActivityTokenAmount(amount: string) {
+  const normalized = amount.replace(/,/g, '').trim();
+  const value = Number(normalized);
+  if (!Number.isFinite(value)) return amount;
+
+  const absolute = Math.abs(value);
+  if (absolute === 0) return '0';
+  if (absolute >= 1_000_000) {
+    return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(value);
+  }
+  if (absolute >= 10_000) {
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  }
+  if (absolute >= 1_000) {
+    return trimFormattedDecimal(new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value));
+  }
+  if (absolute >= 1) {
+    return trimFormattedDecimal(new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 }).format(value));
+  }
+
+  const sign = value < 0 ? '-' : '';
+  const fraction = normalized.replace('-', '').split('.')[1] || '';
+  const leadingZeros = fraction.match(/^0*/)?.[0].length || 0;
+  const fractionDigits = Math.min(12, leadingZeros + 4);
+  return `${sign}${trimFormattedDecimal(absolute.toFixed(fractionDigits))}`;
+}
+
+function formatActivityNumberText(text: string) {
+  return text.replace(/(?<![\w.])[-+]?\d+(?:,\d{3})*(?:\.\d+)?(?![\w.])/g, (match) => formatActivityTokenAmount(match));
+}
+
+function parseActivityAmount(amount?: string) {
+  if (!amount) return 0;
+  const value = Number(amount.replace(/,/g, '').trim());
+  return Number.isFinite(value) ? Math.abs(value) : 0;
+}
+
+function tokenPerformanceKey(token: WalletActivityToken | WalletTradedToken, chain: WalletChain) {
+  return `${chain}:${token.address || token.symbol}`.toLowerCase();
+}
+
+function tokenPerformanceLabel(token: WalletActivityToken | WalletTradedToken) {
+  return {
+    address: token.address,
+    symbol: token.symbol,
+    logo: token.logo
+  };
+}
+
+function formatPerformanceUsd(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return 'N/A';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${Math.abs(value).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}`;
+}
+
+function formatPerformanceReturn(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return 'N/A';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}${value.toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
+}
+
+function buildTradePerformanceRows(activity: WalletActivity) {
+  const rows = new Map<string, {
+    token: ReturnType<typeof tokenPerformanceLabel>;
+    boughtQty: number;
+    soldQty: number;
+    cost: number;
+    proceeds: number;
+    lastActivityAt: number;
+  }>();
+
+  function getRow(token: WalletActivityToken, chain: WalletChain, timestamp: number) {
+    const key = tokenPerformanceKey(token, chain);
+    const current = rows.get(key) || {
+      token: tokenPerformanceLabel(token),
+      boughtQty: 0,
+      soldQty: 0,
+      cost: 0,
+      proceeds: 0,
+      lastActivityAt: 0
+    };
+    current.lastActivityAt = Math.max(current.lastActivityAt, timestamp);
+    rows.set(key, current);
+    return current;
+  }
+
+  activity.activities.forEach((item) => {
+    const value = item.usdValue || 0;
+    if (!value) return;
+
+    if (item.kind === 'buy' && item.tokenOut) {
+      const row = getRow(item.tokenOut, item.chain, item.timestamp);
+      row.boughtQty += parseActivityAmount(item.tokenOut.amount);
+      row.cost += value;
+    }
+
+    if (item.kind === 'sell' && item.tokenIn) {
+      const row = getRow(item.tokenIn, item.chain, item.timestamp);
+      row.soldQty += parseActivityAmount(item.tokenIn.amount);
+      row.proceeds += value;
+    }
+
+    if (item.kind === 'swap') {
+      if (item.tokenIn) {
+        const row = getRow(item.tokenIn, item.chain, item.timestamp);
+        row.soldQty += parseActivityAmount(item.tokenIn.amount);
+        row.proceeds += value;
+      }
+      if (item.tokenOut) {
+        const row = getRow(item.tokenOut, item.chain, item.timestamp);
+        row.boughtQty += parseActivityAmount(item.tokenOut.amount);
+        row.cost += value;
+      }
+    }
+  });
+
+  return Array.from(rows.values())
+    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+    .map((row) => {
+      const hasMatchedTrade = row.cost > 0 && row.proceeds > 0;
+      const realizedPnl = hasMatchedTrade ? row.proceeds - row.cost : undefined;
+      const returnPct = hasMatchedTrade && row.cost ? ((row.proceeds - row.cost) / row.cost) * 100 : undefined;
+      const remainingQty = row.boughtQty - row.soldQty;
+      const status = !hasMatchedTrade
+        ? row.proceeds > 0 ? 'No basis' : 'Open'
+        : remainingQty > Math.max(row.boughtQty * 0.05, 0.000001) ? 'Partial' : 'Closed';
+
+      return {
+        token: row.token,
+        realizedPnl,
+        returnPct,
+        status
+      };
+    });
+}
+
+function activityTone(kind: WalletActivityItem['kind']) {
+  if (kind === 'buy' || kind === 'receive') return 'positive';
+  if (kind === 'sell' || kind === 'send') return 'negative';
+  if (kind === 'approval') return 'warning';
+  return 'neutral';
 }
 
 export function WalletTrackerPage() {
@@ -199,7 +377,7 @@ function WalletProfile({ address }: { address: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const validation = validateWalletAddress(address);
   const detectedChain = getDefaultChain(validation.type);
-  const [chain, setChain] = useState<WalletChain>(() => normalizeWalletChain(searchParams.get('chain')) || detectedChain);
+  const [chain, setChain] = useState<WalletChain>(() => searchParams.get('chain') ? normalizeWalletChain(searchParams.get('chain')) : detectedChain);
   const [timeFilter, setTimeFilter] = useState<WalletTimeFilter>('ALL');
   const [savedWallet, setSavedWallet] = useState<SavedWallet | null>(() => validation.isValid ? WalletStorage.get(address) || null : null);
   const [editing, setEditing] = useState(false);
@@ -351,6 +529,8 @@ function WalletProfile({ address }: { address: string }) {
           onRefresh={portfolioState.refreshPortfolio}
         />
       </section>
+
+      <WalletActivityPanel address={address} chain={chain} timeFilter={timeFilter} />
     </div>
   );
 }
@@ -482,6 +662,150 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
   );
 }
 
+function WalletActivityPanel({ address, chain, timeFilter }: { address: string; chain: WalletChain; timeFilter: WalletTimeFilter }) {
+  const [requested, setRequested] = useState(true);
+  const { activity, loading, error, refreshActivity } = useWalletActivity(address, chain, timeFilter, 'all', requested);
+  const rows = activity.activities;
+
+  function loadActivity() {
+    if (requested) {
+      refreshActivity();
+      return;
+    }
+    setRequested(true);
+  }
+
+  return (
+    <section className="wallet-activity-shell">
+      <section className="wallet-activity-panel">
+        <div className="wallet-activity-head">
+          <div>
+            <h3>Wallet Activity</h3>
+          </div>
+          <button className="icon-button" type="button" onClick={loadActivity} aria-label="Refresh wallet activity">
+            {loading ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />}
+          </button>
+        </div>
+
+        {error ? <p className="form-error">{error}</p> : null}
+
+        {requested ? (
+          <div className="wallet-activity-table-wrap">
+            {rows.length ? (
+              <table className="wallet-activity-table">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Time</th>
+                    <th>Action</th>
+                    <th>Token Flow</th>
+                    <th>Value</th>
+                    <th>Links</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((item) => <ActivityTableRow key={item.id} item={item} />)}
+                </tbody>
+              </table>
+            ) : (
+              <div className="holdings-empty wallet-activity-empty">
+                {loading ? <Loader2 size={22} className="spin" /> : <Wallet size={24} />}
+                <h4>{loading ? 'Loading activity' : 'No activity found'}</h4>
+                <p>{loading ? 'Checking decoded history, swaps, and transfers.' : activity.message || 'No wallet actions matched this filter and time period.'}</p>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </section>
+      {requested ? <TradePerformancePanel activity={activity} /> : null}
+    </section>
+  );
+}
+
+function TradePerformancePanel({ activity }: { activity: WalletActivity }) {
+  const rows = buildTradePerformanceRows(activity);
+
+  return (
+    <aside className="wallet-performance-panel">
+      <header>
+        <h4>Trade History</h4>
+        <span>{rows.length}</span>
+      </header>
+      {rows.length ? rows.map((row) => (
+        <div className="wallet-performance-card" key={`${row.token.address || row.token.symbol}:${row.status}`}>
+          <div className="wallet-performance-main">
+            <span className="wallet-performance-token">
+              {row.token.logo ? <img src={row.token.logo} alt="" /> : <i>{row.token.symbol.slice(0, 1)}</i>}
+              <strong>{row.token.symbol}</strong>
+            </span>
+          </div>
+          <small>
+            <span className={row.realizedPnl && row.realizedPnl > 0 ? 'positive' : row.realizedPnl && row.realizedPnl < 0 ? 'negative' : ''}>{formatPerformanceUsd(row.realizedPnl)}</span>
+            <span className={row.returnPct && row.returnPct > 0 ? 'positive' : row.returnPct && row.returnPct < 0 ? 'negative' : ''}>({formatPerformanceReturn(row.returnPct)})</span>
+          </small>
+          <span className={`wallet-performance-status ${row.status.toLowerCase().replace(' ', '-')}`}>{row.status}</span>
+        </div>
+      )) : (
+        <p>No completed trade data yet.</p>
+      )}
+    </aside>
+  );
+}
+
+function ActivityTableRow({ item }: { item: WalletActivityItem }) {
+  const targetToken = item.kind === 'buy' ? item.tokenOut : item.kind === 'sell' ? item.tokenIn : item.tokens[0];
+  const tokenPath = targetToken ? activityTokenDetailsPath(targetToken, item.chain) : '';
+
+  return (
+    <tr className={`wallet-activity-table-row ${activityTone(item.kind)}`}>
+      <td><span className="wallet-activity-kind">{item.kind}</span></td>
+      <td title={formatExactActivityTime(item.timestamp)}>{formatActivityTime(item.timestamp)}</td>
+      <td>
+        <strong>{item.title}</strong>
+        <small>{formatActivityNumberText(item.summary)}</small>
+      </td>
+      <td><ActivityTokenFlow item={item} /></td>
+      <td className="wallet-activity-amount">{formatActivityUsd(item.usdValue)}</td>
+      <td>
+        <div className="wallet-activity-links">
+          {tokenPath ? <Link to={tokenPath} aria-label="Open token details" title="Open token details"><ArrowUpRight size={15} /></Link> : null}
+          {item.explorerUrl ? <a href={item.explorerUrl} target="_blank" rel="noreferrer" aria-label="Open transaction in explorer" title="Open transaction in explorer"><ExternalLink size={15} /></a> : null}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ActivityTokenFlow({ item }: { item: WalletActivityItem }) {
+  if (item.tokenIn && item.tokenOut) {
+    return (
+      <span className="wallet-activity-token-flow">
+        <ActivityTokenChip token={item.tokenIn} />
+        <ArrowUpRight size={13} />
+        <ActivityTokenChip token={item.tokenOut} />
+      </span>
+    );
+  }
+
+  if (!item.tokens.length) return <span className="wallet-activity-token-flow muted">N/A</span>;
+
+  return (
+    <span className="wallet-activity-token-flow">
+      {item.tokens.slice(0, 2).map((token) => <ActivityTokenChip key={`${token.address || token.symbol}:${token.amount || ''}`} token={token} />)}
+      {item.tokens.length > 2 ? <em>+{item.tokens.length - 2}</em> : null}
+    </span>
+  );
+}
+
+function ActivityTokenChip({ token }: { token: WalletActivityToken }) {
+  return (
+    <span className="wallet-activity-token-chip" title={token.name || token.symbol}>
+      {token.logo ? <img src={token.logo} alt="" /> : <i>{token.symbol.slice(0, 1)}</i>}
+      <span>{token.amount ? `${formatActivityTokenAmount(token.amount)} ` : ''}{token.symbol}</span>
+    </span>
+  );
+}
+
 function TokenAssetLink({ asset }: { asset: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number] }) {
   const content = (
     <>
@@ -529,7 +853,7 @@ function ChainSelectionModal({ open, onClose, onSelect }: { open: boolean; onClo
 function AddWalletModal({ open, onClose, onAdded }: { open: boolean; onClose: () => void; onAdded: (wallet: SavedWallet) => void }) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
-  const [chain, setChain] = useState<WalletChain>('All Chains');
+  const [chain, setChain] = useState<WalletChain>('Ethereum');
   const [error, setError] = useState('');
 
   if (!open) return null;

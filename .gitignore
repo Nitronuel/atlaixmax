@@ -9,3 +9,5 @@ tsconfig.tsbuildinfo
 .data/
 .codex-chrome-profile/
 .codex-*.png
+.codex-vite-*.mjs
+.impeccable/

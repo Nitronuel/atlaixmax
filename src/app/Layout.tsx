@@ -9,7 +9,7 @@ const navItems = [
   { path: '/sentiment', label: 'Narrative Intelligence', icon: <Target size={19} />, group: 'market' },
   { path: '/smart-money', label: 'Smart Money Engine', icon: <Zap size={19} />, group: 'capital' },
   { path: '/heatmap', label: 'Token Heatmap', icon: <Activity size={19} />, group: 'capital' },
-  { path: '/wallet', label: 'Wallet Tracker', icon: <Wallet size={19} />, group: 'capital' },
+  { path: '/wallet', label: 'Wallet Intelligence', icon: <Wallet size={19} />, group: 'capital' },
   { path: '/smart-alerts', label: 'Smart Alerts', icon: <Bell size={19} />, group: 'tools' },
   { path: '/ai-assistant', label: 'AI Assistant', icon: <MessageSquare size={19} />, group: 'tools' },
   { path: '/safe-scan', label: 'Safe Scan', icon: <ShieldCheck size={19} />, group: 'tools' },
@@ -32,7 +32,7 @@ function titleFromPath(pathname: string) {
   if (pathname.startsWith('/sentiment')) return 'Narrative Intelligence';
   if (pathname.startsWith('/smart-money')) return 'Smart Money Engine';
   if (pathname.startsWith('/heatmap')) return 'Token Heatmap';
-  if (pathname.startsWith('/wallet')) return 'Wallet Tracker';
+  if (pathname.startsWith('/wallet')) return 'Wallet Intelligence';
   if (pathname.startsWith('/smart-alerts')) return 'Smart Alerts';
   if (pathname.startsWith('/ai-assistant')) return 'AI Assistant';
   if (pathname.startsWith('/settings')) return 'Settings';

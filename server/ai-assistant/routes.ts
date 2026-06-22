@@ -1313,7 +1313,7 @@ export class AiAssistantRoutes {
         return {
           answer: 'I need a valid wallet address before I can build a wallet brief.',
           tool: 'wallet_needs_address',
-          actions: [{ label: 'Open Wallet Tracker', href: '/wallet', kind: 'navigate' }]
+          actions: [{ label: 'Open Wallet Intelligence', href: '/wallet', kind: 'navigate' }]
         };
       }
       const portfolio = await this.walletService.getPortfolio(address, chain as never || 'All Chains' as never, 'ALL');
@@ -1328,7 +1328,7 @@ export class AiAssistantRoutes {
         ].join('\n'),
         tool: 'get_wallet_deep_brief',
         data: portfolio,
-        actions: [{ label: 'Open Wallet Tracker', href: `/wallet/${encodeURIComponent(address)}?${new URLSearchParams({ chain: chain || 'All Chains' }).toString()}`, kind: 'navigate' }]
+        actions: [{ label: 'Open Wallet Intelligence', href: `/wallet/${encodeURIComponent(address)}?${new URLSearchParams({ chain: chain || 'All Chains' }).toString()}`, kind: 'navigate' }]
       };
     }
 

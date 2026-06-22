@@ -9,7 +9,7 @@ describe('wallet utilities', () => {
   });
 
   it('keeps incompatible chains out of profile requests', () => {
-    expect(getDefaultChain('evm')).toBe('All Chains');
+    expect(getDefaultChain('evm')).toBe('Ethereum');
     expect(getDefaultChain('solana')).toBe('Solana');
     expect(isChainCompatible('Solana', 'evm')).toBe(false);
     expect(isChainCompatible('Ethereum', 'solana')).toBe(false);

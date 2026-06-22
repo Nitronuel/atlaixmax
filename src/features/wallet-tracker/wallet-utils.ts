@@ -39,7 +39,7 @@ export function validateWalletAddress(value: string) {
 }
 
 export function getDefaultChain(type: WalletAddressType | null): WalletChain {
-  return type === 'solana' ? 'Solana' : 'All Chains';
+  return type === 'solana' ? 'Solana' : 'Ethereum';
 }
 
 export function isChainCompatible(chain: WalletChain, type: WalletAddressType | null) {

@@ -65,6 +65,71 @@ export type WalletPortfolio = {
   generatedAt: string;
 };
 
+export type WalletActivityKind = 'buy' | 'sell' | 'swap' | 'receive' | 'send' | 'approval' | 'contract' | 'unknown';
+
+export type WalletActivityFilter = 'all' | WalletActivityKind | 'large';
+
+export type WalletActivityToken = {
+  address?: string;
+  symbol: string;
+  name?: string;
+  amount?: string;
+  usdValue?: number;
+  logo?: string;
+};
+
+export type WalletActivityItem = {
+  id: string;
+  hash: string;
+  chain: WalletChain;
+  kind: WalletActivityKind;
+  timestamp: number;
+  title: string;
+  summary: string;
+  tokenIn?: WalletActivityToken;
+  tokenOut?: WalletActivityToken;
+  tokens: WalletActivityToken[];
+  usdValue?: number;
+  protocol?: string;
+  counterparty?: string;
+  explorerUrl: string;
+  confidence: 'high' | 'medium' | 'low';
+  source: 'moralis_history' | 'moralis_swaps' | 'alchemy_transfers';
+};
+
+export type WalletTradedToken = {
+  address?: string;
+  symbol: string;
+  logo?: string;
+  chain: WalletChain;
+  buys: number;
+  sells: number;
+  swaps: number;
+  receives: number;
+  sends: number;
+  totalUsdVolume: number;
+  lastActivityAt: number;
+};
+
+export type WalletActivitySummary = {
+  lastActiveAt: number;
+  recentBuys: number;
+  recentSells: number;
+  largestMoveUsd: number;
+  largestMoveLabel: string;
+  mostTradedToken: string;
+  netFlowUsd: number;
+};
+
+export type WalletActivity = {
+  activities: WalletActivityItem[];
+  summary: WalletActivitySummary;
+  tradedTokens: WalletTradedToken[];
+  providerStatus: 'ready' | 'provider_missing' | 'partial' | 'error';
+  message?: string;
+  generatedAt: string;
+};
+
 export type SupportedWalletChain = {
   id: WalletChain;
   name: string;

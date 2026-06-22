@@ -750,7 +750,7 @@ async function fetchMoralisSolanaTokens(address: string) {
     }));
 }
 
-async function fetchSolanaPortfolio(address: string, period: string) {
+async function fetchSolanaPortfolio(address: string, period: string, enrich: boolean) {
   if (!getMoralisKey() && !getHeliusKey()) {
     return providerMissing('Add MORALIS_API_KEY and HELIUS_API_KEY to .env to load Solana wallet holdings.');
   }
@@ -763,7 +763,7 @@ async function fetchSolanaPortfolio(address: string, period: string) {
   const native = nativeResult.status === 'fulfilled' ? nativeResult.value : null;
   let tokens: WalletAsset[] = tokenResult.status === 'fulfilled' ? tokenResult.value : [];
   const assets = [native, ...tokens].filter(Boolean) as WalletAsset[];
-  await enrichAssets(address, assets, period);
+  if (enrich) await enrichAssets(address, assets, period);
 
   return portfolioFromAssets(
     assets,
@@ -771,11 +771,11 @@ async function fetchSolanaPortfolio(address: string, period: string) {
   );
 }
 
-async function loadPortfolio(address: string, chain: WalletChain, period: string): Promise<WalletPortfolioResponse> {
+async function loadPortfolio(address: string, chain: WalletChain, period: string, enrich: boolean): Promise<WalletPortfolioResponse> {
   const isSolanaAddress = !address.startsWith('0x');
-  if (isSolanaAddress && (chain === 'All Chains' || chain === 'Solana')) return fetchSolanaPortfolio(address, period);
+  if (isSolanaAddress && (chain === 'All Chains' || chain === 'Solana')) return fetchSolanaPortfolio(address, period, enrich);
 
-  if (chain === 'Solana') return fetchSolanaPortfolio(address, period);
+  if (chain === 'Solana') return fetchSolanaPortfolio(address, period, enrich);
 
   if (!getMoralisKey() && !getAlchemyKey()) {
     return providerMissing('Add MORALIS_API_KEY or ALCHEMY_API_KEY to .env to load EVM wallet holdings.');
@@ -787,7 +787,7 @@ async function loadPortfolio(address: string, chain: WalletChain, period: string
     if (!assets.length) {
       return providerMissing('No EVM balances returned for this wallet.');
     }
-    await enrichAssets(address, assets, period);
+    if (enrich) await enrichAssets(address, assets, period);
     return portfolioFromAssets(assets);
   }
 
@@ -796,20 +796,20 @@ async function loadPortfolio(address: string, chain: WalletChain, period: string
     return providerMissing('No EVM balances returned for this wallet.');
   }
 
-  await enrichAssets(address, assets, period);
+  if (enrich) await enrichAssets(address, assets, period);
   return portfolioFromAssets(assets);
 }
 
 export class WalletPortfolioService {
-  async getPortfolio(address: string, chain: WalletChain, period: string) {
-    const key = `${chain}:${address.toLowerCase()}:${period}`;
+  async getPortfolio(address: string, chain: WalletChain, period: string, enrich = true) {
+    const key = `${enrich ? 'full' : 'fast'}:${chain}:${address.toLowerCase()}:${period}`;
     const cached = cache.get(key);
     if (cached) return cached.value as WalletPortfolioResponse;
 
     const existing = pending.get(key);
     if (existing) return existing;
 
-    const request = loadPortfolio(address, chain, period)
+    const request = loadPortfolio(address, chain, period, enrich)
       .then((portfolio) => {
         cache.set(key, portfolio, WALLET_CACHE_TTL_MS, portfolio.generatedAt);
         return portfolio;

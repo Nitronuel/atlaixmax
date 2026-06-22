@@ -280,7 +280,7 @@ function SmartMoneyDashboard() {
             </header>
             <div className="smart-wallet-list">
               {loadingWallets && !visibleWallets.length ? <SmartLoading label="Loading smart wallets" /> : null}
-              {!loadingWallets && !visibleWallets.length ? <SmartEmpty title="No qualified wallets yet" body="Track wallets from Wallet Tracker and strong performers will appear here automatically." /> : null}
+              {!loadingWallets && !visibleWallets.length ? <SmartEmpty title="No qualified wallets yet" body="Track wallets from Wallet Intelligence and strong performers will appear here automatically." /> : null}
               {visibleWallets.slice(0, 5).map((wallet) => (
                 <button key={wallet.addr} type="button" className="smart-wallet-card" onClick={() => navigate(`/smart-money/${wallet.addr}`)}>
                   <div className="smart-wallet-card-head">
