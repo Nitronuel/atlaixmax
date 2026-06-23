@@ -62,6 +62,7 @@ type CoinGeckoSearchPayload = {
 
 const COINGECKO_BASE_URL = 'https://api.coingecko.com/api/v3';
 const REQUEST_TIMEOUT_MS = 12_000;
+const MAX_ATTEMPTS = 2;
 
 function apiKey() {
   return readEnv('COINGECKO_API_KEY', 'COINGECKO_DEMO_API_KEY');
@@ -83,19 +84,31 @@ function numberOrNull(value: unknown) {
 async function fetchCoinGecko<T>(path: string, params: Record<string, string> = {}): Promise<T> {
   const url = new URL(`${COINGECKO_BASE_URL}${path}`);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let lastError: unknown = null;
 
-  try {
-    const response = await fetch(url, { signal: controller.signal, headers: headers() });
-    if (!response.ok) {
-      const message = await response.text().catch(() => '');
-      throw new Error(`CoinGecko ${path} failed (${response.status}). ${message}`.trim());
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal, headers: headers() });
+      if (!response.ok) {
+        const message = await response.text().catch(() => '');
+        throw new Error(`CoinGecko ${path} failed (${response.status}). ${message}`.trim());
+      }
+      return await response.json() as T;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MAX_ATTEMPTS) break;
+      await new Promise((resolve) => setTimeout(resolve, 750 * attempt));
+    } finally {
+      clearTimeout(timeout);
     }
-    return await response.json() as T;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  const message = lastError instanceof Error ? lastError.message : 'fetch failed';
+  const cause = lastError instanceof Error && lastError.cause instanceof Error ? ` Cause: ${lastError.cause.message}` : '';
+  throw new Error(`CoinGecko ${path} request failed after ${MAX_ATTEMPTS} attempts. ${message}.${cause}`.trim());
 }
 
 export function mapMarketRow(row: CoinMarketRow): CoinGeckoCoin | null {
