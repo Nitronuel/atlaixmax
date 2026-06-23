@@ -1,7 +1,7 @@
 import { apiUrl } from '../../config';
 import { authSupabase } from '../../services/SupabaseClient';
 
-export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk';
+export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection';
 
 export type SmartAlertCondition =
     | 'above'
@@ -56,6 +56,14 @@ export interface SmartAlertTrigger {
     created_at: string;
 }
 
+export interface DetectionAlertSubscriptionInput {
+    scope: 'all' | 'token';
+    chainId?: string;
+    tokenAddress?: string;
+    tokenName?: string | null;
+    tokenSymbol?: string | null;
+}
+
 export interface SmartAlertRuleInput {
     alertType: SmartAlertType;
     target: string;
@@ -100,7 +108,8 @@ export interface LinkedAlertConditionMetadata {
 }
 
 export interface SmartAlertRuleMetadata {
-    alertMode?: 'single' | 'linked';
+    alertMode?: 'single' | 'linked' | 'detection_event';
+    detectionScope?: 'all' | 'token';
     token?: SmartAlertTokenSnapshot | null;
     matchLogic?: 'all';
     timeWindowMinutes?: number | null;
@@ -207,5 +216,19 @@ export const SmartAlertService = {
         const params = new URLSearchParams({ limit: String(limit) });
         const payload = await requestJson<{ triggers: unknown[] }>(`/api/smart-alerts/triggers?${params.toString()}`);
         return (payload.triggers || []).map(normalizeTrigger);
+    },
+
+    getDetectionSubscription: async (chainId: string, tokenAddress: string): Promise<SmartAlertRule | null> => {
+        const params = new URLSearchParams({ chain: chainId, address: tokenAddress });
+        const payload = await requestJson<{ subscription: unknown | null }>(`/api/smart-alerts/detection-subscription?${params.toString()}`);
+        return payload.subscription ? normalizeRule(payload.subscription) : null;
+    },
+
+    createDetectionSubscription: async (input: DetectionAlertSubscriptionInput): Promise<SmartAlertRule> => {
+        const payload = await requestJson<{ subscription: unknown }>('/api/smart-alerts/detection-subscriptions', {
+            method: 'POST',
+            body: JSON.stringify(input)
+        });
+        return normalizeRule(payload.subscription);
     }
 };

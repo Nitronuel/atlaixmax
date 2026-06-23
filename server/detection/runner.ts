@@ -9,6 +9,7 @@ import { calculateFeatures } from './features';
 import { hydrateDetectionCandidate } from './dexscreener';
 import { DetectionStore } from './store';
 import { saveDetectionEventSetup } from '../detection-lab/setupWriter';
+import { SmartAlertStore } from '../smart-alerts/store';
 import type { FinalClassification, ScanTier, TokenSchedulePatch } from './types';
 
 type DetectionRunnerStatus = {
@@ -216,6 +217,7 @@ export class DetectionRunner {
   private inFlight = false;
   private cursor = 0;
   private status: DetectionRunnerStatus;
+  private readonly smartAlerts = new SmartAlertStore();
 
   constructor(private readonly store = new DetectionStore()) {
     this.status = {
@@ -381,6 +383,7 @@ export class DetectionRunner {
     const event = buildDetectionEvent(record, classification, classificationId);
     const eventCreated = await this.store.saveEvent(event, record.token.tokenId);
     if (eventCreated) {
+      void this.smartAlerts.notifyDetectionEvent(event).catch(() => undefined);
       void saveDetectionEventSetup({
         record,
         features,

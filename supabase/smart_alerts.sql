@@ -3,7 +3,7 @@
 create table if not exists public.alert_rules (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null references auth.users(id) on delete cascade,
-    alert_type text not null check (alert_type in ('Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk')),
+    alert_type text not null check (alert_type in ('Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection')),
     target text not null default 'Any token',
     chain_id text not null default 'solana',
     token_address text,
@@ -54,11 +54,19 @@ add column if not exists last_error text;
 alter table public.alert_rules
 add column if not exists metadata jsonb not null default '{}'::jsonb;
 
+do $$
+begin
+    alter table public.alert_rules drop constraint if exists alert_rules_alert_type_check;
+    alter table public.alert_rules
+    add constraint alert_rules_alert_type_check
+    check (alert_type in ('Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection'));
+end $$;
+
 create table if not exists public.alert_triggers (
     id uuid primary key default gen_random_uuid(),
     alert_rule_id uuid references public.alert_rules(id) on delete set null,
     user_id uuid not null references auth.users(id) on delete cascade,
-    alert_type text not null check (alert_type in ('Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk')),
+    alert_type text not null check (alert_type in ('Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection')),
     title text not null,
     message text not null,
     observed_value text,
@@ -71,6 +79,14 @@ create table if not exists public.alert_triggers (
 
 alter table public.alert_triggers
 add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+do $$
+begin
+    alter table public.alert_triggers drop constraint if exists alert_triggers_alert_type_check;
+    alter table public.alert_triggers
+    add constraint alert_triggers_alert_type_check
+    check (alert_type in ('Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection'));
+end $$;
 
 create index if not exists alert_rules_user_created_idx
 on public.alert_rules (user_id, created_at desc);

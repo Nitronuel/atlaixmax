@@ -93,6 +93,34 @@ export class SmartAlertRoutes {
       return;
     }
 
+    if (method === 'GET' && pathname === '/api/smart-alerts/detection-subscription') {
+      const user = await requireAuthenticatedUser(request);
+      const chain = requestUrl.searchParams.get('chain') || '';
+      const address = requestUrl.searchParams.get('address') || '';
+      if (!chain.trim() || !address.trim()) {
+        sendJson(response, 400, { error: 'Token chain and address are required.' });
+        return;
+      }
+      const subscription = await this.store.getDetectionSubscription(user.id, chain, address);
+      sendJson(response, 200, { subscription });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/smart-alerts/detection-subscriptions') {
+      const user = await requireAuthenticatedUser(request);
+      const body = await readJsonBody(request);
+      const subscription = await this.store.createDetectionSubscription({
+        userId: user.id,
+        scope: body.scope === 'all' ? 'all' : 'token',
+        chainId: body.chainId,
+        tokenAddress: body.tokenAddress,
+        tokenName: body.tokenName,
+        tokenSymbol: body.tokenSymbol
+      });
+      sendJson(response, 200, { subscription });
+      return;
+    }
+
     sendNotFound(response);
   }
 }

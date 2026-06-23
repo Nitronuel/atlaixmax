@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readEnv } from '../env';
+import type { DetectionEvent } from '../../src/shared/detection';
 
 export type SmartAlertRow = {
   id: string;
   user_id: string;
-  alert_type: 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk';
+  alert_type: 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection';
   target: string;
   chain_id: string;
   token_address: string | null;
@@ -216,6 +217,123 @@ export class SmartAlertStore {
       .slice(0, limit);
   }
 
+  async getDetectionSubscription(userId: string, chainId: string, tokenAddress: string) {
+    const normalizedChain = chainId.trim().toLowerCase();
+    const normalizedAddress = tokenAddress.trim().toLowerCase();
+    const rules = await this.listRules(userId);
+    return rules.find((rule) => (
+      rule.alert_type === 'Detection' &&
+      rule.enabled &&
+      rule.metadata?.alertMode === 'detection_event' &&
+      rule.metadata?.detectionScope === 'token' &&
+      rule.chain_id.toLowerCase() === normalizedChain &&
+      String(rule.token_address || '').toLowerCase() === normalizedAddress
+    )) || null;
+  }
+
+  async createDetectionSubscription(input: {
+    userId: string;
+    scope: 'all' | 'token';
+    chainId?: string;
+    tokenAddress?: string;
+    tokenName?: string | null;
+    tokenSymbol?: string | null;
+  }) {
+    const scope = input.scope === 'all' ? 'all' : 'token';
+    const chainId = (input.chainId || 'all').trim().toLowerCase();
+    const tokenAddress = input.tokenAddress?.trim() || null;
+    const existing = scope === 'token' && tokenAddress
+      ? await this.getDetectionSubscription(input.userId, chainId, tokenAddress)
+      : (await this.listRules(input.userId)).find((rule) => (
+        rule.alert_type === 'Detection' &&
+        rule.enabled &&
+        rule.metadata?.alertMode === 'detection_event' &&
+        rule.metadata?.detectionScope === 'all'
+      )) || null;
+    if (existing) return existing;
+
+    const tokenLabel = input.tokenSymbol || input.tokenName || (tokenAddress ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-6)}` : 'all tokens');
+    return this.createRule({
+      alertType: 'Detection',
+      target: scope === 'all' ? 'All Detection Engine events' : tokenLabel,
+      chainId,
+      tokenAddress,
+      condition: 'event_is',
+      thresholdKind: 'event',
+      threshold: 'Any detection event',
+      triggerLabel: scope === 'all' ? 'Any Detection Engine event' : `Detection events for ${tokenLabel}`,
+      notificationChannels: ['in_app'],
+      cooldownMinutes: 1,
+      metadata: {
+        alertMode: 'detection_event',
+        detectionScope: scope,
+        status: 'active',
+        token: scope === 'token' ? {
+          address: tokenAddress,
+          chainId,
+          name: input.tokenName || tokenLabel,
+          symbol: input.tokenSymbol || tokenLabel
+        } : null
+      }
+    }, input.userId);
+  }
+
+  async notifyDetectionEvent(event: DetectionEvent) {
+    const rules = (await this.listRules()).filter((rule) => (
+      rule.enabled &&
+      rule.alert_type === 'Detection' &&
+      rule.metadata?.alertMode === 'detection_event' &&
+      (
+        rule.metadata?.detectionScope === 'all' ||
+        (
+          rule.metadata?.detectionScope === 'token' &&
+          String(rule.token_address || '').toLowerCase() === event.token.address.toLowerCase() &&
+          String(rule.chain_id || '').toLowerCase() === event.token.chain.toLowerCase()
+        )
+      )
+    ));
+
+    let created = 0;
+    const now = new Date().toISOString();
+    for (const rule of rules) {
+      const inserted = await this.insertTrigger({
+        alert_rule_id: rule.id,
+        user_id: rule.user_id,
+        alert_type: 'Detection',
+        title: event.eventType,
+        message: `${event.token.ticker || event.token.name || 'Token'}: ${event.summary}`,
+        observed_value: event.severity,
+        threshold: rule.threshold,
+        source: 'detection-engine',
+        dedupe_key: `detection-event:${event.id}`,
+        metadata: {
+          eventId: event.id,
+          eventType: event.eventType,
+          severity: event.severity,
+          sentiment: event.sentiment,
+          score: event.score,
+          detectedAt: new Date(event.detectedAt).toISOString(),
+          token: event.token,
+          metrics: event.metrics,
+          detectionUrl: `/detection/token/${encodeURIComponent(event.token.chain)}/${encodeURIComponent(event.token.address)}`
+        },
+        created_at: now
+      });
+      if (inserted) {
+        created += 1;
+        await this.updateRule(rule.id, {
+          last_checked_at: now,
+          last_triggered_at: now,
+          last_observed_value: event.severity,
+          last_observed_at: now,
+          trigger_count: Number(rule.trigger_count || 0) + 1,
+          last_error: null
+        }, rule.user_id);
+      }
+    }
+    return created;
+  }
+
   async createRule(input: CreateRuleInput, userId = getDefaultUserId()) {
     const now = new Date().toISOString();
     const row = normalizeRule({
@@ -335,6 +453,16 @@ export class SmartAlertStore {
 
     if (!this.useLocalOnly) {
       try {
+        if (row.dedupe_key) {
+          const params = new URLSearchParams({
+            select: 'id',
+            user_id: `eq.${row.user_id}`,
+            dedupe_key: `eq.${row.dedupe_key}`,
+            limit: '1'
+          });
+          const existing = await supabaseFetch(`alert_triggers?${params.toString()}`);
+          if (Array.isArray(existing) && existing.length) return false;
+        }
         const rows = await supabaseFetch('alert_triggers?select=id', {
           method: 'POST',
           headers: { Prefer: 'return=representation' },

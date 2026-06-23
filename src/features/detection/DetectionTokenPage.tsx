@@ -1,8 +1,10 @@
 import { Activity, ArrowLeft, Bell, Copy, Scan, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import type { DetectionTokenAiAssessmentResponse, DetectionTokenDetailResponse } from '../../shared/detection';
 import { detectionEventAssessmentForLabel } from '../../shared/detection-copy';
+import { SmartAlertService, type SmartAlertRule } from '../smart-alerts/smart-alert-service';
 import { DetectionService } from './detection-service';
 
 type LooseClassification = {
@@ -54,9 +56,14 @@ function relationshipLabel(value = '') {
 export function DetectionTokenPage() {
   const { chain = '', address = '' } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const pair = searchParams.get('pair') || '';
   const [detail, setDetail] = useState<DetectionTokenDetailResponse | null>(null);
   const [aiAssessment, setAiAssessment] = useState<DetectionTokenAiAssessmentResponse | null>(null);
+  const [detectionSubscription, setDetectionSubscription] = useState<SmartAlertRule | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
   const [assessmentLoading, setAssessmentLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +88,29 @@ export function DetectionTokenPage() {
       });
   }, [address, chain, pair]);
 
+  useEffect(() => {
+    if (!user || !chain || !address) {
+      setDetectionSubscription(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSubscriptionLoading(true);
+    SmartAlertService.getDetectionSubscription(chain, address)
+      .then((subscription) => {
+        if (!cancelled) setDetectionSubscription(subscription);
+      })
+      .catch(() => {
+        if (!cancelled) setDetectionSubscription(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSubscriptionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address, chain, user]);
+
   const classification = asClassification(detail?.latestClassification);
   const token = detail?.token;
   const tokenSymbol = token?.tokenSymbol || token?.tokenName || 'Unknown';
@@ -94,6 +124,36 @@ export function DetectionTokenPage() {
   function copyValue(value?: string | null) {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
     void navigator.clipboard.writeText(value);
+  }
+
+  async function toggleDetectionSubscription() {
+    if (!user) {
+      navigate('/login', { state: { from: { pathname: `/detection/token/${chain}/${address}`, search: searchParams.toString() ? `?${searchParams.toString()}` : '' } } });
+      return;
+    }
+    if (!token) return;
+
+    setSubscriptionLoading(true);
+    setSubscriptionError(null);
+    try {
+      if (detectionSubscription) {
+        await SmartAlertService.deleteRule(detectionSubscription.id);
+        setDetectionSubscription(null);
+      } else {
+        const subscription = await SmartAlertService.createDetectionSubscription({
+          scope: 'token',
+          chainId: token.chain,
+          tokenAddress: token.tokenAddress,
+          tokenName,
+          tokenSymbol
+        });
+        setDetectionSubscription(subscription);
+      }
+    } catch {
+      setSubscriptionError('Could not update detection alerts for this token.');
+    } finally {
+      setSubscriptionLoading(false);
+    }
   }
 
   if (loading) {
@@ -190,14 +250,15 @@ export function DetectionTokenPage() {
             <span className="token-quick-action-icon"><Activity size={18} /></span>
             <span><strong>Token Details</strong><small>Market data</small></span>
           </Link>
-          <Link className="token-quick-action-button" to={`/smart-alerts?chain=${encodeURIComponent(token.chain)}&address=${encodeURIComponent(token.tokenAddress)}`}>
+          <button className="token-quick-action-button" type="button" onClick={toggleDetectionSubscription} disabled={subscriptionLoading}>
             <span className="token-quick-action-icon"><Bell size={18} /></span>
-            <span><strong>Set Alert</strong><small>Smart alerts</small></span>
-          </Link>
+            <span><strong>{detectionSubscription ? 'Watching' : 'Watch Events'}</strong><small>{detectionSubscription ? 'Detection alerts on' : 'Detection alerts'}</small></span>
+          </button>
           <Link className="token-quick-action-button" to="/safe-scan">
             <span className="token-quick-action-icon"><Scan size={18} /></span>
             <span><strong>Safe Scan</strong><small>Risk check</small></span>
           </Link>
+          {subscriptionError ? <p className="detection-token-alert-error">{subscriptionError}</p> : null}
         </nav>
       </div>
 

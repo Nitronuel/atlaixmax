@@ -10,6 +10,7 @@ import {
     Link2,
     Loader2,
     Plus,
+    Radar,
     Search,
     ShieldCheck,
     TrendingUp,
@@ -71,7 +72,8 @@ const BASIC_ALERT_TYPES: BasicAlertType[] = [
     { id: 'liquidity', title: 'Liquidity', desc: 'Liquidity crosses a dollar threshold or changes by a percentage.', type: 'Liquidity', icon: <ShieldCheck size={18} /> },
     { id: 'whale', title: 'Whale Flow', desc: 'Large buy or sell activity crosses a dollar threshold.', type: 'Whale', icon: <Wallet size={18} /> },
     { id: 'alpha', title: 'Live Alpha Event', desc: 'A token appears with a selected Live Alpha event.', type: 'Alpha', icon: <Flame size={18} /> },
-    { id: 'risk', title: 'Risk Severity', desc: 'A token appears with a selected risk severity.', type: 'Risk', icon: <ShieldCheck size={18} /> }
+    { id: 'risk', title: 'Risk Severity', desc: 'A token appears with a selected risk severity.', type: 'Risk', icon: <ShieldCheck size={18} /> },
+    { id: 'detection-event', title: 'Detection Event', desc: 'A Detection Engine event arrives for this token.', type: 'Detection', icon: <Radar size={18} /> }
 ];
 
 const CONDITION_OPTIONS: Record<SmartAlertType, Array<{ value: SmartAlertCondition; label: string; thresholdKind: SmartAlertThresholdKind }>> = {
@@ -100,6 +102,9 @@ const CONDITION_OPTIONS: Record<SmartAlertType, Array<{ value: SmartAlertConditi
     ],
     Risk: [
         { value: 'severity_is', label: 'Severity is', thresholdKind: 'severity' }
+    ],
+    Detection: [
+        { value: 'event_is', label: 'Detection event arrives', thresholdKind: 'event' }
     ]
 };
 
@@ -125,7 +130,8 @@ const VALUE_OPTIONS: Partial<Record<SmartAlertType, string[]>> = {
         'Liquidity Event',
         'Market Watch'
     ],
-    Risk: ['Any new risk', 'High', 'Medium', 'Low']
+    Risk: ['Any new risk', 'High', 'Medium', 'Low'],
+    Detection: ['Any detection event']
 };
 
 const SETUP_DEFAULTS: Record<SmartAlertType, AlertSetupDraft> = {
@@ -134,7 +140,8 @@ const SETUP_DEFAULTS: Record<SmartAlertType, AlertSetupDraft> = {
     Liquidity: { target: '', chainId: '', tokenAddress: '', condition: 'below', thresholdKind: 'currency', threshold: '$100K', notificationChannels: ['in_app'], expirationMinutes: null },
     Whale: { target: '', chainId: '', tokenAddress: '', condition: 'buy_above', thresholdKind: 'currency', threshold: '$50K', notificationChannels: ['in_app'], expirationMinutes: null },
     Alpha: { target: '', chainId: '', tokenAddress: '', condition: 'event_is', thresholdKind: 'event', threshold: 'Liquidity Event', notificationChannels: ['in_app'], expirationMinutes: null },
-    Risk: { target: '', chainId: '', tokenAddress: '', condition: 'severity_is', thresholdKind: 'severity', threshold: 'High', notificationChannels: ['in_app'], expirationMinutes: null }
+    Risk: { target: '', chainId: '', tokenAddress: '', condition: 'severity_is', thresholdKind: 'severity', threshold: 'High', notificationChannels: ['in_app'], expirationMinutes: null },
+    Detection: { target: '', chainId: '', tokenAddress: '', condition: 'event_is', thresholdKind: 'event', threshold: 'Any detection event', notificationChannels: ['in_app'], expirationMinutes: null }
 };
 
 const EXPIRATION_OPTIONS = [
@@ -226,6 +233,8 @@ const typeStyle = (type: SmartAlertType) => {
             return 'border-primary-yellow/30 bg-primary-yellow/10 text-primary-yellow';
         case 'Risk':
             return 'border-primary-red/30 bg-primary-red/10 text-primary-red';
+        case 'Detection':
+            return 'border-primary-green/30 bg-primary-green/10 text-primary-green';
         default:
             return 'border-border bg-card-hover text-text-medium';
     }
@@ -238,6 +247,7 @@ const alertIcon = (type: SmartAlertType) => {
         case 'Liquidity': return <ShieldCheck size={18} />;
         case 'Alpha': return <Flame size={18} />;
         case 'Risk': return <AlertTriangle size={18} />;
+        case 'Detection': return <Radar size={18} />;
         default: return <Activity size={18} />;
     }
 };
@@ -276,6 +286,7 @@ const getAlertTrigger = (template: BasicAlertType, draft: AlertSetupDraft) => {
 
     if (template.type === 'Alpha') return `${target} appears with ${value}`;
     if (template.type === 'Risk') return `${target} risk severity is ${value}`;
+    if (template.type === 'Detection') return `Detection Engine event arrives for ${target}`;
     if (template.type === 'Whale') return `Whale ${conditionLabel} ${value} on ${target}`;
     return `${target} ${conditionLabel} ${value}`;
 };
@@ -609,7 +620,7 @@ export const SmartAlerts: React.FC = () => {
             threshold: option?.thresholdKind === 'percent'
                 ? '20'
                 : option?.thresholdKind === 'event'
-                    ? 'Liquidity Event'
+                    ? (setupType?.type === 'Detection' ? 'Any detection event' : 'Liquidity Event')
                     : option?.thresholdKind === 'severity'
                         ? 'High'
                         : current.thresholdKind === 'currency'
@@ -704,7 +715,14 @@ export const SmartAlerts: React.FC = () => {
         setFormError(null);
         try {
             const triggerLabel = getAlertTrigger(setupType, setupDraft);
-            const created = await SmartAlertService.createRule({
+            const isDetectionAlert = setupType.type === 'Detection';
+            const created = isDetectionAlert ? await SmartAlertService.createDetectionSubscription({
+                scope: 'token',
+                chainId: setupDraft.chainId,
+                tokenAddress: setupDraft.tokenAddress.trim(),
+                tokenName: selectedToken.name,
+                tokenSymbol: selectedToken.symbol
+            }) : await SmartAlertService.createRule({
                 alertType: setupType.type,
                 target: setupDraft.target.trim() || 'Any token',
                 chainId: setupDraft.chainId,
@@ -727,9 +745,28 @@ export const SmartAlerts: React.FC = () => {
             });
             setRules((current) => [created, ...current]);
             closeSetupModal();
-            await runBackendCheck();
+            if (!isDetectionAlert) await runBackendCheck();
         } catch (err) {
             setError(formatSmartAlertError(err, 'Could not create alert.'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const createAllDetectionAlert = async () => {
+        if (!user) {
+            requireLogin('Sign in to save Detection Engine alerts on your Atlaix account.');
+            return;
+        }
+
+        setSaving(true);
+        setError(null);
+        setFormError(null);
+        try {
+            const created = await SmartAlertService.createDetectionSubscription({ scope: 'all' });
+            setRules((current) => current.some((rule) => rule.id === created.id) ? current : [created, ...current]);
+        } catch (err) {
+            setError(formatSmartAlertError(err, 'Could not create detection alert.'));
         } finally {
             setSaving(false);
         }
@@ -899,6 +936,10 @@ export const SmartAlerts: React.FC = () => {
                             ))}
                         </div>
                     )}
+                    <button type="button" onClick={createAllDetectionAlert} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary-green/40 px-3 py-2 text-xs font-bold text-primary-green transition-colors hover:bg-primary-green/10 disabled:cursor-not-allowed disabled:opacity-60">
+                        <Radar size={15} />
+                        Watch all detection events
+                    </button>
                 </div>
             </div>
 
@@ -910,7 +951,7 @@ export const SmartAlerts: React.FC = () => {
                             Alert Types
                         </h3>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {BASIC_ALERT_TYPES.map((item) => (
+                            {BASIC_ALERT_TYPES.filter((item) => alertMode === 'single' || item.type !== 'Detection').map((item) => (
                                 <button
                                     key={item.id}
                                     type="button"
@@ -1196,7 +1237,7 @@ export const SmartAlerts: React.FC = () => {
                                                 </button>
                                             </div>
                                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                {BASIC_ALERT_TYPES.map((item) => (
+                                                {BASIC_ALERT_TYPES.filter((item) => item.type !== 'Detection').map((item) => (
                                                     <button
                                                         key={item.id}
                                                         type="button"

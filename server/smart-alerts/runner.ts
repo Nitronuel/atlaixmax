@@ -206,6 +206,10 @@ export class SmartAlertRunner {
     const metadata = rule.metadata || {};
     const expiresAt = typeof metadata.expiresAt === 'string' ? new Date(metadata.expiresAt).getTime() : null;
 
+    if (metadata.alertMode === 'detection_event') {
+      return 0;
+    }
+
     if (metadata.status === 'completed' || Number(rule.trigger_count || 0) > 0) {
       await this.store.updateRule(rule.id, {
         enabled: false,
