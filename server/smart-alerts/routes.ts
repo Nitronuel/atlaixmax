@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { requireAuthenticatedUser } from '../auth';
 import { sendJson, sendNotFound } from '../http/response';
 import { lookupSmartAlertToken, SmartAlertRunner } from './runner';
 import { SmartAlertStore } from './store';
@@ -53,37 +54,42 @@ export class SmartAlertRoutes {
     }
 
     if (method === 'GET' && pathname === '/api/smart-alerts/rules') {
-      sendJson(response, 200, { rules: await this.store.listRules() });
+      const user = await requireAuthenticatedUser(request);
+      sendJson(response, 200, { rules: await this.store.listRules(user.id) });
       return;
     }
 
     if (method === 'POST' && pathname === '/api/smart-alerts/rules') {
+      const user = await requireAuthenticatedUser(request);
       const body = await readJsonBody(request);
-      const rule = await this.store.createRule(body);
+      const rule = await this.store.createRule(body, user.id);
       sendJson(response, 200, { rule });
       return;
     }
 
     const ruleMatch = pathname.match(/^\/api\/smart-alerts\/rules\/([^/]+)$/);
     if (ruleMatch && method === 'PATCH') {
+      const user = await requireAuthenticatedUser(request);
       const body = await readJsonBody(request);
       const rule = await this.store.updateRule(decodeURIComponent(ruleMatch[1]), {
         enabled: Boolean(body.enabled),
         metadata: body.metadata
-      });
+      }, user.id);
       sendJson(response, 200, { rule });
       return;
     }
 
     if (ruleMatch && method === 'DELETE') {
-      await this.store.deleteRule(decodeURIComponent(ruleMatch[1]));
+      const user = await requireAuthenticatedUser(request);
+      await this.store.deleteRule(decodeURIComponent(ruleMatch[1]), user.id);
       sendJson(response, 200, { deleted: true });
       return;
     }
 
     if (method === 'GET' && pathname === '/api/smart-alerts/triggers') {
+      const user = await requireAuthenticatedUser(request);
       const limit = Number(requestUrl.searchParams.get('limit') || 50);
-      sendJson(response, 200, { triggers: await this.store.listTriggers(Number.isFinite(limit) ? limit : 50) });
+      sendJson(response, 200, { triggers: await this.store.listTriggers(Number.isFinite(limit) ? limit : 50, user.id) });
       return;
     }
 

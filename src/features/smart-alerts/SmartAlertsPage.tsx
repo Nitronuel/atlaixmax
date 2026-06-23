@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     Activity,
     AlertTriangle,
@@ -26,6 +26,7 @@ import {
     SmartAlertType
 } from './smart-alert-service';
 import { apiUrl } from '../../config';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface BasicAlertType {
     id: string;
@@ -149,8 +150,6 @@ const TIME_WINDOW_OPTIONS = [
     { label: '7d', value: 10080 },
     { label: 'No limit', value: 0 }
 ];
-
-const LOCAL_ALERT_USER_ID = 'local-smart-alerts-user';
 
 const shortenAddress = (value: string | null | undefined) => {
     if (!value) return 'No address';
@@ -283,11 +282,11 @@ const getAlertTrigger = (template: BasicAlertType, draft: AlertSetupDraft) => {
 
 export const SmartAlerts: React.FC = () => {
     const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const { user, loading: authLoading } = useAuth();
     const linkedTokenProcessedRef = useRef('');
     const assistantSetupProcessedRef = useRef('');
     const retryLoadTimeoutRef = useRef<number | null>(null);
-    const user = useMemo(() => ({ id: LOCAL_ALERT_USER_ID }), []);
-    const authLoading = false;
     const [activeTypeKey, setActiveTypeKey] = useState('price-target');
     const [rules, setRules] = useState<SmartAlertRule[]>([]);
     const [triggers, setTriggers] = useState<SmartAlertTrigger[]>([]);
@@ -317,11 +316,11 @@ export const SmartAlerts: React.FC = () => {
             return;
         }
 
-        setLoadingAlerts(true);
+            setLoadingAlerts(true);
         try {
             const [rulesResult, triggersResult] = await Promise.allSettled([
-                SmartAlertService.listRules(user.id),
-                SmartAlertService.listTriggers(user.id, 50)
+                SmartAlertService.listRules(),
+                SmartAlertService.listTriggers(50)
             ]);
 
             if (rulesResult.status === 'fulfilled') setRules(rulesResult.value);
@@ -620,11 +619,15 @@ export const SmartAlerts: React.FC = () => {
         setFormError(null);
     };
 
-    const requireLogin = (message: string) => setAuthPrompt(message);
+    const requireLogin = (message: string) => {
+        setAuthPrompt(message);
+        return false;
+    };
 
     const toggleAlert = async (id: string) => {
         if (!user) {
-            requireLogin('Alerts are available in this local workspace.');
+            requireLogin('Sign in to manage Smart Alerts on your Atlaix account.');
+            return;
         }
 
         const rule = rules.find((item) => item.id === id);
@@ -643,7 +646,8 @@ export const SmartAlerts: React.FC = () => {
 
     const removeAlert = async (id: string) => {
         if (!user) {
-            requireLogin('Alerts are available in this local workspace.');
+            requireLogin('Sign in to delete saved Smart Alerts from your Atlaix account.');
+            return;
         }
 
         const previousRules = rules;
@@ -691,7 +695,8 @@ export const SmartAlerts: React.FC = () => {
         }
 
         if (!user) {
-            requireLogin('Alerts are available in this local workspace.');
+            requireLogin('Sign in to save Smart Alerts on your Atlaix account.');
+            return;
         }
 
         setSaving(true);
@@ -742,7 +747,8 @@ export const SmartAlerts: React.FC = () => {
         }
 
         if (!user) {
-            requireLogin('Alerts are available in this local workspace.');
+            requireLogin('Sign in to save Smart Alerts on your Atlaix account.');
+            return;
         }
 
         const primaryCondition = linkedConditions[0];
@@ -1240,7 +1246,7 @@ export const SmartAlerts: React.FC = () => {
                         <p className="mt-2 text-sm leading-relaxed text-text-medium">{authPrompt}</p>
                         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                             <button type="button" onClick={() => setAuthPrompt(null)} className="rounded-xl border border-border px-5 py-3 text-sm font-bold text-text-medium transition-colors hover:bg-card-hover hover:text-text-light">Keep browsing</button>
-                            <button type="button" onClick={() => setAuthPrompt(null)} className="rounded-xl bg-primary-green px-5 py-3 text-sm font-bold text-black transition-colors hover:bg-primary-green/90">Continue</button>
+                            <button type="button" onClick={() => navigate('/login', { state: { from: { pathname: '/smart-alerts' } } })} className="rounded-xl bg-primary-green px-5 py-3 text-sm font-bold text-black transition-colors hover:bg-primary-green/90">Sign in</button>
                         </div>
                     </div>
                 </div>

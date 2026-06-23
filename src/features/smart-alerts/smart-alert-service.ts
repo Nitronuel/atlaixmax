@@ -1,4 +1,5 @@
 import { apiUrl } from '../../config';
+import { authSupabase } from '../../services/SupabaseClient';
 
 export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk';
 
@@ -159,10 +160,13 @@ const normalizeTrigger = (row: any): SmartAlertTrigger => ({
 });
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+    const { data } = authSupabase ? await authSupabase.auth.getSession() : { data: { session: null } };
+    const accessToken = data.session?.access_token;
     const response = await fetch(apiUrl(path), {
         ...init,
         headers: {
             'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
             ...(init?.headers || {})
         }
     });
@@ -174,8 +178,8 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const SmartAlertService = {
-    listRules: async (userId: string): Promise<SmartAlertRule[]> => {
-        const payload = await requestJson<{ rules: unknown[] }>(`/api/smart-alerts/rules?userId=${encodeURIComponent(userId)}`);
+    listRules: async (): Promise<SmartAlertRule[]> => {
+        const payload = await requestJson<{ rules: unknown[] }>('/api/smart-alerts/rules');
         return (payload.rules || []).map(normalizeRule);
     },
 
@@ -199,8 +203,8 @@ export const SmartAlertService = {
         await requestJson(`/api/smart-alerts/rules/${encodeURIComponent(ruleId)}`, { method: 'DELETE' });
     },
 
-    listTriggers: async (userId: string, limit = 25): Promise<SmartAlertTrigger[]> => {
-        const params = new URLSearchParams({ userId, limit: String(limit) });
+    listTriggers: async (limit = 25): Promise<SmartAlertTrigger[]> => {
+        const params = new URLSearchParams({ limit: String(limit) });
         const payload = await requestJson<{ triggers: unknown[] }>(`/api/smart-alerts/triggers?${params.toString()}`);
         return (payload.triggers || []).map(normalizeTrigger);
     }

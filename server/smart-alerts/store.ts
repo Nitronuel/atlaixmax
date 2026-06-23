@@ -55,7 +55,7 @@ const SUPABASE_TIMEOUT_MS = 12_000;
 const RULE_COLUMNS = 'id,user_id,alert_type,target,chain_id,token_address,condition,threshold_kind,threshold,trigger_label,notification_channels,cooldown_minutes,enabled,last_checked_at,last_triggered_at,last_observed_value,last_observed_at,baseline_value,baseline_observed_at,trigger_count,last_error,metadata,created_at,updated_at';
 const TRIGGER_COLUMNS = 'id,alert_rule_id,user_id,alert_type,title,message,observed_value,threshold,source,dedupe_key,metadata,created_at';
 
-function getUserId() {
+function getDefaultUserId() {
   return readEnv('SMART_ALERTS_USER_ID') || LOCAL_USER_ID;
 }
 
@@ -128,7 +128,7 @@ function normalizeRule(row: any): SmartAlertRow {
   const now = new Date().toISOString();
   return {
     id: String(row.id || randomUUID()),
-    user_id: String(row.user_id || getUserId()),
+    user_id: String(row.user_id || getDefaultUserId()),
     alert_type: row.alert_type || 'Price',
     target: row.target || 'Any token',
     chain_id: row.chain_id || 'solana',
@@ -158,7 +158,7 @@ function normalizeTrigger(row: any): SmartAlertTriggerRow {
   return {
     id: String(row.id || randomUUID()),
     alert_rule_id: row.alert_rule_id || null,
-    user_id: String(row.user_id || getUserId()),
+    user_id: String(row.user_id || getDefaultUserId()),
     alert_type: row.alert_type || 'Price',
     title: row.title || 'Smart Alert',
     message: row.message || '',
@@ -188,14 +188,14 @@ export type CreateRuleInput = {
 export class SmartAlertStore {
   private useLocalOnly = false;
 
-  async listRules() {
+  async listRules(userId?: string) {
     if (!this.useLocalOnly) {
       try {
         const params = new URLSearchParams({
           select: RULE_COLUMNS,
-          user_id: `eq.${getUserId()}`,
           order: 'created_at.desc'
         });
+        if (userId) params.set('user_id', `eq.${userId}`);
         const rows = await supabaseFetch(`alert_rules?${params.toString()}`);
         return Array.isArray(rows) ? rows.map(normalizeRule) : [];
       } catch {
@@ -203,7 +203,9 @@ export class SmartAlertStore {
       }
     }
 
-    return readLocalState().rules.sort((left, right) => right.created_at.localeCompare(left.created_at));
+    return readLocalState().rules
+      .filter((rule) => !userId || rule.user_id === userId)
+      .sort((left, right) => right.created_at.localeCompare(left.created_at));
   }
 
   async listEnabledRules(limit: number) {
@@ -214,11 +216,11 @@ export class SmartAlertStore {
       .slice(0, limit);
   }
 
-  async createRule(input: CreateRuleInput) {
+  async createRule(input: CreateRuleInput, userId = getDefaultUserId()) {
     const now = new Date().toISOString();
     const row = normalizeRule({
       id: randomUUID(),
-      user_id: getUserId(),
+      user_id: userId,
       alert_type: input.alertType,
       target: input.target || 'Any token',
       chain_id: input.chainId || 'solana',
@@ -254,33 +256,42 @@ export class SmartAlertStore {
     return row;
   }
 
-  async updateRule(id: string, patch: Partial<SmartAlertRow>) {
+  async updateRule(id: string, patch: Partial<SmartAlertRow>, userId?: string) {
     const nextPatch = { ...patch, updated_at: new Date().toISOString() };
     if (!this.useLocalOnly) {
       try {
-        const rows = await supabaseFetch(`alert_rules?id=eq.${encodeURIComponent(id)}&select=${encodeURIComponent(RULE_COLUMNS)}`, {
+        const filters = new URLSearchParams({
+          id: `eq.${id}`,
+          select: RULE_COLUMNS
+        });
+        if (userId) filters.set('user_id', `eq.${userId}`);
+        const rows = await supabaseFetch(`alert_rules?${filters.toString()}`, {
           method: 'PATCH',
           headers: { Prefer: 'return=representation' },
           body: JSON.stringify(nextPatch)
         });
-        return normalizeRule(Array.isArray(rows) ? rows[0] : rows);
+        const row = Array.isArray(rows) ? rows[0] : rows;
+        if (!row) throw new Error('Smart Alert rule was not found.');
+        return normalizeRule(row);
       } catch {
         this.useLocalOnly = true;
       }
     }
 
     const state = readLocalState();
-    const index = state.rules.findIndex((rule) => rule.id === id);
+    const index = state.rules.findIndex((rule) => rule.id === id && (!userId || rule.user_id === userId));
     if (index < 0) throw new Error('Smart Alert rule was not found.');
     state.rules[index] = normalizeRule({ ...state.rules[index], ...nextPatch });
     writeLocalState(state);
     return state.rules[index];
   }
 
-  async deleteRule(id: string) {
+  async deleteRule(id: string, userId?: string) {
     if (!this.useLocalOnly) {
       try {
-        await supabaseFetch(`alert_rules?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const filters = new URLSearchParams({ id: `eq.${id}` });
+        if (userId) filters.set('user_id', `eq.${userId}`);
+        await supabaseFetch(`alert_rules?${filters.toString()}`, { method: 'DELETE' });
         return;
       } catch {
         this.useLocalOnly = true;
@@ -288,19 +299,19 @@ export class SmartAlertStore {
     }
 
     const state = readLocalState();
-    state.rules = state.rules.filter((rule) => rule.id !== id);
+    state.rules = state.rules.filter((rule) => rule.id !== id || (userId ? rule.user_id !== userId : false));
     writeLocalState(state);
   }
 
-  async listTriggers(limit = 50) {
+  async listTriggers(limit = 50, userId?: string) {
     if (!this.useLocalOnly) {
       try {
         const params = new URLSearchParams({
           select: TRIGGER_COLUMNS,
-          user_id: `eq.${getUserId()}`,
           order: 'created_at.desc',
           limit: String(limit)
         });
+        if (userId) params.set('user_id', `eq.${userId}`);
         const rows = await supabaseFetch(`alert_triggers?${params.toString()}`);
         return Array.isArray(rows) ? rows.map(normalizeTrigger) : [];
       } catch {
@@ -309,6 +320,7 @@ export class SmartAlertStore {
     }
 
     return readLocalState().triggers
+      .filter((trigger) => !userId || trigger.user_id === userId)
       .sort((left, right) => right.created_at.localeCompare(left.created_at))
       .slice(0, limit);
   }
@@ -317,7 +329,7 @@ export class SmartAlertStore {
     const row = normalizeTrigger({
       ...input,
       id: randomUUID(),
-      user_id: input.user_id || getUserId(),
+      user_id: input.user_id || getDefaultUserId(),
       created_at: input.created_at || new Date().toISOString()
     });
 

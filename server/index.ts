@@ -155,6 +155,15 @@ const server = createServer(async (request, response) => {
 
     sendNotFound(response);
   } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'AUTH_REQUIRED') {
+      sendJson(response, 401, { error: 'Sign in is required.' });
+      return;
+    }
+    if (message === 'AUTH_NOT_CONFIGURED') {
+      sendJson(response, 503, { error: 'Account access is not configured.' });
+      return;
+    }
     sendJson(response, 500, {
       error: error instanceof Error ? error.message : 'Internal server error.'
     });

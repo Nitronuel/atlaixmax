@@ -1,5 +1,7 @@
 export const APP_CONFIG = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') || ''
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '') || '',
+  supabaseUrl: import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, '') || '',
+  supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 };
 
 export function apiUrl(path: string) {
