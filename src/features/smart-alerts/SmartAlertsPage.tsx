@@ -104,9 +104,34 @@ const CONDITION_OPTIONS: Record<SmartAlertType, Array<{ value: SmartAlertConditi
         { value: 'severity_is', label: 'Severity is', thresholdKind: 'severity' }
     ],
     Detection: [
-        { value: 'event_is', label: 'Detection event arrives', thresholdKind: 'event' }
+        { value: 'event_is', label: 'Event is', thresholdKind: 'event' },
+        { value: 'severity_is', label: 'Severity is', thresholdKind: 'severity' }
     ]
 };
+
+const DETECTION_EVENT_OPTIONS = [
+    'Any detection event',
+    'Bullish Continuation Pump',
+    'Bearish Continuation Dump',
+    'Bearish Relief Bounce',
+    'Bullish Pullback',
+    'Bearish Reversal Attempt',
+    'Bullish Breakdown Attempt',
+    'Range Breakout Attempt',
+    'Range Breakdown Attempt',
+    'Low Liquidity Price Spike',
+    'Low Liquidity Sell Off',
+    'Liquidity Drain',
+    'Liquidity Added',
+    'Pump',
+    'Dump',
+    'Buy Recovery',
+    'Sell Off',
+    'Accumulation',
+    'Distribution'
+];
+
+const DETECTION_SEVERITY_OPTIONS = ['Any severity', 'Critical', 'High', 'Medium', 'Low'];
 
 const VALUE_OPTIONS: Partial<Record<SmartAlertType, string[]>> = {
     Alpha: [
@@ -131,7 +156,7 @@ const VALUE_OPTIONS: Partial<Record<SmartAlertType, string[]>> = {
         'Market Watch'
     ],
     Risk: ['Any new risk', 'High', 'Medium', 'Low'],
-    Detection: ['Any detection event']
+    Detection: DETECTION_EVENT_OPTIONS
 };
 
 const SETUP_DEFAULTS: Record<SmartAlertType, AlertSetupDraft> = {
@@ -200,6 +225,21 @@ const formatRelativeTime = (value: string | null | undefined) => {
 const getExpirationDate = (expirationMinutes: number | null | undefined) => {
     if (!expirationMinutes) return null;
     return new Date(Date.now() + expirationMinutes * 60_000).toISOString();
+};
+
+const valueOptionsFor = (type: SmartAlertType, thresholdKind: SmartAlertThresholdKind) => {
+    if (type === 'Detection' && thresholdKind === 'severity') return DETECTION_SEVERITY_OPTIONS;
+    if (type === 'Detection') return DETECTION_EVENT_OPTIONS;
+    return VALUE_OPTIONS[type] || null;
+};
+
+const defaultThresholdFor = (type: SmartAlertType, thresholdKind: SmartAlertThresholdKind) => {
+    if (type === 'Detection' && thresholdKind === 'severity') return 'Any severity';
+    if (type === 'Detection') return 'Any detection event';
+    if (thresholdKind === 'event') return 'Liquidity Event';
+    if (thresholdKind === 'severity') return 'High';
+    if (thresholdKind === 'percent') return '20';
+    return '$50K';
 };
 
 const formatExpiration = (value: string | null | undefined) => {
@@ -286,7 +326,10 @@ const getAlertTrigger = (template: BasicAlertType, draft: AlertSetupDraft) => {
 
     if (template.type === 'Alpha') return `${target} appears with ${value}`;
     if (template.type === 'Risk') return `${target} risk severity is ${value}`;
-    if (template.type === 'Detection') return `Detection Engine event arrives for ${target}`;
+    if (template.type === 'Detection') {
+        if (draft.condition === 'severity_is') return `${target} receives a ${value.toLowerCase()} Detection Engine event`;
+        return value.toLowerCase().startsWith('any') ? `Any Detection Engine event arrives for ${target}` : `${value} arrives for ${target}`;
+    }
     if (template.type === 'Whale') return `Whale ${conditionLabel} ${value} on ${target}`;
     return `${target} ${conditionLabel} ${value}`;
 };
@@ -620,9 +663,9 @@ export const SmartAlerts: React.FC = () => {
             threshold: option?.thresholdKind === 'percent'
                 ? '20'
                 : option?.thresholdKind === 'event'
-                    ? (setupType?.type === 'Detection' ? 'Any detection event' : 'Liquidity Event')
+                    ? defaultThresholdFor(setupType.type, 'event')
                     : option?.thresholdKind === 'severity'
-                        ? 'High'
+                        ? defaultThresholdFor(setupType.type, 'severity')
                         : current.thresholdKind === 'currency'
                             ? current.threshold
                             : '$50K'
@@ -721,7 +764,10 @@ export const SmartAlerts: React.FC = () => {
                 chainId: setupDraft.chainId,
                 tokenAddress: setupDraft.tokenAddress.trim(),
                 tokenName: selectedToken.name,
-                tokenSymbol: selectedToken.symbol
+                tokenSymbol: selectedToken.symbol,
+                condition: setupDraft.condition,
+                thresholdKind: setupDraft.thresholdKind,
+                threshold: setupDraft.threshold.trim()
             }) : await SmartAlertService.createRule({
                 alertType: setupType.type,
                 target: setupDraft.target.trim() || 'Any token',
@@ -842,6 +888,7 @@ export const SmartAlerts: React.FC = () => {
     };
 
     const previewTrigger = setupType ? getAlertTrigger(setupType, setupDraft) : '';
+    const setupValueOptions = setupType ? valueOptionsFor(setupType.type, setupDraft.thresholdKind) : null;
 
     return (
         <div className="smart-alerts-page relative z-10 mx-auto flex w-full max-w-7xl flex-col gap-6 pb-10 animate-fade-in">
@@ -1156,9 +1203,9 @@ export const SmartAlerts: React.FC = () => {
                                     <span className="mb-2 block text-xs font-bold text-text-medium">
                                         {setupDraft.thresholdKind === 'percent' ? 'Percentage' : setupDraft.thresholdKind === 'event' ? 'Event' : setupDraft.thresholdKind === 'severity' ? 'Severity' : 'Threshold'}
                                     </span>
-                                    {VALUE_OPTIONS[setupType.type] ? (
+                                    {setupValueOptions ? (
                                         <select value={setupDraft.threshold} onChange={(event) => setSetupDraft((current) => ({ ...current, threshold: event.target.value }))} className="w-full rounded-xl border border-border bg-main px-4 py-3 text-sm font-medium text-text-light outline-none focus:border-primary-green/60">
-                                            {VALUE_OPTIONS[setupType.type]?.map((value) => <option key={value} value={value}>{value}</option>)}
+                                            {setupValueOptions.map((value) => <option key={value} value={value}>{value}</option>)}
                                         </select>
                                     ) : (
                                         <div className="relative">

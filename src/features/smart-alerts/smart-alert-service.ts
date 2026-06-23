@@ -62,6 +62,9 @@ export interface DetectionAlertSubscriptionInput {
     tokenAddress?: string;
     tokenName?: string | null;
     tokenSymbol?: string | null;
+    condition?: SmartAlertCondition;
+    thresholdKind?: SmartAlertThresholdKind;
+    threshold?: string;
 }
 
 export interface SmartAlertRuleInput {

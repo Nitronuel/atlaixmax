@@ -172,6 +172,18 @@ function normalizeTrigger(row: any): SmartAlertTriggerRow {
   };
 }
 
+function normalizeMatchValue(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function detectionRuleMatchesEvent(rule: SmartAlertRow, event: DetectionEvent) {
+  const condition = normalizeMatchValue(rule.condition);
+  const threshold = normalizeMatchValue(rule.threshold);
+  if (!threshold || threshold.startsWith('any')) return true;
+  if (condition === 'severity_is') return normalizeMatchValue(event.severity) === threshold;
+  return normalizeMatchValue(event.eventType) === threshold || normalizeMatchValue(event.eventType.replaceAll('-', ' ')) === threshold;
+}
+
 export type CreateRuleInput = {
   alertType: SmartAlertRow['alert_type'];
   target: string;
@@ -217,9 +229,11 @@ export class SmartAlertStore {
       .slice(0, limit);
   }
 
-  async getDetectionSubscription(userId: string, chainId: string, tokenAddress: string) {
+  async getDetectionSubscription(userId: string, chainId: string, tokenAddress: string, condition?: string, threshold?: string) {
     const normalizedChain = chainId.trim().toLowerCase();
     const normalizedAddress = tokenAddress.trim().toLowerCase();
+    const normalizedCondition = normalizeMatchValue(condition);
+    const normalizedThreshold = normalizeMatchValue(threshold);
     const rules = await this.listRules(userId);
     return rules.find((rule) => (
       rule.alert_type === 'Detection' &&
@@ -227,7 +241,9 @@ export class SmartAlertStore {
       rule.metadata?.alertMode === 'detection_event' &&
       rule.metadata?.detectionScope === 'token' &&
       rule.chain_id.toLowerCase() === normalizedChain &&
-      String(rule.token_address || '').toLowerCase() === normalizedAddress
+      String(rule.token_address || '').toLowerCase() === normalizedAddress &&
+      (!normalizedCondition || normalizeMatchValue(rule.condition) === normalizedCondition) &&
+      (!normalizedThreshold || normalizeMatchValue(rule.threshold) === normalizedThreshold)
     )) || null;
   }
 
@@ -238,17 +254,25 @@ export class SmartAlertStore {
     tokenAddress?: string;
     tokenName?: string | null;
     tokenSymbol?: string | null;
+    condition?: string;
+    thresholdKind?: string;
+    threshold?: string;
   }) {
     const scope = input.scope === 'all' ? 'all' : 'token';
     const chainId = (input.chainId || 'all').trim().toLowerCase();
     const tokenAddress = input.tokenAddress?.trim() || null;
+    const condition = input.condition === 'severity_is' ? 'severity_is' : 'event_is';
+    const thresholdKind = condition === 'severity_is' ? 'severity' : 'event';
+    const threshold = input.threshold?.trim() || (condition === 'severity_is' ? 'Any severity' : 'Any detection event');
     const existing = scope === 'token' && tokenAddress
-      ? await this.getDetectionSubscription(input.userId, chainId, tokenAddress)
+      ? await this.getDetectionSubscription(input.userId, chainId, tokenAddress, condition, threshold)
       : (await this.listRules(input.userId)).find((rule) => (
         rule.alert_type === 'Detection' &&
         rule.enabled &&
         rule.metadata?.alertMode === 'detection_event' &&
-        rule.metadata?.detectionScope === 'all'
+        rule.metadata?.detectionScope === 'all' &&
+        rule.condition === condition &&
+        String(rule.threshold || '').toLowerCase() === threshold.toLowerCase()
       )) || null;
     if (existing) return existing;
 
@@ -258,15 +282,20 @@ export class SmartAlertStore {
       target: scope === 'all' ? 'All Detection Engine events' : tokenLabel,
       chainId,
       tokenAddress,
-      condition: 'event_is',
-      thresholdKind: 'event',
-      threshold: 'Any detection event',
-      triggerLabel: scope === 'all' ? 'Any Detection Engine event' : `Detection events for ${tokenLabel}`,
+      condition,
+      thresholdKind,
+      threshold,
+      triggerLabel: scope === 'all' ? `${threshold} on Detection Engine` : `${threshold} for ${tokenLabel}`,
       notificationChannels: ['in_app'],
       cooldownMinutes: 1,
       metadata: {
         alertMode: 'detection_event',
         detectionScope: scope,
+        detectionFilter: {
+          condition,
+          thresholdKind,
+          threshold
+        },
         status: 'active',
         token: scope === 'token' ? {
           address: tokenAddress,
@@ -283,6 +312,7 @@ export class SmartAlertStore {
       rule.enabled &&
       rule.alert_type === 'Detection' &&
       rule.metadata?.alertMode === 'detection_event' &&
+      detectionRuleMatchesEvent(rule, event) &&
       (
         rule.metadata?.detectionScope === 'all' ||
         (

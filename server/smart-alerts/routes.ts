@@ -115,7 +115,10 @@ export class SmartAlertRoutes {
         chainId: body.chainId,
         tokenAddress: body.tokenAddress,
         tokenName: body.tokenName,
-        tokenSymbol: body.tokenSymbol
+        tokenSymbol: body.tokenSymbol,
+        condition: body.condition,
+        thresholdKind: body.thresholdKind,
+        threshold: body.threshold
       });
       sendJson(response, 200, { subscription });
       return;
