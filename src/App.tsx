@@ -13,6 +13,7 @@ import { SmartMoneyPage } from './features/smart-money/SmartMoneyPage';
 import { SmartAlerts } from './features/smart-alerts/SmartAlertsPage';
 import { TokenDetailsPage } from './features/token-details/TokenDetailsPage';
 import { WalletTrackerPage } from './features/wallet-tracker/WalletTrackerPage';
+import { WatchlistPage } from './features/watchlist/WatchlistPage';
 import { AuthScreen } from './pages/Auth';
 import { ProfileSettings } from './pages/ProfileSettings';
 
@@ -43,6 +44,7 @@ export default function App() {
                 <Route path="/wallet" element={<WalletTrackerPage />} />
                 <Route path="/wallet/:address" element={<WalletTrackerPage />} />
                 <Route path="/smart-alerts" element={<SmartAlerts />} />
+                <Route path="/watchlist" element={<WatchlistPage />} />
                 <Route path="/ai-assistant" element={<AiAssistantPage />} />
                 <Route path="/settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
                 <Route path="*" element={<ComingSoonPage title="Page not found" />} />

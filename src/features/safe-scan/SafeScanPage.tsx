@@ -128,8 +128,12 @@ export function SafeScanPage() {
   }) : '';
 
   useEffect(() => {
-    if (!normalizedAddress || loading) {
+    if (!normalizedAddress) {
       setDetectedNetwork(null);
+      setDetectingNetwork(false);
+      return;
+    }
+    if (loading) {
       setDetectingNetwork(false);
       return;
     }
@@ -141,7 +145,7 @@ export function SafeScanPage() {
         .then((detection) => {
           if (cancelled) return;
           setDetectedNetwork(detection);
-          if (detection && detection.chain !== chain && !manualChainOverride) setChain(detection.chain);
+          if (detection && !manualChainOverride) setChain(detection.chain);
         })
         .catch(() => {
           if (!cancelled) setDetectedNetwork(null);
@@ -155,7 +159,7 @@ export function SafeScanPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [normalizedAddress, loading, chain, manualChainOverride]);
+  }, [normalizedAddress, loading, manualChainOverride]);
 
   useEffect(() => {
     const queryAddress = searchParams.get('address')?.trim() || '';
@@ -277,7 +281,6 @@ export function SafeScanPage() {
         chain={chain}
         loading={loading}
         error={error}
-        detectedNetwork={detectedNetwork}
         detectingNetwork={detectingNetwork}
         addressSupported={addressSupported}
         onAddressChange={(nextAddress) => {

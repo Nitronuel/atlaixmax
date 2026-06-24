@@ -2,6 +2,7 @@ import type {
   BubblemapsChain,
   BubblemapsScanReport,
   ChainDetails,
+  EndpointResult,
   TokenNetworkDetection,
   TokenDetails,
   TokenHolder,
@@ -22,6 +23,19 @@ import {
 import { BubblemapsClient, BUBBLEMAPS_CHAIN_CACHE_TTL_MS, BUBBLEMAPS_DEFAULT_CACHE_TTL_MS } from './client';
 import { TtlCache } from '../shared/cache';
 import { validateBubblemapsRequest } from './validation';
+
+const TOKEN_DETECTION_TIMEOUT_MS = 6_500;
+const DETECTION_BATCH_SIZE = 3;
+
+function withFallbackTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(fallback), timeoutMs);
+    promise
+      .then((value) => resolve(value))
+      .catch(() => resolve(fallback))
+      .finally(() => clearTimeout(timeout));
+  });
+}
 
 export class BubblemapsReportService {
   private readonly reportCache = new TtlCache();
@@ -75,16 +89,37 @@ export class BubblemapsReportService {
 
   private async fetchNetworkDetection(candidateChains: BubblemapsChain[], address: string, cacheKey: string) {
     const encodedAddress = encodeURIComponent(address);
-    const responses = await Promise.all(candidateChains.map(async (chain) => {
-      const token = await this.client.fetchEndpoint<TokenDetails>({
-        path: `/v0/tokens/metadata/${encodeURIComponent(chain)}/${encodedAddress}`,
-        cacheKey: `token:${chain}:${address.toLowerCase()}`,
-        endpointKey: 'token-detect',
-        params: { return_token_stats: true },
-        schema: TokenDetailsSchema
-      });
-      return { chain, token };
-    }));
+    const responses: Array<{ chain: BubblemapsChain; token: EndpointResult<TokenDetails> }> = [];
+    const preferredChainOrder = ['eth', 'base', 'bsc', 'arbitrum', 'polygon', 'avalanche', 'sonic', 'monad', 'hyperevm'];
+    const orderedChains = [...candidateChains].sort((left, right) => {
+      const leftIndex = preferredChainOrder.indexOf(left);
+      const rightIndex = preferredChainOrder.indexOf(right);
+      return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+        (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+    });
+
+    for (let index = 0; index < orderedChains.length; index += DETECTION_BATCH_SIZE) {
+      const batch = orderedChains.slice(index, index + DETECTION_BATCH_SIZE);
+      const batchResponses = await Promise.all(batch.map(async (chain) => {
+        const token = await withFallbackTimeout(this.client.fetchEndpoint<TokenDetails>({
+          path: `/v0/tokens/metadata/${encodeURIComponent(chain)}/${encodedAddress}`,
+          cacheKey: `token:${chain}:${address.toLowerCase()}`,
+          endpointKey: 'token-detect',
+          params: { return_token_stats: true },
+          schema: TokenDetailsSchema
+        }), TOKEN_DETECTION_TIMEOUT_MS, {
+          status: 'error',
+          data: null,
+          error: 'Token network detection timed out.',
+          fetchedAt: new Date().toISOString()
+        });
+        return { chain, token };
+      }));
+      responses.push(...batchResponses);
+
+      const indexedMatch = batchResponses.some(({ token }) => token.status === 'available' && token.data?.metadata.is_indexed);
+      if (indexedMatch) break;
+    }
 
     const matches = responses
       .filter(({ token }) => {
@@ -92,7 +127,8 @@ export class BubblemapsReportService {
         const metadata = token.data.metadata;
         const hasNamedToken = [metadata.name, metadata.symbol].some((value) => value && value !== '???');
         return metadata.is_indexed || hasNamedToken;
-      })
+      });
+    const mappedMatches = matches
       .map(({ chain, token }) => ({
         chain,
         name: token.data?.metadata.name,
@@ -105,7 +141,7 @@ export class BubblemapsReportService {
         return (right.transfersCount || 0) - (left.transfersCount || 0);
       });
 
-    if (!matches.length) {
+    if (!mappedMatches.length) {
       const fallback = candidateChains.length === 1
         ? {
             chain: candidateChains[0],
@@ -120,11 +156,11 @@ export class BubblemapsReportService {
     }
 
     const detection: TokenNetworkDetection = {
-      chain: matches[0].chain,
+      chain: mappedMatches[0].chain,
       address,
-      confidence: matches.length === 1 ? 'high' : 'medium',
+      confidence: mappedMatches.length === 1 ? 'high' : 'medium',
       source: 'Bubblemaps token metadata',
-      matches
+      matches: mappedMatches
     };
     this.detectionCache.set(cacheKey, detection, BUBBLEMAPS_DEFAULT_CACHE_TTL_MS, new Date().toISOString());
     return detection;

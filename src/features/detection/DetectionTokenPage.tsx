@@ -244,7 +244,7 @@ export function DetectionTokenPage() {
             <p className="detection-assessment-copy">{fallbackAssessment}</p>
           )}
         </section>
-        <nav className="detection-token-actions token-quick-actions-panel" aria-label="Token detection actions">
+        <nav className="detection-token-actions token-side-panel token-quick-actions-panel" aria-label="Token detection actions">
           <h3>Quick Actions</h3>
           <Link className="token-quick-action-button" to={`/token/${encodeURIComponent(token.tokenAddress)}?chain=${encodeURIComponent(token.chain)}&pair=${encodeURIComponent(token.pairAddress)}`}>
             <span className="token-quick-action-icon"><Activity size={18} /></span>

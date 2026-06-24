@@ -71,8 +71,6 @@ const BASIC_ALERT_TYPES: BasicAlertType[] = [
     { id: 'price-move', title: '24h Price Move', desc: 'Token price moves by a selected percentage.', type: 'Price', icon: <Activity size={18} /> },
     { id: 'volume', title: '24h Volume', desc: 'Volume crosses a dollar threshold or changes by a percentage.', type: 'Volume', icon: <Activity size={18} /> },
     { id: 'liquidity', title: 'Liquidity', desc: 'Liquidity crosses a dollar threshold or changes by a percentage.', type: 'Liquidity', icon: <ShieldCheck size={18} /> },
-    { id: 'whale', title: 'Whale Flow', desc: 'Large buy or sell activity crosses a dollar threshold.', type: 'Whale', icon: <Wallet size={18} /> },
-    { id: 'alpha', title: 'Live Alpha Event', desc: 'A token appears with a selected Live Alpha event.', type: 'Alpha', icon: <Flame size={18} /> },
     { id: 'risk', title: 'Risk Severity', desc: 'A token appears with a selected risk severity.', type: 'Risk', icon: <ShieldCheck size={18} /> },
     { id: 'detection-event', title: 'Detection Event', desc: 'A Detection Engine event arrives for this token.', type: 'Detection', icon: <Radar size={18} /> }
 ];
@@ -835,25 +833,6 @@ export const SmartAlerts: React.FC = () => {
         }
     };
 
-    const createAllDetectionAlert = async () => {
-        if (!user) {
-            requireLogin('Sign in to save Detection Engine alerts on your Atlaix account.');
-            return;
-        }
-
-        setSaving(true);
-        setError(null);
-        setFormError(null);
-        try {
-            const created = await SmartAlertService.createDetectionSubscription({ scope: 'all' });
-            setRules((current) => current.some((rule) => rule.id === created.id) ? current : [created, ...current]);
-        } catch (err) {
-            setError(formatSmartAlertError(err, 'Could not create detection alert.'));
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const createLinkedAlert = async () => {
         if (!selectedToken) {
             setFormError('Choose a token before saving this linked alert.');
@@ -1019,10 +998,6 @@ export const SmartAlerts: React.FC = () => {
                             ))}
                         </div>
                     )}
-                    <button type="button" onClick={createAllDetectionAlert} disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary-green/40 px-3 py-2 text-xs font-bold text-primary-green transition-colors hover:bg-primary-green/10 disabled:cursor-not-allowed disabled:opacity-60">
-                        <Radar size={15} />
-                        Watch all detection events
-                    </button>
                 </div>
             </div>
 

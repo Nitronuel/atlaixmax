@@ -13,7 +13,6 @@ const formatSettingsError = (value: unknown, fallback = 'Could not update accoun
 export function ProfileSettings() {
   const { user, profile, profileError, updateProfile, resetPassword, signOut } = useAuth();
   const [displayName, setDisplayName] = useState(profile?.display_name || '');
-  const [preferredChain, setPreferredChain] = useState(profile?.preferred_chain || 'solana');
   const [saving, setSaving] = useState(false);
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
@@ -23,7 +22,6 @@ export function ProfileSettings() {
 
   useEffect(() => {
     setDisplayName(profile?.display_name || '');
-    setPreferredChain(profile?.preferred_chain || 'solana');
   }, [profile]);
 
   useEffect(() => {
@@ -52,8 +50,7 @@ export function ProfileSettings() {
     setError(null);
     try {
       await updateProfile({
-        display_name: displayName.trim() || user?.email?.split('@')[0] || 'Atlaix User',
-        preferred_chain: preferredChain.trim() || 'solana'
+        display_name: displayName.trim() || user?.email?.split('@')[0] || 'Atlaix User'
       });
       setMessage('Profile updated.');
     } catch (err) {
@@ -150,10 +147,6 @@ export function ProfileSettings() {
           <label>
             <span>Display name</span>
             <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-          </label>
-          <label>
-            <span>Preferred chain</span>
-            <input value={preferredChain} onChange={(event) => setPreferredChain(event.target.value)} />
           </label>
           <div className="settings-meta">
             <span>Plan</span>

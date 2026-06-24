@@ -345,7 +345,7 @@ function WalletDashboard() {
           ))}
           <button className="wallet-add-tile" type="button" onClick={() => setAddModalOpen(true)}>
             <span>
-              <Plus size={30} />
+              <Plus size={24} />
             </span>
             <strong>Add New Wallet</strong>
           </button>
@@ -539,7 +539,7 @@ function WalletCard({ wallet, onDelete }: { wallet: SavedWallet; onDelete: () =>
   return (
     <article className="wallet-card">
       <div className="wallet-card-head">
-        <span><Wallet size={19} /></span>
+        <span><Wallet size={16} /></span>
         <div>
           <h3>{wallet.name}</h3>
           <p>{wallet.chain}</p>

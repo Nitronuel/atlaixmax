@@ -515,6 +515,24 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
         };
     }
 
+    if (pathname.startsWith('/watchlist')) {
+        return {
+            title: 'Watchlist',
+            subtitle: 'Monitored assets',
+            systemContext: 'The user is on the Watchlist Intelligence workspace. Help them review monitored assets, recent Detection Engine events, Smart Alert changes, risk shifts, and useful monitor setup.',
+            subjectKind: 'dashboard',
+            module: 'watchlist',
+            preferredTools: ['get_detection_updates', 'get_smart_alert_status', 'get_token_deep_brief', 'prepare_alert_setup'],
+            icon: <Sparkles size={18} />,
+            prompts: [
+                'Summarize my watchlist',
+                'Which assets changed recently?',
+                'Which assets look riskier?',
+                'What monitors should I add?'
+            ]
+        };
+    }
+
     if (pathname.startsWith('/safe-scan')) {
         const scanAddress = searchParams.get('address') || '';
         const scanChain = searchParams.get('chain') || searchParams.get('network') || '';

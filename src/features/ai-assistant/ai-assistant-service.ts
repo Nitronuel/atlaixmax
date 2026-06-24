@@ -46,6 +46,7 @@ export type AiAssistantPageModule =
     | 'detection'
     | 'token'
     | 'wallet'
+    | 'watchlist'
     | 'smart-money'
     | 'smart-alerts'
     | 'safe-scan'
