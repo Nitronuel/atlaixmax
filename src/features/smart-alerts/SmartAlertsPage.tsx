@@ -28,6 +28,7 @@ import {
 } from './smart-alert-service';
 import { apiUrl } from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
+import { TelegramService } from '../../services/TelegramService';
 
 interface BasicAlertType {
     id: string;
@@ -351,6 +352,7 @@ export const SmartAlerts: React.FC = () => {
     const [linkedConditions, setLinkedConditions] = useState<LinkedConditionDraft[]>([]);
     const [showLinkedTypePicker, setShowLinkedTypePicker] = useState(false);
     const [timeWindowMinutes, setTimeWindowMinutes] = useState(1440);
+    const [telegramConnected, setTelegramConnected] = useState(false);
     const [tokenQuery, setTokenQuery] = useState('');
     const [selectedToken, setSelectedToken] = useState<SmartAlertTokenSnapshot | null>(null);
     const [tokenLookupLoading, setTokenLookupLoading] = useState(false);
@@ -422,6 +424,25 @@ export const SmartAlerts: React.FC = () => {
             if (retryLoadTimeoutRef.current) window.clearTimeout(retryLoadTimeoutRef.current);
         };
     }, []);
+
+    useEffect(() => {
+        if (!user) {
+            setTelegramConnected(false);
+            return;
+        }
+
+        let cancelled = false;
+        TelegramService.getStatus()
+            .then((status) => {
+                if (!cancelled) setTelegramConnected(status.connected);
+            })
+            .catch(() => {
+                if (!cancelled) setTelegramConnected(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [user]);
 
     const feedItems = useMemo(() => (
         rules.filter((rule) => {
@@ -653,6 +674,20 @@ export const SmartAlerts: React.FC = () => {
         setLinkedConditions((current) => current.filter((condition) => condition.id !== id));
     };
 
+    const toggleNotificationChannel = (channel: string) => {
+        if (channel === 'telegram' && !telegramConnected) {
+            setFormError('Connect Telegram in Settings before using bot alerts.');
+            return;
+        }
+
+        setSetupDraft((current) => {
+            const channels = current.notificationChannels.includes(channel)
+                ? current.notificationChannels.filter((item) => item !== channel)
+                : [...current.notificationChannels, channel];
+            return { ...current, notificationChannels: channels.length ? channels : ['in_app'] };
+        });
+    };
+
     const updateCondition = (condition: SmartAlertCondition) => {
         if (!setupType) return;
         const option = CONDITION_OPTIONS[setupType.type].find((item) => item.value === condition);
@@ -767,7 +802,8 @@ export const SmartAlerts: React.FC = () => {
                 tokenSymbol: selectedToken.symbol,
                 condition: setupDraft.condition,
                 thresholdKind: setupDraft.thresholdKind,
-                threshold: setupDraft.threshold.trim()
+                threshold: setupDraft.threshold.trim(),
+                notificationChannels: setupDraft.notificationChannels
             }) : await SmartAlertService.createRule({
                 alertType: setupType.type,
                 target: setupDraft.target.trim() || 'Any token',
@@ -850,7 +886,7 @@ export const SmartAlerts: React.FC = () => {
                     ? `${primaryCondition.threshold}%`
                     : primaryCondition.threshold.trim(),
                 triggerLabel: `Linked Smart Alert for ${selectedToken.symbol || selectedToken.name}: ${linkedConditions.length} conditions`,
-                notificationChannels: ['in_app'],
+                notificationChannels: setupDraft.notificationChannels,
                 cooldownMinutes: 60,
                 metadata: {
                     alertMode: 'linked',
@@ -1219,7 +1255,24 @@ export const SmartAlerts: React.FC = () => {
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <label className="block">
                                     <span className="mb-2 block text-xs font-bold text-text-medium">Notify by</span>
-                                    <div className="w-full rounded-xl border border-border bg-main px-4 py-3 text-sm font-medium text-text-light">In-app history</div>
+                                    <div className="grid grid-cols-1 gap-2 rounded-xl border border-border bg-main p-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleNotificationChannel('in_app')}
+                                            className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-bold transition-colors ${setupDraft.notificationChannels.includes('in_app') ? 'border-primary-green/40 bg-primary-green/10 text-primary-green' : 'border-border bg-card text-text-medium hover:text-text-light'}`}
+                                        >
+                                            <span>In-app history</span>
+                                            {setupDraft.notificationChannels.includes('in_app') && <CheckCircle2 size={15} />}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleNotificationChannel('telegram')}
+                                            className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-bold transition-colors ${setupDraft.notificationChannels.includes('telegram') ? 'border-primary-green/40 bg-primary-green/10 text-primary-green' : 'border-border bg-card text-text-medium hover:text-text-light'} ${telegramConnected ? '' : 'opacity-60'}`}
+                                        >
+                                            <span>{telegramConnected ? 'Telegram bot' : 'Telegram bot unavailable'}</span>
+                                            {setupDraft.notificationChannels.includes('telegram') && <CheckCircle2 size={15} />}
+                                        </button>
+                                    </div>
                                 </label>
                                 <label className="block">
                                     <span className="mb-2 block text-xs font-bold text-text-medium">Expiration</span>

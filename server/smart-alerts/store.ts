@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readEnv } from '../env';
 import type { DetectionEvent } from '../../src/shared/detection';
+import { sendTelegramAlert } from './telegram';
 
 export type SmartAlertRow = {
   id: string;
@@ -201,6 +202,16 @@ export type CreateRuleInput = {
 export class SmartAlertStore {
   private useLocalOnly = false;
 
+  private async deliverTrigger(row: SmartAlertTriggerRow) {
+    if (!row.alert_rule_id) return;
+    try {
+      const rule = (await this.listRules(row.user_id)).find((item) => item.id === row.alert_rule_id) || null;
+      await sendTelegramAlert(row, rule);
+    } catch (error) {
+      console.warn('[SmartAlerts] Telegram delivery failed.', error);
+    }
+  }
+
   async listRules(userId?: string) {
     if (!this.useLocalOnly) {
       try {
@@ -257,6 +268,7 @@ export class SmartAlertStore {
     condition?: string;
     thresholdKind?: string;
     threshold?: string;
+    notificationChannels?: string[];
   }) {
     const scope = input.scope === 'all' ? 'all' : 'token';
     const chainId = (input.chainId || 'all').trim().toLowerCase();
@@ -286,7 +298,7 @@ export class SmartAlertStore {
       thresholdKind,
       threshold,
       triggerLabel: scope === 'all' ? `${threshold} on Detection Engine` : `${threshold} for ${tokenLabel}`,
-      notificationChannels: ['in_app'],
+      notificationChannels: input.notificationChannels?.length ? input.notificationChannels : ['in_app'],
       cooldownMinutes: 1,
       metadata: {
         alertMode: 'detection_event',
@@ -498,7 +510,9 @@ export class SmartAlertStore {
           headers: { Prefer: 'return=representation' },
           body: JSON.stringify(row)
         });
-        return Boolean(Array.isArray(rows) ? rows[0] : rows);
+        const inserted = Boolean(Array.isArray(rows) ? rows[0] : rows);
+        if (inserted) await this.deliverTrigger(row);
+        return inserted;
       } catch {
         this.useLocalOnly = true;
       }
@@ -508,6 +522,7 @@ export class SmartAlertStore {
     if (row.dedupe_key && state.triggers.some((trigger) => trigger.dedupe_key === row.dedupe_key)) return false;
     state.triggers.unshift(row);
     writeLocalState(state);
+    await this.deliverTrigger(row);
     return true;
   }
 }

@@ -3,7 +3,7 @@ import type { ServerResponse } from 'node:http';
 export function setBaseHeaders(response: ServerResponse) {
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
 export function sendJson(response: ServerResponse, status: number, body: unknown) {

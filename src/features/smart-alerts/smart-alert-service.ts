@@ -65,6 +65,7 @@ export interface DetectionAlertSubscriptionInput {
     condition?: SmartAlertCondition;
     thresholdKind?: SmartAlertThresholdKind;
     threshold?: string;
+    notificationChannels?: string[];
 }
 
 export interface SmartAlertRuleInput {

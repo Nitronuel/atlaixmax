@@ -15,6 +15,7 @@ import { OverviewRoutes } from './overview/routes';
 import { SecurityScannerRoutes } from './security-scanner/routes';
 import { SmartAlertRoutes } from './smart-alerts/routes';
 import { SmartMoneyRoutes } from './smart-money/routes';
+import { TelegramRoutes } from './telegram/routes';
 import { WalletRoutes } from './wallet/routes';
 
 loadEnvFile('.env');
@@ -31,6 +32,7 @@ const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
 const detectionRoutes = new DetectionRoutes();
 const securityScannerRoutes = new SecurityScannerRoutes();
+const telegramRoutes = new TelegramRoutes();
 const clientRoot = resolve(process.cwd(), 'dist');
 
 const contentTypes: Record<string, string> = {
@@ -135,6 +137,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/smart-alerts')) {
       await smartAlertRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/telegram')) {
+      await telegramRoutes.handle(request, response, requestUrl);
       return;
     }
 

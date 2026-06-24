@@ -118,7 +118,8 @@ export class SmartAlertRoutes {
         tokenSymbol: body.tokenSymbol,
         condition: body.condition,
         thresholdKind: body.thresholdKind,
-        threshold: body.threshold
+        threshold: body.threshold,
+        notificationChannels: Array.isArray(body.notificationChannels) ? body.notificationChannels : undefined
       });
       sendJson(response, 200, { subscription });
       return;
