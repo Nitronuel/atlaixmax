@@ -43,7 +43,7 @@ type SmartAlertStatus = {
   triggersCreated: number;
 };
 
-const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_BATCH_SIZE = 100;
 
 function readNumberEnv(key: string, fallback: number) {

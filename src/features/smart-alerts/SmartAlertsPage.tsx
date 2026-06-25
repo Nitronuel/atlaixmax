@@ -5,7 +5,7 @@ import {
     AlertTriangle,
     Bell,
     CheckCircle2,
-    Clock,
+    ExternalLink,
     Flame,
     Link2,
     Loader2,
@@ -13,6 +13,7 @@ import {
     Radar,
     Search,
     ShieldCheck,
+    SlidersHorizontal,
     TrendingUp,
     Wallet,
     X
@@ -64,6 +65,29 @@ interface BackendStatus {
     lastError?: string;
     rulesChecked?: number;
     triggersCreated?: number;
+}
+
+type AlertTableTab = 'all' | 'active' | 'triggered';
+type AlertTableStatus = 'active' | 'triggered' | 'paused' | 'expired';
+
+interface AlertTableRow {
+    id: string;
+    ruleId: string | null;
+    triggerId: string | null;
+    title: string;
+    tokenLabel: string;
+    tokenAddress: string | null;
+    chainId: string | null;
+    type: SmartAlertType;
+    conditionText: string;
+    status: AlertTableStatus;
+    channels: string[];
+    source: string;
+    lastTriggeredAt: string | null;
+    triggerCount: number;
+    observedValue: string | null;
+    rule: SmartAlertRule | null;
+    trigger: SmartAlertTrigger | null;
 }
 
 const BASIC_ALERT_TYPES: BasicAlertType[] = [
@@ -181,6 +205,14 @@ const TIME_WINDOW_OPTIONS = [
     { label: '7d', value: 10080 },
     { label: 'No limit', value: 0 }
 ];
+
+const ALERT_TABLE_TABS: Array<{ value: AlertTableTab; label: string }> = [
+    { value: 'all', label: 'All Alerts' },
+    { value: 'active', label: 'Active' },
+    { value: 'triggered', label: 'Triggered' }
+];
+
+const ALERT_TYPE_FILTERS: Array<SmartAlertType | 'all'> = ['all', 'Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection'];
 
 const shortenAddress = (value: string | null | undefined) => {
     if (!value) return 'No address';
@@ -333,6 +365,51 @@ const getAlertTrigger = (template: BasicAlertType, draft: AlertSetupDraft) => {
     return `${target} ${conditionLabel} ${value}`;
 };
 
+const conditionLabelFor = (type: SmartAlertType, condition: SmartAlertCondition) => {
+    return CONDITION_OPTIONS[type]?.find((option) => option.value === condition)?.label || condition.replaceAll('_', ' ');
+};
+
+const tokenLabelForRule = (rule: SmartAlertRule) => {
+    return rule.metadata?.token?.symbol || rule.metadata?.token?.name || rule.target || 'Tracked token';
+};
+
+const tokenAddressForRule = (rule: SmartAlertRule) => {
+    return rule.token_address || rule.metadata?.token?.address || null;
+};
+
+const tokenLabelForTrigger = (trigger: SmartAlertTrigger) => {
+    const token = trigger.metadata?.token as { ticker?: string; symbol?: string; name?: string; address?: string } | undefined;
+    const tokenLabel = trigger.metadata?.tokenLabel;
+    if (typeof tokenLabel === 'string' && tokenLabel.trim()) return tokenLabel;
+    return token?.ticker || token?.symbol || token?.name || 'Tracked token';
+};
+
+const tokenAddressForTrigger = (trigger: SmartAlertTrigger) => {
+    const token = trigger.metadata?.token as { address?: string } | undefined;
+    const tokenAddress = trigger.metadata?.tokenAddress;
+    return typeof tokenAddress === 'string' ? tokenAddress : token?.address || null;
+};
+
+const statusLabelFor = (status: AlertTableStatus) => {
+    if (status === 'triggered') return 'Triggered';
+    if (status === 'paused') return 'Paused';
+    if (status === 'expired') return 'Expired';
+    return 'Active';
+};
+
+const statusClassFor = (status: AlertTableStatus) => {
+    if (status === 'triggered') return 'is-triggered';
+    if (status === 'paused') return 'is-paused';
+    if (status === 'expired') return 'is-expired';
+    return 'is-active';
+};
+
+const sourceLabelFor = (source: string, type: SmartAlertType) => {
+    if (source === 'detection-engine') return 'Detection Engine';
+    if (source === 'smart-alert-runner') return 'Smart Alert';
+    return type === 'Detection' ? 'Detection Alert' : 'Smart Alert';
+};
+
 export const SmartAlerts: React.FC = () => {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
@@ -363,6 +440,9 @@ export const SmartAlerts: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
     const [authPrompt, setAuthPrompt] = useState<string | null>(null);
+    const [alertTableTab, setAlertTableTab] = useState<AlertTableTab>('all');
+    const [alertTableSearch, setAlertTableSearch] = useState('');
+    const [alertTypeFilter, setAlertTypeFilter] = useState<SmartAlertType | 'all'>('all');
 
     const loadUserAlerts = useCallback(async (attempt = 0) => {
         if (!user) {
@@ -445,14 +525,103 @@ export const SmartAlerts: React.FC = () => {
         };
     }, [user]);
 
-    const feedItems = useMemo(() => (
-        rules.filter((rule) => {
-            if (rule.metadata?.status === 'completed' || rule.metadata?.status === 'expired') return false;
-            if (rule.metadata?.alertMode !== 'linked' && Number(rule.trigger_count || 0) > 0) return false;
-            return true;
-        })
-    ), [rules]);
-    const historyItems = useMemo(() => triggers, [triggers]);
+    const alertRows = useMemo<AlertTableRow[]>(() => {
+        const latestTriggerByRule = new Map<string, SmartAlertTrigger>();
+        const sortedTriggers = [...triggers].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+        for (const trigger of sortedTriggers) {
+            if (trigger.alert_rule_id && !latestTriggerByRule.has(trigger.alert_rule_id)) {
+                latestTriggerByRule.set(trigger.alert_rule_id, trigger);
+            }
+        }
+
+        const ruleIds = new Set(rules.map((rule) => rule.id));
+        const ruleRows = rules.map((rule) => {
+            const trigger = latestTriggerByRule.get(rule.id) || null;
+            const isLinked = rule.metadata?.alertMode === 'linked';
+            const isTriggered = rule.metadata?.status === 'completed' || Number(rule.trigger_count || 0) > 0 || Boolean(trigger);
+            const isExpired = rule.metadata?.status === 'expired';
+            const status: AlertTableStatus = isExpired ? 'expired' : isTriggered ? 'triggered' : rule.enabled ? 'active' : 'paused';
+            const conditions = Array.isArray(rule.metadata?.conditions) ? rule.metadata.conditions : [];
+            const metCount = conditions.filter((condition) => condition.status === 'met').length;
+            const tokenLabel = tokenLabelForRule(rule);
+            const conditionText = isLinked
+                ? `${metCount}/${conditions.length} linked conditions`
+                : `${conditionLabelFor(rule.alert_type, rule.condition)} ${rule.threshold}`.trim();
+
+            return {
+                id: `rule:${rule.id}`,
+                ruleId: rule.id,
+                triggerId: trigger?.id || null,
+                title: rule.trigger_label || `${rule.alert_type} Alert`,
+                tokenLabel,
+                tokenAddress: tokenAddressForRule(rule),
+                chainId: rule.chain_id || null,
+                type: rule.alert_type,
+                conditionText,
+                status,
+                channels: rule.notification_channels,
+                source: isLinked ? 'Linked Alert' : sourceLabelFor(trigger?.source || '', rule.alert_type),
+                lastTriggeredAt: trigger?.created_at || rule.last_triggered_at,
+                triggerCount: Number(rule.trigger_count || 0),
+                observedValue: trigger?.observed_value || rule.last_observed_value,
+                rule,
+                trigger
+            };
+        });
+
+        const triggerRows = sortedTriggers
+            .filter((trigger) => !trigger.alert_rule_id || !ruleIds.has(trigger.alert_rule_id))
+            .map((trigger) => ({
+                id: `trigger:${trigger.id}`,
+                ruleId: null,
+                triggerId: trigger.id,
+                title: trigger.title || `${trigger.alert_type} Alert`,
+                tokenLabel: tokenLabelForTrigger(trigger),
+                tokenAddress: tokenAddressForTrigger(trigger),
+                chainId: (trigger.metadata?.token as { chain?: string } | undefined)?.chain || null,
+                type: trigger.alert_type,
+                conditionText: trigger.threshold ? `Matched ${trigger.threshold}` : 'Condition matched',
+                status: 'triggered' as AlertTableStatus,
+                channels: ['in_app'],
+                source: sourceLabelFor(trigger.source, trigger.alert_type),
+                lastTriggeredAt: trigger.created_at,
+                triggerCount: 1,
+                observedValue: trigger.observed_value,
+                rule: null,
+                trigger
+            }));
+
+        return [...ruleRows, ...triggerRows].sort((left, right) => {
+            const leftTime = new Date(left.lastTriggeredAt || left.rule?.updated_at || left.rule?.created_at || '').getTime();
+            const rightTime = new Date(right.lastTriggeredAt || right.rule?.updated_at || right.rule?.created_at || '').getTime();
+            return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+        });
+    }, [rules, triggers]);
+
+    const alertCounts = useMemo(() => ({
+        all: alertRows.length,
+        active: alertRows.filter((row) => row.status === 'active').length,
+        triggered: alertRows.filter((row) => row.status === 'triggered').length
+    }), [alertRows]);
+
+    const filteredAlertRows = useMemo(() => {
+        const query = alertTableSearch.trim().toLowerCase();
+        return alertRows.filter((row) => {
+            if (alertTableTab === 'active' && row.status !== 'active') return false;
+            if (alertTableTab === 'triggered' && row.status !== 'triggered') return false;
+            if (alertTypeFilter !== 'all' && row.type !== alertTypeFilter) return false;
+            if (!query) return true;
+            return [
+                row.title,
+                row.tokenLabel,
+                row.chainId || '',
+                row.type,
+                row.conditionText,
+                row.source,
+                row.observedValue || ''
+            ].some((value) => value.toLowerCase().includes(query));
+        });
+    }, [alertRows, alertTableSearch, alertTableTab, alertTypeFilter]);
 
     const applySelectedToken = (draft: AlertSetupDraft, token: SmartAlertTokenSnapshot | null = selectedToken) => ({
         ...draft,
@@ -1005,155 +1174,204 @@ export const SmartAlerts: React.FC = () => {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <div className="flex flex-col gap-6 lg:col-span-2">
-                    <div className="flex flex-col gap-3">
-                        <h3 className="flex items-center gap-2 text-lg font-bold text-text-light">
-                            <Bell size={18} className="text-primary-green" />
-                            Alert Types
-                        </h3>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {BASIC_ALERT_TYPES.filter((item) => alertMode === 'single' || item.type !== 'Detection').map((item) => (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => openSetupModal(item)}
-                                    className={`green-corner-card smart-alert-type-card group cursor-pointer rounded-xl border p-5 text-left transition-colors hover:bg-card-hover ${activeTypeKey === item.id ? 'border-primary-green/40 bg-card-hover' : 'border-border bg-card hover:border-text-dark/50'}`}
-                                >
-                                    <div className="flex items-start gap-4">
-                                        <div className="rounded-lg border border-border/50 bg-main p-3 text-primary-green">
-                                            {item.icon}
-                                        </div>
-                                        <div>
-                                            <h4 className="text-sm font-bold text-text-light group-hover:text-primary-green">{item.title}</h4>
-                                            <p className="mt-1 text-xs leading-relaxed text-text-medium">{item.desc}</p>
-                                            {alertMode === 'linked' && <div className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary-green"><Plus size={13} /> Add condition</div>}
-                                        </div>
+            <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-3">
+                    <h3 className="flex items-center gap-2 text-lg font-bold text-text-light">
+                        <Bell size={18} className="text-primary-green" />
+                        Alert Types
+                    </h3>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {BASIC_ALERT_TYPES.filter((item) => alertMode === 'single' || item.type !== 'Detection').map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => openSetupModal(item)}
+                                className={`green-corner-card smart-alert-type-card group cursor-pointer rounded-xl border p-5 text-left transition-colors hover:bg-card-hover ${activeTypeKey === item.id ? 'border-primary-green/40 bg-card-hover' : 'border-border bg-card hover:border-text-dark/50'}`}
+                            >
+                                <div className="flex items-start gap-4">
+                                    <div className="rounded-lg border border-border/50 bg-main p-3 text-primary-green">
+                                        {item.icon}
                                     </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-text-light group-hover:text-primary-green">{item.title}</h4>
+                                        <p className="mt-1 text-xs leading-relaxed text-text-medium">{item.desc}</p>
+                                        {alertMode === 'linked' && <div className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-primary-green"><Plus size={13} /> Add condition</div>}
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <section className="green-corner-card smart-alert-table-panel">
+                    <div className="smart-alert-table-head">
+                        <div>
+                            <h3>
+                                <Bell size={18} />
+                                Alerts
+                                {loadingAlerts && initialAlertsLoaded && <Loader2 size={14} className="animate-spin text-primary-green" />}
+                            </h3>
+                            <p>Manage saved alerts and fired conditions from one workspace.</p>
+                        </div>
+                        <button type="button" onClick={() => void loadUserAlerts()} className="smart-alert-table-refresh">
+                            Refresh
+                        </button>
+                    </div>
+
+                    <div className="smart-alert-table-toolbar">
+                        <div className="smart-alert-table-tabs" role="tablist" aria-label="Alert status">
+                            {ALERT_TABLE_TABS.map((tab) => (
+                                <button
+                                    key={tab.value}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={alertTableTab === tab.value}
+                                    className={alertTableTab === tab.value ? 'active' : ''}
+                                    onClick={() => setAlertTableTab(tab.value)}
+                                >
+                                    <span>{tab.label}</span>
+                                    <b>{alertCounts[tab.value]}</b>
                                 </button>
                             ))}
                         </div>
+                        <div className="smart-alert-table-filters">
+                            <label className="smart-alert-table-select">
+                                <SlidersHorizontal size={15} />
+                                <select value={alertTypeFilter} onChange={(event) => setAlertTypeFilter(event.target.value as SmartAlertType | 'all')}>
+                                    {ALERT_TYPE_FILTERS.map((type) => (
+                                        <option key={type} value={type}>{type === 'all' ? 'All Types' : type}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="smart-alert-table-search">
+                                <Search size={16} />
+                                <input value={alertTableSearch} onChange={(event) => setAlertTableSearch(event.target.value)} placeholder="Search alerts..." />
+                            </label>
+                        </div>
                     </div>
 
-                    <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between">
-                            <h3 className="flex items-center gap-2 text-lg font-bold text-text-light">
-                                <Bell size={18} />
-                                Saved Alerts
-                                {loadingAlerts && initialAlertsLoaded && <Loader2 size={14} className="animate-spin text-primary-green" />}
-                            </h3>
-                            <button type="button" onClick={() => void loadUserAlerts()} className="text-xs font-bold text-text-dark hover:text-text-light">
-                                Refresh
-                            </button>
+                    {loadingAlerts && !initialAlertsLoaded ? (
+                        <div className="smart-alert-table-state">
+                            <Loader2 size={18} className="animate-spin text-primary-green" />
+                            Loading alerts
                         </div>
-
-                        <div className="green-corner-card overflow-hidden rounded-xl border border-border bg-card">
-                            <div className="custom-scrollbar max-h-[560px] overflow-y-auto">
-                                {loadingAlerts && !initialAlertsLoaded ? (
-                                    <div className="flex min-h-[180px] items-center justify-center gap-3 text-sm text-text-medium">
-                                        <Loader2 size={18} className="animate-spin text-primary-green" />
-                                        Loading saved alerts
-                                    </div>
-                                ) : feedItems.length ? (
-                                    feedItems.map((rule) => {
-                                        const isLinked = rule.metadata?.alertMode === 'linked';
-                                        const conditions = rule.metadata?.conditions || [];
-                                        const metCount = conditions.filter((condition) => condition.status === 'met').length;
-                                        const waitingState = formatWaitingState(rule);
-                                        return (
-                                        <div key={rule.id} className={`flex flex-col gap-3 border-b border-border/50 p-4 last:border-0 md:flex-row md:items-center md:justify-between ${!rule.enabled ? 'opacity-60' : ''}`}>
-                                            <div className="flex min-w-0 items-start gap-4">
-                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-main text-primary-green">
-                                                    {isLinked ? <Link2 size={18} /> : alertIcon(rule.alert_type)}
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <div className="truncate text-sm font-bold text-text-light">{rule.trigger_label}</div>
-                                                    <div className="mt-2 flex flex-wrap gap-2">
-                                                        <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${typeStyle(rule.alert_type)}`}>{isLinked ? 'Linked' : rule.alert_type}</span>
-                                                        <span className="rounded border border-border bg-main px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-medium">{rule.metadata?.status === 'completed' ? 'Completed' : rule.metadata?.status === 'expired' ? 'Expired' : rule.enabled ? 'Active' : 'Paused'}</span>
-                                                        <span className="rounded border border-border bg-main px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-medium">{rule.chain_id}</span>
-                                                        {rule.metadata?.token?.symbol && <span className="rounded border border-border bg-main px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-medium">{rule.metadata.token.symbol}</span>}
-                                                    </div>
-                                                    {isLinked && (
-                                                        <div className="mt-3 space-y-2">
-                                                            <div className="text-[11px] font-bold text-text-medium">{metCount} / {conditions.length} conditions met</div>
-                                                            <div className="space-y-1">
-                                                                {conditions.map((condition) => (
-                                                                    <div key={condition.id} className="flex items-center gap-2 text-[11px] text-text-medium">
-                                                                        <span className={`h-2 w-2 shrink-0 rounded-full ${condition.status === 'met' ? 'bg-primary-green' : condition.status === 'error' ? 'bg-primary-red' : 'bg-text-dark'}`} />
-                                                                        <span className="truncate">{condition.label}</span>
-                                                                        <span className="ml-auto shrink-0 text-text-dark">{formatLinkedConditionStatus(condition.status)}</span>
-                                                                    </div>
-                                                                ))}
+                    ) : filteredAlertRows.length ? (
+                        <>
+                            <div className="smart-alert-table-wrap custom-scrollbar">
+                                <table className="smart-alert-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Token / Chain</th>
+                                            <th>Type</th>
+                                            <th>Condition</th>
+                                            <th>Alert</th>
+                                            <th>Last Triggered</th>
+                                            <th>Status</th>
+                                            <th>Channels</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredAlertRows.map((row) => {
+                                            const isLinked = row.rule?.metadata?.alertMode === 'linked';
+                                            return (
+                                                <tr key={row.id}>
+                                                    <td>
+                                                        <strong>{row.tokenLabel}</strong>
+                                                        <small>{row.chainId || 'Chain unknown'}</small>
+                                                    </td>
+                                                    <td><span className={`smart-alert-type-pill ${typeStyle(row.type)}`}>{isLinked ? 'Linked' : row.type}</span></td>
+                                                    <td>
+                                                        <strong className="smart-alert-table-condition">{row.conditionText}</strong>
+                                                        {row.observedValue && <small>Observed {row.observedValue}</small>}
+                                                    </td>
+                                                    <td>
+                                                        <div className="smart-alert-table-alert">
+                                                            <span>{isLinked ? <Link2 size={17} /> : alertIcon(row.type)}</span>
+                                                            <div>
+                                                                <strong>{row.title}</strong>
+                                                                <small>{row.source}</small>
                                                             </div>
                                                         </div>
-                                                    )}
-                                                    <div className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-[11px] text-text-dark sm:grid-cols-3">
-                                                        <span>Last checked: {formatRelativeTime(rule.last_checked_at)}</span>
-                                                        <span>Last triggered: {formatRelativeTime(rule.last_triggered_at)}</span>
-                                                        <span>Triggers: {rule.trigger_count}</span>
-                                                        {rule.metadata?.alertMode !== 'linked' && <span>{formatExpiration(rule.metadata?.expiresAt as string | null | undefined)}</span>}
-                                                        {waitingState && <span className="text-text-medium sm:col-span-2">{waitingState}</span>}
-                                                        {rule.last_error && <span className="text-primary-red sm:col-span-2">Latest check issue: {rule.last_error}</span>}
+                                                    </td>
+                                                    <td>{formatRelativeTime(row.lastTriggeredAt)}</td>
+                                                    <td><span className={`smart-alert-status-pill ${statusClassFor(row.status)}`}>{statusLabelFor(row.status)}</span></td>
+                                                    <td><span className="smart-alert-channel-list">{row.channels.map((channel) => channel.replace('_', ' ')).join(', ') || 'In app'}</span></td>
+                                                    <td>
+                                                        <div className="smart-alert-table-actions">
+                                                            <button type="button" disabled={!row.tokenAddress} onClick={() => row.tokenAddress && navigate(`/token/${encodeURIComponent(row.tokenAddress)}${row.chainId ? `?chain=${encodeURIComponent(row.chainId)}` : ''}`)} aria-label="Open asset">
+                                                                <ExternalLink size={15} />
+                                                            </button>
+                                                            {row.ruleId && (
+                                                                <button type="button" onClick={() => toggleAlert(row.ruleId || '')} aria-label={row.rule?.enabled ? 'Pause alert' : 'Activate alert'}>
+                                                                    <span className={`smart-alert-mini-toggle ${row.rule?.enabled ? 'active' : ''}`} />
+                                                                </button>
+                                                            )}
+                                                            {row.ruleId && (
+                                                                <button type="button" className="danger" onClick={() => removeAlert(row.ruleId || '')} aria-label="Remove alert">
+                                                                    <X size={15} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="smart-alert-card-list">
+                                {filteredAlertRows.map((row) => {
+                                    const isLinked = row.rule?.metadata?.alertMode === 'linked';
+                                    return (
+                                        <article key={row.id} className="smart-alert-row-card">
+                                            <div className="smart-alert-row-card-head">
+                                                <div className="smart-alert-table-alert">
+                                                    <span>{isLinked ? <Link2 size={17} /> : alertIcon(row.type)}</span>
+                                                    <div>
+                                                        <strong>{row.title}</strong>
+                                                        <small>{row.tokenLabel} · {row.chainId || 'Chain unknown'}</small>
                                                     </div>
                                                 </div>
+                                                <span className={`smart-alert-status-pill ${statusClassFor(row.status)}`}>{statusLabelFor(row.status)}</span>
                                             </div>
-                                            <div className="flex items-center gap-3 self-end md:self-auto">
-                                                <button type="button" onClick={() => toggleAlert(rule.id)} className="relative inline-flex cursor-pointer items-center" aria-label={rule.enabled ? 'Pause alert' : 'Activate alert'}>
-                                                    <span className={`relative h-5 w-9 rounded-full border transition-colors after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:border after:transition-all after:content-[''] ${rule.enabled ? 'border-primary-green bg-primary-green after:translate-x-full after:border-white after:bg-white' : 'border-text-dark/30 bg-main after:border-gray-300 after:bg-text-medium'}`} />
-                                                </button>
-                                                <button type="button" onClick={() => removeAlert(rule.id)} className="rounded-lg p-2 text-text-dark transition-colors hover:bg-primary-red/10 hover:text-primary-red" aria-label="Remove alert">
-                                                    <X size={16} />
-                                                </button>
+                                            <div className="smart-alert-row-card-grid">
+                                                <div><span>Type</span><strong>{isLinked ? 'Linked' : row.type}</strong></div>
+                                                <div><span>Condition</span><strong>{row.conditionText}</strong></div>
+                                                <div><span>Triggered</span><strong>{formatRelativeTime(row.lastTriggeredAt)}</strong></div>
                                             </div>
-                                        </div>
-                                        );
-                                    })
-                                ) : (
-                                    <div className="flex min-h-[200px] flex-col items-center justify-center p-6 text-center">
-                                        <Bell size={24} className="mb-3 text-primary-green" />
-                                        <div className="text-sm font-bold text-text-light">No saved alerts yet</div>
-                                        <div className="mt-1 max-w-sm text-xs text-text-medium">Create an alert to start monitoring this token.</div>
-                                    </div>
-                                )}
+                                            <div className="smart-alert-row-card-actions">
+                                                <span>{row.channels.map((channel) => channel.replace('_', ' ')).join(', ') || 'In app'}</span>
+                                                <div className="smart-alert-table-actions">
+                                                    <button type="button" disabled={!row.tokenAddress} onClick={() => row.tokenAddress && navigate(`/token/${encodeURIComponent(row.tokenAddress)}${row.chainId ? `?chain=${encodeURIComponent(row.chainId)}` : ''}`)} aria-label="Open asset">
+                                                        <ExternalLink size={15} />
+                                                    </button>
+                                                    {row.ruleId && (
+                                                        <button type="button" onClick={() => toggleAlert(row.ruleId || '')} aria-label={row.rule?.enabled ? 'Pause alert' : 'Activate alert'}>
+                                                            <span className={`smart-alert-mini-toggle ${row.rule?.enabled ? 'active' : ''}`} />
+                                                        </button>
+                                                    )}
+                                                    {row.ruleId && (
+                                                        <button type="button" className="danger" onClick={() => removeAlert(row.ruleId || '')} aria-label="Remove alert">
+                                                            <X size={15} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
                             </div>
+                        </>
+                    ) : (
+                        <div className="smart-alert-table-state">
+                            <CheckCircle2 size={24} className="text-text-dark" />
+                            <strong>No alerts found</strong>
+                            <span>Create an alert or adjust the current filters.</span>
                         </div>
-                    </div>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                    <h3 className="flex items-center gap-2 text-lg font-bold text-text-light">
-                        <Clock size={18} className="text-text-medium" />
-                        Trigger History
-                    </h3>
-                    <div className="green-corner-card relative max-h-[680px] overflow-hidden rounded-xl border border-border bg-card">
-                        <div className="custom-scrollbar max-h-[680px] space-y-1 overflow-y-auto p-5">
-                            {historyItems.length ? historyItems.map((item, index) => (
-                                <div key={item.id} className="flex gap-4">
-                                    <div className={`mt-1.5 h-3.5 w-3.5 shrink-0 rounded-full border-[3px] border-card ${index === 0 ? 'bg-primary-green shadow-[0_0_8px_rgba(38,211,86,0.6)]' : 'bg-text-dark'}`} />
-                                    <div className="flex-1 border-b border-border/30 pb-4 last:border-0">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <h4 className="text-sm font-bold leading-tight text-text-light">{item.title}</h4>
-                                            <span className="font-mono text-[10px] text-text-dark">{formatRelativeTime(item.created_at)}</span>
-                                        </div>
-                                        <p className="mt-1 text-xs leading-relaxed text-text-medium">{item.message}</p>
-                                        <div className="mt-2 flex flex-wrap gap-2">
-                                            <span className={`rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${typeStyle(item.alert_type)}`}>{item.alert_type}</span>
-                                            {typeof item.metadata?.eventType === 'string' && <span className="rounded border border-primary-green/30 bg-primary-green/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary-green">{item.metadata.eventType === 'partial_met' ? 'Condition met' : 'Completed'}</span>}
-                                            {item.observed_value && <span className="rounded border border-border bg-main px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-medium">{item.observed_value}</span>}
-                                        </div>
-                                    </div>
-                                </div>
-                            )) : (
-                                <div className="flex min-h-[240px] flex-col items-center justify-center text-center">
-                                    <CheckCircle2 size={24} className="mb-3 text-text-dark" />
-                                    <div className="text-sm font-bold text-text-light">No alert activity yet</div>
-                                    <p className="mt-1 text-xs text-text-medium">Alert activity will appear here when your saved conditions match market data.</p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
+                    )}
+                </section>
             </div>
 
             {setupType && (

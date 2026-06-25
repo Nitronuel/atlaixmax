@@ -177,19 +177,31 @@ const normalizeTrigger = (row: any): SmartAlertTrigger => ({
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
     const { data } = authSupabase ? await authSupabase.auth.getSession() : { data: { session: null } };
     const accessToken = data.session?.access_token;
-    const response = await fetch(apiUrl(path), {
-        ...init,
-        headers: {
-            'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-            ...(init?.headers || {})
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    try {
+        const response = await fetch(apiUrl(path), {
+            ...init,
+            signal: controller.signal,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+                ...(init?.headers || {})
+            }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(typeof payload?.error === 'string' ? payload.error : 'Smart Alerts request failed.');
         }
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-        throw new Error(typeof payload?.error === 'string' ? payload.error : 'Smart Alerts request failed.');
+        return payload as T;
+    } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+            throw new Error('Smart Alerts server request timed out.');
+        }
+        throw error;
+    } finally {
+        window.clearTimeout(timeout);
     }
-    return payload as T;
 }
 
 export const SmartAlertService = {
