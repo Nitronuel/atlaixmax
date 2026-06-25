@@ -66,6 +66,7 @@ export interface DetectionAlertSubscriptionInput {
     thresholdKind?: SmartAlertThresholdKind;
     threshold?: string;
     notificationChannels?: string[];
+    source?: 'smart_alerts_page';
 }
 
 export interface SmartAlertRuleInput {
@@ -123,6 +124,7 @@ export interface SmartAlertRuleMetadata {
     conditions?: LinkedAlertConditionMetadata[];
     completedAt?: string | null;
     expiredAt?: string | null;
+    createdFrom?: 'smart_alerts_page' | 'detection_page';
 }
 
 const normalizeChannels = (channels: unknown): string[] => {

@@ -1,11 +1,9 @@
-import { Bell, CheckCircle2, ChevronDown, Filter, Radar, RefreshCw, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, Filter, RefreshCw, Search, ShieldCheck, SlidersHorizontal, X } from 'lucide-react';
 import type { FormEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import type { DetectionEvent, DetectionSentiment } from '../../shared/detection';
 import { detectionEventAssessmentForLabel } from '../../shared/detection-copy';
-import { SmartAlertService, type SmartAlertRule } from '../smart-alerts/smart-alert-service';
 import { DetectionService } from './detection-service';
 
 const CACHE_KEY = 'atlaix-detection-events-cache';
@@ -189,17 +187,12 @@ function DetectionEventCard({ event, previousEvents }: { event: DetectionEvent; 
 }
 
 export function DetectionPage() {
-  const navigate = useNavigate();
-  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [chain, setChain] = useState('All Chains');
   const [filters, setFilters] = useState<DetectionFilters>(defaultFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [events, setEvents] = useState<DetectionEvent[]>([]);
-  const [allDetectionSubscription, setAllDetectionSubscription] = useState<SmartAlertRule | null>(null);
-  const [allDetectionSaving, setAllDetectionSaving] = useState(false);
-  const [allDetectionError, setAllDetectionError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -234,33 +227,6 @@ export function DetectionPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) {
-      setAllDetectionSubscription(null);
-      return;
-    }
-
-    let cancelled = false;
-    SmartAlertService.listRules()
-      .then((rules) => {
-        if (cancelled) return;
-        const subscription = rules.find((rule) => (
-          rule.enabled &&
-          rule.alert_type === 'Detection' &&
-          rule.metadata?.alertMode === 'detection_event' &&
-          rule.metadata?.detectionScope === 'all'
-        )) || null;
-        setAllDetectionSubscription(subscription);
-      })
-      .catch(() => {
-        if (!cancelled) setAllDetectionSubscription(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
     cacheEvents(filteredEvents);
   }, [filteredEvents]);
 
@@ -275,24 +241,6 @@ export function DetectionPage() {
       await loadEvents(false);
     } finally {
       setRefreshing(false);
-    }
-  }
-
-  async function watchAllDetectionEvents() {
-    if (!user) {
-      navigate('/login', { state: { from: { pathname: '/detection' } } });
-      return;
-    }
-
-    setAllDetectionSaving(true);
-    setAllDetectionError(null);
-    try {
-      const subscription = await SmartAlertService.createDetectionSubscription({ scope: 'all' });
-      setAllDetectionSubscription(subscription);
-    } catch {
-      setAllDetectionError('Could not watch all detection events.');
-    } finally {
-      setAllDetectionSaving(false);
     }
   }
 
@@ -343,23 +291,8 @@ export function DetectionPage() {
           </div>
           <div className="detection-events-head-actions">
             <span className="detection-events-count">{groupedEvents.length} tokens</span>
-            <button
-              className={allDetectionSubscription ? 'detection-watch-button active' : 'detection-watch-button'}
-              type="button"
-              onClick={() => void watchAllDetectionEvents()}
-              disabled={allDetectionSaving || Boolean(allDetectionSubscription)}
-            >
-              {allDetectionSubscription ? <CheckCircle2 size={15} /> : allDetectionSaving ? <RefreshCw size={15} className="is-spinning" /> : <Radar size={15} />}
-              <span>{allDetectionSubscription ? 'Watching all events' : 'Watch all events'}</span>
-            </button>
           </div>
         </div>
-        {allDetectionError ? (
-          <div className="detection-alert-error">
-            <Bell size={15} />
-            <span>{allDetectionError}</span>
-          </div>
-        ) : null}
         {loading ? (
           <div className="detection-empty">
             <RefreshCw size={24} className="is-spinning" />

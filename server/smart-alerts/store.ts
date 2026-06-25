@@ -275,6 +275,7 @@ export class SmartAlertStore {
     thresholdKind?: string;
     threshold?: string;
     notificationChannels?: string[];
+    source?: string;
   }) {
     const scope = input.scope === 'all' ? 'all' : 'token';
     const chainId = (input.chainId || 'all').trim().toLowerCase();
@@ -309,6 +310,7 @@ export class SmartAlertStore {
       metadata: {
         alertMode: 'detection_event',
         detectionScope: scope,
+        createdFrom: input.source === 'smart_alerts_page' ? 'smart_alerts_page' : 'detection_page',
         detectionFilter: {
           condition,
           thresholdKind,
@@ -330,6 +332,7 @@ export class SmartAlertStore {
       rule.enabled &&
       rule.alert_type === 'Detection' &&
       rule.metadata?.alertMode === 'detection_event' &&
+      rule.metadata?.createdFrom === 'smart_alerts_page' &&
       detectionRuleMatchesEvent(rule, event) &&
       (
         rule.metadata?.detectionScope === 'all' ||
@@ -363,6 +366,7 @@ export class SmartAlertStore {
           detectedAt: new Date(event.detectedAt).toISOString(),
           token: event.token,
           metrics: event.metrics,
+          alertSource: 'smart_alerts_page',
           detectionUrl: `/detection/token/${encodeURIComponent(event.token.chain)}/${encodeURIComponent(event.token.address)}`
         },
         created_at: now

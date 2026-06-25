@@ -804,7 +804,8 @@ export const SmartAlerts: React.FC = () => {
                 condition: setupDraft.condition,
                 thresholdKind: setupDraft.thresholdKind,
                 threshold: setupDraft.threshold.trim(),
-                notificationChannels: setupDraft.notificationChannels
+                notificationChannels: setupDraft.notificationChannels,
+                source: 'smart_alerts_page'
             }) : await SmartAlertService.createRule({
                 alertType: setupType.type,
                 target: setupDraft.target.trim() || 'Any token',

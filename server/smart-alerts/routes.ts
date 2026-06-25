@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { requireAuthenticatedUser } from '../auth';
 import { sendJson, sendNotFound } from '../http/response';
 import { lookupSmartAlertToken, SmartAlertRunner } from './runner';
-import { SmartAlertStore } from './store';
+import { SmartAlertStore, type SmartAlertRow, type SmartAlertTriggerRow } from './store';
 
 async function readJsonBody(request: IncomingMessage) {
   const chunks: Buffer[] = [];
@@ -11,6 +11,14 @@ async function readJsonBody(request: IncomingMessage) {
   }
   const raw = Buffer.concat(chunks).toString('utf8');
   return raw ? JSON.parse(raw) : {};
+}
+
+function isVisibleAlertTrigger(trigger: SmartAlertTriggerRow) {
+  return trigger.alert_type !== 'Detection' || trigger.source !== 'detection-engine' || trigger.metadata?.alertSource === 'smart_alerts_page';
+}
+
+function isVisibleAlertRule(rule: SmartAlertRow) {
+  return rule.alert_type !== 'Detection' || rule.metadata?.alertMode !== 'detection_event' || rule.metadata?.createdFrom === 'smart_alerts_page';
 }
 
 export class SmartAlertRoutes {
@@ -55,7 +63,8 @@ export class SmartAlertRoutes {
 
     if (method === 'GET' && pathname === '/api/smart-alerts/rules') {
       const user = await requireAuthenticatedUser(request);
-      sendJson(response, 200, { rules: await this.store.listRules(user.id) });
+      const rules = await this.store.listRules(user.id);
+      sendJson(response, 200, { rules: rules.filter(isVisibleAlertRule) });
       return;
     }
 
@@ -89,7 +98,8 @@ export class SmartAlertRoutes {
     if (method === 'GET' && pathname === '/api/smart-alerts/triggers') {
       const user = await requireAuthenticatedUser(request);
       const limit = Number(requestUrl.searchParams.get('limit') || 50);
-      sendJson(response, 200, { triggers: await this.store.listTriggers(Number.isFinite(limit) ? limit : 50, user.id) });
+      const triggers = await this.store.listTriggers(Number.isFinite(limit) ? limit : 50, user.id);
+      sendJson(response, 200, { triggers: triggers.filter(isVisibleAlertTrigger) });
       return;
     }
 
@@ -119,7 +129,8 @@ export class SmartAlertRoutes {
         condition: body.condition,
         thresholdKind: body.thresholdKind,
         threshold: body.threshold,
-        notificationChannels: Array.isArray(body.notificationChannels) ? body.notificationChannels : undefined
+        notificationChannels: Array.isArray(body.notificationChannels) ? body.notificationChannels : undefined,
+        source: body.source
       });
       sendJson(response, 200, { subscription });
       return;
