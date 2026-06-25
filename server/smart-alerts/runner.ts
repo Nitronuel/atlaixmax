@@ -257,6 +257,7 @@ export class SmartAlertRunner {
     if (result.shouldTrigger) {
       const inserted = await this.store.insertTrigger({
         alert_rule_id: rule.id,
+        user_id: rule.user_id,
         alert_type: rule.alert_type,
         title: `${rule.alert_type} Alert`,
         message: result.message,
@@ -273,10 +274,14 @@ export class SmartAlertRunner {
         }
       });
       created = inserted ? 1 : 0;
-      patch.enabled = false;
-      patch.last_triggered_at = now.toISOString();
-      patch.trigger_count = Number(rule.trigger_count || 0) + created;
-      patch.metadata = { ...metadata, status: 'completed', completedAt: now.toISOString() };
+      if (inserted) {
+        patch.enabled = false;
+        patch.last_triggered_at = now.toISOString();
+        patch.trigger_count = Number(rule.trigger_count || 0) + created;
+        patch.metadata = { ...metadata, status: 'completed', completedAt: now.toISOString() };
+      } else {
+        patch.last_error = 'Alert condition matched, but trigger history was not created yet.';
+      }
     }
 
     await this.store.updateRule(rule.id, patch);
@@ -326,6 +331,7 @@ export class SmartAlertRunner {
         nextCondition.metAt = now.toISOString();
         const inserted = await this.store.insertTrigger({
           alert_rule_id: rule.id,
+          user_id: rule.user_id,
           alert_type: rule.alert_type,
           title: 'Partial target met',
           message: `${condition.label} met for ${snapshot.tokenLabel || rule.target}.`,
@@ -350,6 +356,7 @@ export class SmartAlertRunner {
     if (allConditionsMet) {
       const inserted = await this.store.insertTrigger({
         alert_rule_id: rule.id,
+        user_id: rule.user_id,
         alert_type: rule.alert_type,
         title: 'Linked alert triggered',
         message: `All ${nextConditions.length} linked conditions were met for ${snapshot.tokenLabel || rule.target}.`,

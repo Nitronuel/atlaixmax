@@ -358,6 +358,7 @@ export const SmartAlerts: React.FC = () => {
     const [setupTokenLookupLoading, setSetupTokenLookupLoading] = useState(false);
     const [setupTokenLookupError, setSetupTokenLookupError] = useState<string | null>(null);
     const [loadingAlerts, setLoadingAlerts] = useState(false);
+    const [initialAlertsLoaded, setInitialAlertsLoaded] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [formError, setFormError] = useState<string | null>(null);
@@ -367,10 +368,11 @@ export const SmartAlerts: React.FC = () => {
         if (!user) {
             setRules([]);
             setTriggers([]);
+            setInitialAlertsLoaded(true);
             return;
         }
 
-            setLoadingAlerts(true);
+        setLoadingAlerts(true);
         try {
             const [rulesResult, triggersResult] = await Promise.allSettled([
                 SmartAlertService.listRules(),
@@ -399,6 +401,7 @@ export const SmartAlerts: React.FC = () => {
             }
             setError(null);
         } finally {
+            setInitialAlertsLoaded(true);
             setLoadingAlerts(false);
         }
     }, [user]);
@@ -1036,6 +1039,7 @@ export const SmartAlerts: React.FC = () => {
                             <h3 className="flex items-center gap-2 text-lg font-bold text-text-light">
                                 <Bell size={18} />
                                 Saved Alerts
+                                {loadingAlerts && initialAlertsLoaded && <Loader2 size={14} className="animate-spin text-primary-green" />}
                             </h3>
                             <button type="button" onClick={() => void loadUserAlerts()} className="text-xs font-bold text-text-dark hover:text-text-light">
                                 Refresh
@@ -1044,7 +1048,7 @@ export const SmartAlerts: React.FC = () => {
 
                         <div className="green-corner-card overflow-hidden rounded-xl border border-border bg-card">
                             <div className="custom-scrollbar max-h-[560px] overflow-y-auto">
-                                {loadingAlerts ? (
+                                {loadingAlerts && !initialAlertsLoaded ? (
                                     <div className="flex min-h-[180px] items-center justify-center gap-3 text-sm text-text-medium">
                                         <Loader2 size={18} className="animate-spin text-primary-green" />
                                         Loading saved alerts

@@ -163,7 +163,7 @@ function mapLiquidityLock(data: GoPlusPayload, chain: BubblemapsChain): Liquidit
       lockedPercent: null,
       lockedUsd: null,
       lockers: [],
-      message: 'GoPlus does not return a reliable locked-liquidity signal for Solana pools yet.'
+      message: 'N/A'
     };
   }
 
@@ -174,9 +174,7 @@ function mapLiquidityLock(data: GoPlusPayload, chain: BubblemapsChain): Liquidit
       lockedPercent: null,
       lockedUsd: null,
       lockers: [],
-      message: isOne(data.is_in_dex)
-        ? 'GoPlus did not return LP holder lock details for this token.'
-        : 'No DEX liquidity pool was reported by GoPlus for this token.'
+      message: 'N/A'
     };
   }
 
@@ -205,7 +203,7 @@ function mapLiquidityLock(data: GoPlusPayload, chain: BubblemapsChain): Liquidit
     lockedPercent: 0,
     lockedUsd: null,
     lockers: [],
-    message: 'GoPlus did not find locked or burned LP holder positions for this token.'
+    message: 'N/A'
   };
 }
 
@@ -224,7 +222,7 @@ export class GoPlusSecurityService {
         message: 'GoPlus security checks are not available for this chain yet.',
         fetchedAt,
         flags: this.unknownFlags(),
-        liquidityLock: this.unknownLiquidityLock('GoPlus liquidity-lock checks are not available for this chain yet.', 'unsupported')
+        liquidityLock: this.unknownLiquidityLock('N/A', 'unsupported')
       };
     }
 
@@ -244,7 +242,7 @@ export class GoPlusSecurityService {
           message: payload.message || `GoPlus request failed with status ${response.status}.`,
           fetchedAt,
           flags: this.unknownFlags(),
-          liquidityLock: this.unknownLiquidityLock(payload.message || 'GoPlus liquidity-lock data could not be loaded.')
+          liquidityLock: this.unknownLiquidityLock('N/A')
         };
       }
 
@@ -258,7 +256,7 @@ export class GoPlusSecurityService {
           message: 'GoPlus did not return security data for this token.',
           fetchedAt,
           flags: this.unknownFlags(),
-          liquidityLock: this.unknownLiquidityLock('GoPlus did not return liquidity-lock data for this token.')
+          liquidityLock: this.unknownLiquidityLock('N/A')
         };
       }
 
@@ -280,7 +278,7 @@ export class GoPlusSecurityService {
         message: error instanceof Error ? error.message : 'GoPlus security request failed.',
         fetchedAt,
         flags: this.unknownFlags(),
-        liquidityLock: this.unknownLiquidityLock(error instanceof Error ? error.message : 'GoPlus liquidity-lock request failed.')
+        liquidityLock: this.unknownLiquidityLock('N/A')
       };
     }
   }

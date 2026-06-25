@@ -171,8 +171,10 @@ function drainRiskLabel(value: number | null) {
 
 function liquidityLockMessage(lockReport: LiquidityLockReport | null | undefined, loading?: boolean, error?: string | null) {
   if (loading) return 'Checking liquidity pool lock status...';
-  if (error) return error;
-  if (!lockReport) return 'Liquidity lock status has not loaded yet.';
+  if (error || !lockReport) return null;
+  if (lockReport.status === 'unknown' || lockReport.status === 'unsupported') return null;
+  if (lockReport.message.toLowerCase().includes('goplus')) return null;
+  if (lockReport.message === 'N/A') return null;
   return lockReport.message;
 }
 
@@ -203,6 +205,7 @@ export function LiquidityPoolLockPanel({ clusters, totalSupply, liquidity, lockR
     : lockReport?.lockedPercent !== null && lockReport?.lockedPercent !== undefined && liquidity
       ? liquidity.liquidityUsd * (lockReport.lockedPercent / 100)
       : null;
+  const lockMessage = liquidityLockMessage(lockReport, lockLoading, lockError);
 
   return (
     <div className="safe-scan-liquidity-stack">
@@ -211,7 +214,7 @@ export function LiquidityPoolLockPanel({ clusters, totalSupply, liquidity, lockR
           <Lock size={17} />
           <span>Liquidity Pool Lock</span>
         </div>
-        <p>{liquidityLockMessage(lockReport, lockLoading, lockError)}</p>
+        {lockMessage ? <p>{lockMessage}</p> : null}
         <div className="safe-scan-lock-grid">
           <div>
             <span>Locked LP</span>

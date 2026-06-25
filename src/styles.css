@@ -13807,9 +13807,6 @@ main {
 
 .watchlist-ai-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 14px;
   padding: 18px;
 }
 
@@ -13823,19 +13820,6 @@ main {
   place-items: center;
   background: color-mix(in srgb, var(--primary-green) 13%, transparent);
   color: var(--primary-green);
-}
-
-.watchlist-ai-summary-head {
-  display: block;
-}
-
-.watchlist-ai-summary-head small {
-  display: block;
-  margin-bottom: 3px;
-  color: var(--text-dark);
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
 }
 
 .watchlist-ai-summary h3,
@@ -13855,20 +13839,6 @@ main {
   font-weight: 650;
   line-height: 1.5;
   max-width: 78ch;
-}
-
-.watchlist-ai-summary button {
-  min-height: 36px;
-  padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--primary-green) 45%, var(--border-color));
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--primary-green) 8%, var(--bg-card-solid));
-  color: var(--primary-green);
-  font-size: 13px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .watchlist-metrics {
@@ -13929,6 +13899,13 @@ main {
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.watchlist-table-head h3 {
+  margin: 0;
+  color: var(--text-light);
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .watchlist-tabs {
@@ -14173,6 +14150,22 @@ main {
 .watchlist-coin-results {
   display: grid;
   gap: 8px;
+}
+
+.watchlist-activity-list {
+  max-height: calc((58px * 6) + (8px * 5));
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+.watchlist-activity-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.watchlist-activity-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-green) 30%, transparent);
 }
 
 .watchlist-activity-item,
@@ -14579,14 +14572,6 @@ main {
   .watchlist-primary-button,
   .watchlist-secondary-button {
     flex: 1 1 auto;
-  }
-
-  .watchlist-ai-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .watchlist-ai-summary button {
-    width: 100%;
   }
 
   .watchlist-metrics,

@@ -67,6 +67,11 @@ function getSupabaseConfig() {
   return { url, key };
 }
 
+function hasSupabaseConfig() {
+  const { url, key } = getSupabaseConfig();
+  return Boolean(url && key);
+}
+
 function getLocalPath() {
   return resolve(process.cwd(), '.data', 'smart-alerts.json');
 }
@@ -222,7 +227,8 @@ export class SmartAlertStore {
         if (userId) params.set('user_id', `eq.${userId}`);
         const rows = await supabaseFetch(`alert_rules?${params.toString()}`);
         return Array.isArray(rows) ? rows.map(normalizeRule) : [];
-      } catch {
+      } catch (error) {
+        if (hasSupabaseConfig()) throw error;
         this.useLocalOnly = true;
       }
     }
@@ -405,7 +411,8 @@ export class SmartAlertStore {
           body: JSON.stringify(row)
         });
         return normalizeRule(Array.isArray(rows) ? rows[0] : rows);
-      } catch {
+      } catch (error) {
+        if (hasSupabaseConfig()) throw error;
         this.useLocalOnly = true;
       }
     }
@@ -433,7 +440,8 @@ export class SmartAlertStore {
         const row = Array.isArray(rows) ? rows[0] : rows;
         if (!row) throw new Error('Smart Alert rule was not found.');
         return normalizeRule(row);
-      } catch {
+      } catch (error) {
+        if (hasSupabaseConfig()) throw error;
         this.useLocalOnly = true;
       }
     }
@@ -453,7 +461,8 @@ export class SmartAlertStore {
         if (userId) filters.set('user_id', `eq.${userId}`);
         await supabaseFetch(`alert_rules?${filters.toString()}`, { method: 'DELETE' });
         return;
-      } catch {
+      } catch (error) {
+        if (hasSupabaseConfig()) throw error;
         this.useLocalOnly = true;
       }
     }
@@ -474,7 +483,8 @@ export class SmartAlertStore {
         if (userId) params.set('user_id', `eq.${userId}`);
         const rows = await supabaseFetch(`alert_triggers?${params.toString()}`);
         return Array.isArray(rows) ? rows.map(normalizeTrigger) : [];
-      } catch {
+      } catch (error) {
+        if (hasSupabaseConfig()) throw error;
         this.useLocalOnly = true;
       }
     }
@@ -513,7 +523,8 @@ export class SmartAlertStore {
         const inserted = Boolean(Array.isArray(rows) ? rows[0] : rows);
         if (inserted) await this.deliverTrigger(row);
         return inserted;
-      } catch {
+      } catch (error) {
+        if (hasSupabaseConfig()) throw error;
         this.useLocalOnly = true;
       }
     }

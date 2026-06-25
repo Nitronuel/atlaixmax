@@ -1,6 +1,5 @@
 import {
   Bell,
-  Bot,
   ExternalLink,
   Loader2,
   Plus,
@@ -26,7 +25,6 @@ import type {
   WatchlistSummary
 } from './watchlist-types';
 
-const ASSISTANT_HANDOFF_KEY = 'atlaix-ai-assistant-handoff-v1';
 const evmAddressPattern = /^0x[a-fA-F0-9]{40}$/;
 const solanaAddressPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -144,11 +142,10 @@ export function WatchlistPage() {
   const visibleAssets = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return assets.filter((asset) => {
-      if (asset.assetType !== activeTab) return false;
       if (!normalized) return true;
       return `${asset.symbol} ${asset.name} ${asset.tokenAddress || ''} ${asset.coinId || ''}`.toLowerCase().includes(normalized);
     });
-  }, [activeTab, assets, query]);
+  }, [assets, query]);
 
   const selectedActivity = useMemo(() => (
     selectedAsset ? activity.filter((item) => item.assetId === selectedAsset.id).slice(0, 5) : []
@@ -168,36 +165,6 @@ export function WatchlistPage() {
   }, [activity]);
 
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
-
-  const askAi = () => {
-    const assetLines = assets.slice(0, 12).map((asset) => `${asset.symbol || asset.name}: ${asset.state || asset.lastEventType || 'No current event'}`).join('\n');
-    const draft = `Summarize my watchlist. Focus on assets with new events, risk changes, improving states, and deteriorating states.\n\nCurrent watchlist:\n${assetLines || 'No assets added yet.'}`;
-    window.sessionStorage.setItem(ASSISTANT_HANDOFF_KEY, JSON.stringify({
-      draft,
-      pageContext: {
-        route: '/watchlist',
-        module: 'watchlist',
-        title: 'Watchlist',
-        systemContext: 'The user is reviewing the Atlaix Watchlist Intelligence workspace. Focus on monitored assets, recent changes, risk movement, detection events, and useful next actions.',
-        subjectKind: 'dashboard',
-        preferredTools: ['overview', 'detection', 'smart-alerts', 'safe-scan'],
-        visibleSnapshot: {
-          generatedAt: Date.now(),
-          summary: summary.summary,
-          tokens: assets.slice(0, 20).map((asset) => ({
-            symbol: asset.symbol,
-            name: asset.name,
-            type: asset.assetType,
-            state: asset.state,
-            risk: asset.riskLevel,
-            lastEvent: asset.lastEventType
-          }))
-        }
-      },
-      savedAt: Date.now()
-    }));
-    navigate('/ai-assistant?handoff=1');
-  };
 
   const removeAsset = async (asset: WatchlistAsset) => {
     await WatchlistService.deleteAsset(asset.id);
@@ -268,16 +235,11 @@ export function WatchlistPage() {
             <div>
               <div className="watchlist-ai-summary-head">
                 <div>
-                  <small>Watchlist read</small>
                   <h3>AI Summary</h3>
                 </div>
               </div>
               <p>{summary.summary}</p>
             </div>
-            <button type="button" onClick={askAi}>
-              <Bot size={17} />
-              Ask AI
-            </button>
           </section>
 
           <section className="watchlist-metrics">
@@ -292,13 +254,10 @@ export function WatchlistPage() {
 
           <section className="watchlist-table-panel">
             <div className="watchlist-table-head">
-              <div className="watchlist-tabs" role="tablist" aria-label="Watchlist asset type">
-                <button className={activeTab === 'token' ? 'active' : ''} type="button" onClick={() => setActiveTab('token')}>Tokens</button>
-                <button className={activeTab === 'coin' ? 'active' : ''} type="button" onClick={() => setActiveTab('coin')}>Coins</button>
-              </div>
+              <h3>Tracked Assets</h3>
               <button className="watchlist-secondary-button" type="button" onClick={() => setAddOpen(true)}>
                 <Plus size={16} />
-                Add {activeTab === 'token' ? 'Token' : 'Coin'}
+                Add Asset
               </button>
             </div>
 
@@ -357,10 +316,9 @@ export function WatchlistPage() {
               </div>
             ) : (
               <div className="watchlist-empty">
-                <Sparkles size={24} />
-                <h3>No {activeTab === 'token' ? 'tokens' : 'coins'} in your watchlist yet</h3>
+                <h3>No assets in your watchlist yet</h3>
                 <p>Add assets you care about and Atlaix will track events, monitor changes, and keep the AI context ready.</p>
-                <button type="button" onClick={() => setAddOpen(true)}>Add {activeTab === 'token' ? 'Token' : 'Coin'}</button>
+                <button type="button" onClick={() => setAddOpen(true)}>Add Asset</button>
               </div>
             )}
           </section>
@@ -373,7 +331,7 @@ export function WatchlistPage() {
               <button type="button" onClick={loadWatchlist}>Refresh</button>
             </div>
             <div className="watchlist-activity-list">
-              {activity.length ? activity.slice(0, 8).map((item) => (
+              {activity.length ? activity.map((item) => (
                 <button type="button" key={item.id} className={`watchlist-activity-item ${item.tone}`} onClick={() => item.href ? navigate(item.href) : undefined}>
                   <ActivityAssetLogo item={item} asset={item.assetId ? assetById.get(item.assetId) : null} />
                   <strong>{item.title}<small>{item.assetSymbol || item.assetName}</small></strong>
