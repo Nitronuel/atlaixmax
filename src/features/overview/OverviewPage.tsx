@@ -108,7 +108,10 @@ export function OverviewPage() {
     if (showLoading) setCoinsLoading(true);
     setCoinsError(null);
     try {
-      const response = await CoinFeedService.getFeed(force);
+      let response = await CoinFeedService.getFeed(force);
+      if (!force && !response.coins.length) {
+        response = await CoinFeedService.getFeed(true);
+      }
       applyCoinFeed(response, setCoins, setCoinsLastUpdated);
     } catch (nextError) {
       setCoinsError(nextError instanceof Error ? nextError.message : 'Coin feed is unavailable.');
@@ -165,6 +168,15 @@ export function OverviewPage() {
   useEffect(() => {
     setSearchQuery('');
     setFilters(DEFAULT_OVERVIEW_FILTERS);
+  }, [feedMode]);
+
+  useEffect(() => {
+    if (feedMode === 'coins' && !coinsLoading && (!coins.length || coinsError)) {
+      void loadCoinFeed(true, true);
+    }
+    if (feedMode === 'tokens' && !loading && (!tokens.length || error)) {
+      void Promise.all([loadFeed(true), loadDetectionEvents()]);
+    }
   }, [feedMode]);
 
   return (

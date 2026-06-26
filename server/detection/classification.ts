@@ -444,7 +444,7 @@ function directionBiasFor(label: PrimaryLabel): DirectionBias {
 }
 
 function resolveContextualLabel(context: Context): PrimaryLabel {
-  const { snapshot, features, dataQuality, structuralRegime, lowerTimeframeTrigger, trendChange } = context;
+  const { snapshot, dataQuality, structuralRegime, lowerTimeframeTrigger, trendChange } = context;
   const criticalSafetyLabel = detectCriticalSafetyLabel(context);
   if (criticalSafetyLabel) return criticalSafetyLabel;
   if (dataQuality.score < 45) return "INSUFFICIENT_DATA";

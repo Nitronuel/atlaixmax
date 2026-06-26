@@ -180,10 +180,6 @@ function toBubblemapsChain(chain = '', address = ''): BubblemapsChain {
   return SOLANA_ADDRESS_REGEX.test(address) && !address.startsWith('0x') ? 'solana' : 'eth';
 }
 
-function extractAddress(message: string) {
-  return message.match(EVM_ADDRESS_REGEX)?.[0] || message.match(SOLANA_ADDRESS_REGEX)?.[0] || '';
-}
-
 function normalizePageContext(value: unknown): AiAssistantPageContext | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Partial<AiAssistantPageContext>;

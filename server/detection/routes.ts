@@ -140,7 +140,7 @@ function marketBiasFor(latest: DetectionEvent | undefined, relationship: Detecti
   return 'Unclear';
 }
 
-function contraryCaseFor(event?: DetectionEvent, relationship?: DetectionEventRelationship) {
+function contraryCaseFor(event?: DetectionEvent) {
   if (!event) return 'clearer confirmation from volume, liquidity, and price structure';
   const label = event.eventType.toLowerCase();
   if (label.includes('bullish continuation')) return 'support loss, fading buy-side flow, or liquidity leaving the pool';
@@ -217,7 +217,7 @@ export function classifyEventRelationship(events: DetectionEvent[]): DetectionTo
     bias,
     state,
     marketBias: marketBiasFor(latest, relationship, bias),
-    contraryCase: contraryCaseFor(latest, relationship),
+    contraryCase: contraryCaseFor(latest),
     relevantPriorEventIds: relevantPriorEvents.map((event) => event.id),
     stats: {
       eventCount: recent.length,

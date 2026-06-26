@@ -16,7 +16,7 @@ type CoinColumn = {
 
 const columns: CoinColumn[] = [
   { label: 'Rank', key: 'marketCapRank', className: 'chain-col', width: 78, align: 'right' },
-  { label: 'Coin', key: 'symbol', className: 'token-col', width: 210 },
+  { label: 'Coin', key: 'symbol', className: 'token-col', width: 170 },
   { label: 'Price', key: 'priceUsd', width: 122, align: 'right' },
   { label: '1h', key: 'change1h', width: 92, align: 'right' },
   { label: '24h', key: 'change24h', width: 96, align: 'right' },
@@ -72,25 +72,6 @@ function HeaderRow({ sortConfig, onSort }: { sortConfig: CoinSortConfig; onSort:
 
 function signedClass(value: unknown) {
   return Number(value || 0) >= 0 ? 'positive' : 'negative';
-}
-
-function MiniSparkline({ values }: { values: number[] }) {
-  const points = values.filter((value) => Number.isFinite(value)).slice(-48);
-  if (points.length < 2) return null;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
-  const path = points.map((value, index) => {
-    const x = (index / (points.length - 1)) * 86;
-    const y = 30 - ((value - min) / range) * 28;
-    return `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
-  }).join(' ');
-  const positive = points[points.length - 1] >= points[0];
-  return (
-    <svg className={positive ? 'positive' : 'negative'} viewBox="0 0 86 32" aria-hidden="true">
-      <path d={path} />
-    </svg>
-  );
 }
 
 export function CoinAlphaFeed({
@@ -221,7 +202,6 @@ export function CoinAlphaFeed({
                       <strong>{coin.symbol}</strong>
                       <small>{coin.name}</small>
                     </span>
-                    <MiniSparkline values={coin.sparkline7d} />
                   </td>
                   <td className="metric-col">{formatPrice(coin.priceUsd)}</td>
                   <td className={`metric-col ${signedClass(coin.change1h)}`}>{formatPercentValue(coin.change1h)}</td>

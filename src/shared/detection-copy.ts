@@ -41,41 +41,41 @@ const DISPLAY_LABEL_KEYS: Record<string, string> = {
 };
 
 const DETECTION_EVENT_ASSESSMENTS: Record<string, (tokenName: string) => string> = {
-  BULLISH_CONTINUATION_PUMP: (tokenName) =>
+  BULLISH_CONTINUATION_PUMP: (_tokenName) =>
     'Buy-side pressure remains in control as price builds on recent momentum. Continuation is more likely while support holds and volume confirms. Losing buy-side control or breaking key support weakens this structure.',
-  BEARISH_CONTINUATION_DUMP: (tokenName) =>
+  BEARISH_CONTINUATION_DUMP: (_tokenName) =>
     'Sell-side pressure is extending the downward structure. Continuation risk stays elevated while selling persists and buyers fail to reclaim meaningful levels. A sustained return of buy-side flow would challenge this outlook.',
-  BEARISH_RELIEF_BOUNCE: (tokenName) =>
+  BEARISH_RELIEF_BOUNCE: (_tokenName) =>
     'A reactive relief move is developing within a broader bearish structure. These bounces typically fade without volume confirmation or a resistance reclaim. Sellers reasserting control at resistance would confirm the trend remains intact.',
-  BULLISH_PULLBACK: (tokenName) =>
+  BULLISH_PULLBACK: (_tokenName) =>
     'Price is cooling within a healthy bullish structure. This reset can set up the next leg higher while support and liquidity hold. Expanding sell dominance or a support breakdown would signal something more serious.',
-  BEARISH_REVERSAL_ATTEMPT: (tokenName) =>
+  BEARISH_REVERSAL_ATTEMPT: (_tokenName) =>
     'Buy-side pressure is beginning to challenge the prevailing bearish structure. Reversal probability increases if volume follows through and higher lows form. This read remains fragile until price clearly holds above resistance.',
-  BULLISH_BREAKDOWN_ATTEMPT: (tokenName) =>
+  BULLISH_BREAKDOWN_ATTEMPT: (_tokenName) =>
     'Sellers are testing the market\'s ability to defend key support. Breakdown becomes more likely if selling volume expands and buyers cannot absorb pressure. A decisive support reclaim would invalidate this signal.',
-  RANGE_BREAKOUT_ATTEMPT: (tokenName) =>
+  RANGE_BREAKOUT_ATTEMPT: (_tokenName) =>
     'Price is pushing against the upper boundary of its established range. A confirmed breakout requires expanding buy volume and holding above the level on retest. Failure to hold would push price back into the range.',
-  RANGE_BREAKDOWN_ATTEMPT: (tokenName) =>
+  RANGE_BREAKDOWN_ATTEMPT: (_tokenName) =>
     'Price is pressing into the lower boundary of its range, testing buyer defense. Breakdown probability rises if sell volume expands and buyers lack conviction. A recovery back into the range would negate this signal.',
-  LOW_LIQUIDITY_PRICE_SPIKE: (tokenName) =>
+  LOW_LIQUIDITY_PRICE_SPIKE: (_tokenName) =>
     'Price has spiked higher in a thin liquidity environment, raising sustainability concerns. Low-depth conditions amplify moves but reduce directional reliability. This read gains credibility only if liquidity deepens and volume confirms organically.',
-  LOW_LIQUIDITY_SELL_OFF: (tokenName) =>
+  LOW_LIQUIDITY_SELL_OFF: (_tokenName) =>
     'Price has dropped sharply in low-liquidity conditions, increasing slippage and volatility risk. Thin depth can exaggerate selling without reflecting genuine directional pressure. Liquidity returning and price stabilizing would challenge this read.',
-  LIQUIDITY_DRAIN: (tokenName) =>
+  LIQUIDITY_DRAIN: (_tokenName) =>
     'Liquidity depth is deteriorating, reducing the market\'s ability to absorb orders efficiently. Continued outflows may increase volatility and slippage, making sharp price moves more likely. A meaningful liquidity recovery would invalidate this signal.',
-  LIQUIDITY_ADDED: (tokenName) =>
+  LIQUIDITY_ADDED: (_tokenName) =>
     'New liquidity is entering the market, improving depth and reducing slippage risk. Sustained expansion supports price stability and healthier price discovery. Watch for whether this liquidity is organic or likely to exit quickly.',
-  PUMP: (tokenName) =>
+  PUMP: (_tokenName) =>
     'Price is accelerating sharply higher, attracting breakout interest alongside elevated chase risk. This move carries more weight when backed by deep liquidity and expanding volume. Without those conditions, swift retracement risk increases significantly.',
-  DUMP: (tokenName) =>
+  DUMP: (_tokenName) =>
     'Price is declining sharply as selling overwhelms buy-side absorption. Continuation risk stays elevated while liquidity thins and sellers maintain control. Renewed buy-side absorption stabilizing price would signal this move is exhausting.',
-  BUY_RECOVERY: (tokenName) =>
+  BUY_RECOVERY: (_tokenName) =>
     'Buy-side flow is returning after sustained weakness, suggesting sellers may be losing their grip. Recovery becomes more sustainable when liquidity holds and volume expands. Fading buy flow without follow-through would suggest a temporary reaction.',
-  SELL_OFF: (tokenName) =>
+  SELL_OFF: (_tokenName) =>
     'Sellers are actively pressing price lower as buy-side absorption weakens. Downside risk stays elevated while liquidity thins and structure deteriorates. A meaningful increase in buy-side absorption would be required to stabilize this move.',
-  ACCUMULATION: (tokenName) =>
+  ACCUMULATION: (_tokenName) =>
     'Buying pressure is steadily absorbing available supply while sell pressure weakens. This typically precedes continuation if liquidity remains healthy and volume expands. Watch for increasing buy-side flow to confirm the accumulation phase.',
-  DISTRIBUTION: (tokenName) =>
+  DISTRIBUTION: (_tokenName) =>
     'Sell-side supply is being steadily introduced as holders reduce exposure. Further weakness is likely if buy demand cannot absorb incoming flow and price fails to reclaim its range. A shift toward buy dominance would challenge this outlook.',
   CONSOLIDATION: (tokenName) =>
     `${tokenName} is showing consolidation tendencies. Price may be moving inside a tighter range while the market waits for direction. The read gets clearer when volume, liquidity, and price break the range.`,

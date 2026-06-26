@@ -331,7 +331,7 @@ export function SafeScanPage() {
         />
       </div>
 
-      <SecurityScannerPanel report={securityReport} loading={securityLoading} error={securityError} />
+      <SecurityScannerPanel report={securityReport} />
 
       <Card className="ai-assessment-card">
         <SectionHeader icon={<Shield size={20} />} title="AI Assessment" eyebrow="Safe Scan read" />

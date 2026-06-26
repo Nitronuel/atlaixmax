@@ -146,7 +146,6 @@ function buildEvidence(wallet: SavedWallet, activities: WalletActivityItem[]): S
   const profitableTokenCount = winnerRois.length;
   const firstActivityAt = activities.reduce((oldest, item) => Math.min(oldest, item.timestamp || oldest), Date.now());
   const now = Date.now();
-  const realizedPnl = completed.reduce((total, trade) => total + trade.realizedPnl, 0);
   const grossProfit = completed.reduce((total, trade) => total + trade.grossProfit, 0);
   const grossLoss = completed.reduce((total, trade) => total + trade.grossLoss, 0);
   const wins = completed.reduce((total, trade) => total + trade.wins, 0);

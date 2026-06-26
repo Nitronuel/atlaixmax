@@ -28,6 +28,7 @@ const sections = [
 
 function titleFromPath(pathname: string) {
   if (pathname === '/' || pathname.startsWith('/dashboard')) return 'Overview';
+  if (pathname.startsWith('/coin')) return 'Coin Details';
   if (pathname.startsWith('/token')) return 'Token Details';
   if (pathname.startsWith('/safe-scan')) return 'Safe Scan';
   if (pathname.startsWith('/detection')) return 'Detection Engine';

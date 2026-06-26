@@ -65,15 +65,6 @@ function getSupabaseConfig() {
   return { url: url.replace(/\/$/, ''), key };
 }
 
-function withTimeout<T>(work: Promise<T>, milliseconds: number, label: string) {
-  return Promise.race([
-    work,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timed out.`)), milliseconds);
-    })
-  ]);
-}
-
 function normalizeCoinEvent(value: string): CoinGeckoCoin['event'] {
   if (value === 'Strong Momentum') return value;
   if (value === 'Volume Expansion') return value;
@@ -276,8 +267,8 @@ export async function ingestCoinGeckoCoins(): Promise<CoinGeckoIngestionResponse
 }
 
 export async function getCoinGeckoFeed(force = false): Promise<CoinGeckoFeedResponse> {
-  if (!force && feedCache && feedCache.expiresAt > Date.now()) return feedCache.response;
-  if (!force && feedCache) {
+  if (!force && feedCache && feedCache.response.coins.length && feedCache.expiresAt > Date.now()) return feedCache.response;
+  if (!force && feedCache && feedCache.response.coins.length) {
     refreshFeedCache();
     return feedCache.response;
   }
@@ -288,6 +279,9 @@ export async function getCoinGeckoFeed(force = false): Promise<CoinGeckoFeedResp
   } catch {
     if (force) coins = (await ingestCoinGeckoCoins().catch(() => ({ coins: [] as CoinGeckoCoin[] }))).coins;
     else coins = feedCache?.response.coins || [];
+  }
+  if (!coins.length && !force) {
+    coins = (await ingestCoinGeckoCoins().catch(() => ({ coins: [] as CoinGeckoCoin[] }))).coins;
   }
   return cacheFeed(coins);
 }

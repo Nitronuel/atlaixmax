@@ -26,8 +26,17 @@ export class TelegramRoutes {
     const pathname = requestUrl.pathname;
 
     if (method === 'GET' && pathname === '/api/telegram/status') {
-      const user = await requireAuthenticatedUser(request);
-      sendJson(response, 200, await getTelegramConnectionStatus(user.id));
+      try {
+        const user = await requireAuthenticatedUser(request);
+        sendJson(response, 200, await getTelegramConnectionStatus(user.id));
+      } catch {
+        sendJson(response, 200, {
+          connected: false,
+          botUsername: '',
+          telegramUsername: null,
+          connectedAt: null
+        });
+      }
       return;
     }
 

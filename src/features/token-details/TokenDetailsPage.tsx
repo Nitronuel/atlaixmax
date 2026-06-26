@@ -1,13 +1,15 @@
-import { Activity, ArrowLeft, Bell, BookOpen, Copy, Droplets, ExternalLink, FileText, Globe, Maximize2, MessageCircle, Radar, RefreshCw, Rss, Scan, X, Zap } from 'lucide-react';
+import { Activity, ArrowLeft, Bell, BookOpen, Copy, Droplets, ExternalLink, FileText, Globe, Maximize2, MessageCircle, Radar, RefreshCw, Rss, Scan, Star, X, Zap } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { IconType } from 'react-icons';
 import { SiDiscord, SiFacebook, SiFarcaster, SiGithub, SiGitbook, SiInstagram, SiLinktree, SiMedium, SiNotion, SiReddit, SiSubstack, SiTelegram, SiThreads, SiTiktok, SiX, SiYoutube } from 'react-icons/si';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import type { BubblemapsScanReport, TokenHolder } from '../../shared/bubblemaps';
 import { normalizeBubblemapsChain } from '../../shared/bubblemaps';
 import { formatPercentValue, formatPrice, formatUsd } from '../overview/overview-utils';
 import { formatCompact, formatPercent } from '../safe-scan/format';
 import { supplyPercentField, walletAddress, walletBalance } from '../safe-scan/safe-scan-data';
+import { WatchlistService } from '../watchlist/watchlist-service';
 import { type DexPairDetails, TokenDetailsService } from './token-details-service';
 
 function shortAddress(value?: string, head = 8, tail = 6) {
@@ -143,6 +145,7 @@ export function TokenDetailsPage() {
   const { address = '' } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const chain = searchParams.get('chain') || '';
   const preferredPair = searchParams.get('pair') || '';
   const [pair, setPair] = useState<DexPairDetails | null>(null);
@@ -157,6 +160,8 @@ export function TokenDetailsPage() {
   const [holdersLoading, setHoldersLoading] = useState(false);
   const [holdersError, setHoldersError] = useState('');
   const [holdersExpanded, setHoldersExpanded] = useState(false);
+  const [watchlistSaving, setWatchlistSaving] = useState(false);
+  const [watchlistMessage, setWatchlistMessage] = useState('');
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(() => (
     typeof document !== 'undefined' && document.documentElement.dataset.atlaixTheme === 'dark' ? 'dark' : 'light'
   ));
@@ -174,6 +179,7 @@ export function TokenDetailsPage() {
     setLoading(true);
     setError('');
     setChartLoaded(false);
+    setWatchlistMessage('');
 
     TokenDetailsService.getToken(address, chain, preferredPair)
       .then((response) => {
@@ -290,6 +296,39 @@ export function TokenDetailsPage() {
     window.setTimeout(() => setCopied(false), 1400);
   }
 
+  async function addToWatchlist() {
+    if (!pair || !tokenAddress) return;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    const priceUsd = Number(pair.priceUsd);
+    setWatchlistSaving(true);
+    setWatchlistMessage('');
+    try {
+      await WatchlistService.createAsset({
+        assetType: 'token',
+        chainId: pair.chainId || chain || null,
+        tokenAddress,
+        pairAddress: pair.pairAddress || preferredPair || null,
+        symbol,
+        name,
+        imageUrl: pair.info?.imageUrl || null,
+        priceUsd: Number.isFinite(priceUsd) ? priceUsd : null,
+        priceChange24h: pair.priceChange?.h24 ?? null,
+        liquidityUsd: pair.liquidity?.usd ?? null,
+        monitorSettings: WatchlistService.defaultMonitors,
+        state: pair.dexId || 'DEX Market'
+      });
+      setWatchlistMessage('Added to Watchlist');
+    } catch (nextError) {
+      setWatchlistMessage(nextError instanceof Error ? nextError.message : 'Token could not be added.');
+    } finally {
+      setWatchlistSaving(false);
+    }
+  }
+
   if (loading && !pair) {
     return (
       <div className="token-details-state">
@@ -390,12 +429,17 @@ export function TokenDetailsPage() {
         <aside className="token-detail-side">
           <div className="token-side-panel token-quick-actions-panel">
             <h3>Quick Actions</h3>
+            <button type="button" className="token-quick-action-button" onClick={addToWatchlist} disabled={watchlistSaving || !tokenAddress || !pair}>
+              <span className="token-quick-action-icon"><Star size={18} /></span>
+              <span><strong>{watchlistSaving ? 'Adding' : 'Add to Watchlist'}</strong><small>Track this token</small></span>
+            </button>
             {quickActions.map((action) => (
               <button key={action.title} type="button" className="token-quick-action-button" onClick={() => navigate(action.path)} disabled={!tokenAddress}>
                 <span className="token-quick-action-icon"><action.icon size={18} /></span>
                 <span><strong>{action.title}</strong><small>{action.subtitle}</small></span>
               </button>
             ))}
+            {watchlistMessage ? <div className="token-action-note">{watchlistMessage}</div> : null}
           </div>
         </aside>
       </section>

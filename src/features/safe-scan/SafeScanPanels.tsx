@@ -268,10 +268,8 @@ const fallbackSecurityFlags: SecurityFlag[] = [
     { label: 'Tax', value: 'Unknown', state: 'unknown' }
 ];
 
-export function SecurityScannerPanel({ report, loading = false, error = null }: {
+export function SecurityScannerPanel({ report }: {
   report?: SecurityScannerReport | null;
-  loading?: boolean;
-  error?: string | null;
 }) {
   const flags = report?.flags?.length ? report.flags : fallbackSecurityFlags;
 
