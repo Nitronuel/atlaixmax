@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { sendJson, sendNotFound } from '../http/response';
-import { WalletActivityService } from './activity-service';
 import { WalletPortfolioService } from './service';
 
 const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
@@ -9,7 +8,6 @@ const SUPPORTED_PERIODS = new Set(['ALL', '1D', '1W', '1M', '>1M']);
 const SUPPORTED_CHAINS = new Set(['All Chains', 'Ethereum', 'Solana', 'Base', 'BSC', 'Arbitrum', 'Optimism', 'Polygon', 'Avalanche']);
 const SUPPORTED_ACTIVITY_KINDS = new Set(['all', 'buy', 'sell', 'swap', 'receive', 'send', 'approval', 'contract', 'unknown', 'large']);
 const walletPortfolioService = new WalletPortfolioService();
-const walletActivityService = new WalletActivityService();
 
 function isValidWallet(address: string) {
   return EVM_ADDRESS_REGEX.test(address) || (!address.startsWith('0x') && SOLANA_ADDRESS_REGEX.test(address));
@@ -21,6 +19,7 @@ export class WalletRoutes {
       requestUrl.pathname !== '/api/wallet/portfolio'
       && requestUrl.pathname !== '/api/wallet/portfolio-fast'
       && requestUrl.pathname !== '/api/wallet/performance'
+      && requestUrl.pathname !== '/api/wallet/intelligence'
       && requestUrl.pathname !== '/api/wallet/activity'
     ) {
       sendNotFound(response);
@@ -28,8 +27,9 @@ export class WalletRoutes {
     }
 
     const address = requestUrl.searchParams.get('address')?.trim() || '';
-    const chain = requestUrl.searchParams.get('chain')?.trim() || '';
+    const chain = requestUrl.searchParams.get('chain')?.trim() || 'All Chains';
     const period = requestUrl.searchParams.get('period')?.trim() || 'ALL';
+    const force = requestUrl.searchParams.get('force') === 'true';
 
     if (!isValidWallet(address)) {
       sendJson(response, 400, { error: 'Enter a valid EVM or Solana wallet address.' });
@@ -55,17 +55,18 @@ export class WalletRoutes {
         return;
       }
 
-      const activity = await walletActivityService.getActivity(address, chain as never, { period, kind, limit });
+      const activity = await walletPortfolioService.getActivity(address, chain as never, { period, kind, limit });
       sendJson(response, 200, activity);
       return;
     }
 
-    const portfolio = await walletPortfolioService.getPortfolio(
-      address,
-      chain as never,
-      period,
-      requestUrl.pathname !== '/api/wallet/portfolio-fast'
-    );
+    if (requestUrl.pathname === '/api/wallet/intelligence') {
+      const intelligence = await walletPortfolioService.getIntelligence(address, chain as never, period, force);
+      sendJson(response, 200, intelligence);
+      return;
+    }
+
+    const portfolio = await walletPortfolioService.getPortfolio(address, chain as never, period, force);
     sendJson(response, 200, portfolio);
   }
 }

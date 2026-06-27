@@ -60,7 +60,7 @@ export function useWalletPortfolio(address: string | undefined, chain: WalletCha
     return () => controller.abort();
   }, [address, chain, timeFilter, refreshKey]);
 
-  const stats: WalletStats = useMemo(() => buildWalletStats(portfolio.assets, portfolio.netWorth), [portfolio]);
+  const stats: WalletStats = useMemo(() => buildWalletStats(portfolio.assets, portfolio.netWorth, portfolio.pnl), [portfolio]);
 
   return {
     portfolio,

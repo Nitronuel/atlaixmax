@@ -127,6 +127,9 @@ const CONDITION_OPTIONS: Record<SmartAlertType, Array<{ value: SmartAlertConditi
     Detection: [
         { value: 'event_is', label: 'Event is', thresholdKind: 'event' },
         { value: 'severity_is', label: 'Severity is', thresholdKind: 'severity' }
+    ],
+    Wallet: [
+        { value: 'event_is', label: 'Wallet activity', thresholdKind: 'event' }
     ]
 };
 
@@ -187,7 +190,8 @@ const SETUP_DEFAULTS: Record<SmartAlertType, AlertSetupDraft> = {
     Whale: { target: '', chainId: '', tokenAddress: '', condition: 'buy_above', thresholdKind: 'currency', threshold: '$50K', notificationChannels: ['in_app'], expirationMinutes: null },
     Alpha: { target: '', chainId: '', tokenAddress: '', condition: 'event_is', thresholdKind: 'event', threshold: 'Liquidity Event', notificationChannels: ['in_app'], expirationMinutes: null },
     Risk: { target: '', chainId: '', tokenAddress: '', condition: 'severity_is', thresholdKind: 'severity', threshold: 'High', notificationChannels: ['in_app'], expirationMinutes: null },
-    Detection: { target: '', chainId: '', tokenAddress: '', condition: 'event_is', thresholdKind: 'event', threshold: 'Any detection event', notificationChannels: ['in_app'], expirationMinutes: null }
+    Detection: { target: '', chainId: '', tokenAddress: '', condition: 'event_is', thresholdKind: 'event', threshold: 'Any detection event', notificationChannels: ['in_app'], expirationMinutes: null },
+    Wallet: { target: '', chainId: '', tokenAddress: '', condition: 'event_is', thresholdKind: 'event', threshold: 'Any wallet activity', notificationChannels: ['in_app'], expirationMinutes: null }
 };
 
 const EXPIRATION_OPTIONS = [
@@ -210,7 +214,7 @@ const ALERT_TABLE_TABS: Array<{ value: AlertTableTab; label: string }> = [
     { value: 'triggered', label: 'Triggered' }
 ];
 
-const ALERT_TYPE_FILTERS: Array<SmartAlertType | 'all'> = ['all', 'Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection'];
+const ALERT_TYPE_FILTERS: Array<SmartAlertType | 'all'> = ['all', 'Price', 'Volume', 'Liquidity', 'Whale', 'Alpha', 'Risk', 'Detection', 'Wallet'];
 const ALERT_WIZARD_STEPS: Array<{ id: AlertWizardStep; label: string }> = [
     { id: 'token', label: 'Token' },
     { id: 'mode', label: 'Mode' },
@@ -266,6 +270,7 @@ const valueOptionsFor = (type: SmartAlertType, thresholdKind: SmartAlertThreshol
 const defaultThresholdFor = (type: SmartAlertType, thresholdKind: SmartAlertThresholdKind) => {
     if (type === 'Detection' && thresholdKind === 'severity') return 'Any severity';
     if (type === 'Detection') return 'Any detection event';
+    if (type === 'Wallet') return 'Any wallet activity';
     if (thresholdKind === 'event') return 'Liquidity Event';
     if (thresholdKind === 'severity') return 'High';
     if (thresholdKind === 'percent') return '20';
@@ -286,6 +291,8 @@ const typeStyle = (type: SmartAlertType) => {
             return 'border-primary-red/30 bg-primary-red/10 text-primary-red';
         case 'Detection':
             return 'border-primary-green/30 bg-primary-green/10 text-primary-green';
+        case 'Wallet':
+            return 'border-primary-blue/30 bg-primary-blue/10 text-primary-blue';
         default:
             return 'border-border bg-card-hover text-text-medium';
     }
@@ -338,14 +345,18 @@ const conditionLabelFor = (type: SmartAlertType, condition: SmartAlertCondition)
 };
 
 const tokenLabelForRule = (rule: SmartAlertRule) => {
+    if (rule.alert_type === 'Wallet') return rule.metadata?.wallet?.label || rule.target || 'Tracked wallet';
     return rule.metadata?.token?.symbol || rule.metadata?.token?.name || rule.target || 'Tracked token';
 };
 
 const tokenAddressForRule = (rule: SmartAlertRule) => {
+    if (rule.alert_type === 'Wallet') return rule.metadata?.wallet?.address || null;
     return rule.token_address || rule.metadata?.token?.address || null;
 };
 
 const tokenLabelForTrigger = (trigger: SmartAlertTrigger) => {
+    const wallet = trigger.metadata?.wallet as { label?: string; address?: string } | undefined;
+    if (trigger.alert_type === 'Wallet') return wallet?.label || wallet?.address || 'Tracked wallet';
     const token = trigger.metadata?.token as { ticker?: string; symbol?: string; name?: string; address?: string } | undefined;
     const tokenLabel = trigger.metadata?.tokenLabel;
     if (typeof tokenLabel === 'string' && tokenLabel.trim()) return tokenLabel;
@@ -353,6 +364,8 @@ const tokenLabelForTrigger = (trigger: SmartAlertTrigger) => {
 };
 
 const tokenAddressForTrigger = (trigger: SmartAlertTrigger) => {
+    const wallet = trigger.metadata?.wallet as { address?: string } | undefined;
+    if (trigger.alert_type === 'Wallet') return wallet?.address || null;
     const token = trigger.metadata?.token as { address?: string } | undefined;
     const tokenAddress = trigger.metadata?.tokenAddress;
     return typeof tokenAddress === 'string' ? tokenAddress : token?.address || null;
@@ -378,6 +391,7 @@ const statusClassFor = (status: AlertTableStatus) => {
 
 const sourceLabelFor = (source: string, type: SmartAlertType) => {
     if (source === 'detection-engine') return 'Detection Engine';
+    if (source === 'zerion-wallet-webhook') return 'Zerion Wallet';
     if (source === 'smart-alert-runner') return 'Smart Alert';
     return type === 'Detection' ? 'Detection Alert' : 'Smart Alert';
 };
@@ -510,9 +524,10 @@ export const SmartAlerts: React.FC = () => {
         const ruleRows = rules.map((rule) => {
             const trigger = latestTriggerByRule.get(rule.id) || null;
             const isLinked = rule.metadata?.alertMode === 'linked';
+            const isRecurringWallet = rule.metadata?.alertMode === 'wallet_activity';
             const isTriggered = rule.metadata?.status === 'completed' || Number(rule.trigger_count || 0) > 0 || Boolean(trigger);
             const isExpired = rule.metadata?.status === 'expired';
-            const status: AlertTableStatus = isExpired ? 'expired' : isTriggered ? 'triggered' : rule.enabled ? 'active' : 'paused';
+            const status: AlertTableStatus = isExpired ? 'expired' : isRecurringWallet && rule.enabled ? 'active' : isTriggered ? 'triggered' : rule.enabled ? 'active' : 'paused';
             const conditions = Array.isArray(rule.metadata?.conditions) ? rule.metadata.conditions : [];
             const metCount = conditions.filter((condition) => condition.status === 'met').length;
             const tokenLabel = tokenLabelForRule(rule);
@@ -550,7 +565,9 @@ export const SmartAlerts: React.FC = () => {
                 title: trigger.title || `${trigger.alert_type} Alert`,
                 tokenLabel: tokenLabelForTrigger(trigger),
                 tokenAddress: tokenAddressForTrigger(trigger),
-                chainId: (trigger.metadata?.token as { chain?: string } | undefined)?.chain || null,
+                chainId: trigger.alert_type === 'Wallet'
+                    ? ((trigger.metadata?.wallet as { chain?: string } | undefined)?.chain || null)
+                    : ((trigger.metadata?.token as { chain?: string } | undefined)?.chain || null),
                 type: trigger.alert_type,
                 conditionText: trigger.threshold ? `Matched ${trigger.threshold}` : 'Condition matched',
                 status: 'triggered' as AlertTableStatus,

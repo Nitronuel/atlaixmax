@@ -3,14 +3,19 @@ import { requireAuthenticatedUser } from '../auth';
 import { sendJson, sendNotFound } from '../http/response';
 import { lookupSmartAlertToken, SmartAlertRunner } from './runner';
 import { SmartAlertStore, type SmartAlertRow, type SmartAlertTriggerRow } from './store';
+import { createWalletActivityAlert, processWalletWebhook } from './wallet-alerts';
 
-async function readJsonBody(request: IncomingMessage) {
+async function readRawJsonBody(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   const raw = Buffer.concat(chunks).toString('utf8');
-  return raw ? JSON.parse(raw) : {};
+  return { raw, body: raw ? JSON.parse(raw) : {} };
+}
+
+async function readJsonBody(request: IncomingMessage) {
+  return (await readRawJsonBody(request)).body;
 }
 
 function isVisibleAlertTrigger(trigger: SmartAlertTriggerRow) {
@@ -40,6 +45,12 @@ export class SmartAlertRoutes {
 
     if (method === 'POST' && pathname === '/api/smart-alerts/run') {
       sendJson(response, 200, await this.runner.runNow());
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/smart-alerts/wallet-webhook') {
+      const { raw } = await readRawJsonBody(request);
+      sendJson(response, 200, await processWalletWebhook(this.store, raw, request.headers));
       return;
     }
 
@@ -73,6 +84,22 @@ export class SmartAlertRoutes {
       const body = await readJsonBody(request);
       const rule = await this.store.createRule(body, user.id);
       sendJson(response, 200, { rule });
+      return;
+    }
+
+    if (method === 'POST' && pathname === '/api/smart-alerts/wallet-activity-rules') {
+      const user = await requireAuthenticatedUser(request);
+      const body = await readJsonBody(request);
+      const result = await createWalletActivityAlert(this.store, {
+        address: body.address,
+        chain: body.chain,
+        label: body.label,
+        eventTypes: Array.isArray(body.eventTypes) ? body.eventTypes : undefined,
+        notificationChannels: Array.isArray(body.notificationChannels) ? body.notificationChannels : undefined,
+        ignoreSpam: body.ignoreSpam !== false,
+        cooldownMinutes: Number.isFinite(Number(body.cooldownMinutes)) ? Number(body.cooldownMinutes) : undefined
+      }, user.id);
+      sendJson(response, 200, result);
       return;
     }
 

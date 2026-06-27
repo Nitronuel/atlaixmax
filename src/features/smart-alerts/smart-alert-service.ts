@@ -1,7 +1,7 @@
 import { apiUrl } from '../../config';
 import { authSupabase } from '../../services/SupabaseClient';
 
-export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection';
+export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection' | 'Wallet';
 
 export type SmartAlertCondition =
     | 'above'
@@ -69,6 +69,18 @@ export interface DetectionAlertSubscriptionInput {
     source?: 'smart_alerts_page';
 }
 
+export type WalletAlertEventType = 'any' | 'buy' | 'sell' | 'trade' | 'receive' | 'send' | 'execute' | 'approval' | 'rollback' | 'unknown';
+
+export interface WalletActivityAlertInput {
+    address: string;
+    chain: string;
+    label?: string;
+    eventTypes: WalletAlertEventType[];
+    notificationChannels: string[];
+    ignoreSpam: boolean;
+    cooldownMinutes?: number;
+}
+
 export interface SmartAlertRuleInput {
     alertType: SmartAlertType;
     target: string;
@@ -113,9 +125,16 @@ export interface LinkedAlertConditionMetadata {
 }
 
 export interface SmartAlertRuleMetadata {
-    alertMode?: 'single' | 'linked' | 'detection_event';
+    alertMode?: 'single' | 'linked' | 'detection_event' | 'wallet_activity';
     detectionScope?: 'all' | 'token';
     token?: SmartAlertTokenSnapshot | null;
+    wallet?: {
+        address?: string;
+        chain?: string;
+        label?: string;
+    } | null;
+    eventTypes?: WalletAlertEventType[];
+    ignoreSpam?: boolean;
     matchLogic?: 'all';
     timeWindowMinutes?: number | null;
     expirationMinutes?: number | null;
@@ -124,7 +143,12 @@ export interface SmartAlertRuleMetadata {
     conditions?: LinkedAlertConditionMetadata[];
     completedAt?: string | null;
     expiredAt?: string | null;
-    createdFrom?: 'smart_alerts_page' | 'detection_page';
+    createdFrom?: 'smart_alerts_page' | 'detection_page' | 'wallet_page';
+    subscription?: {
+        status?: string;
+        subscriptionId?: string;
+        message?: string;
+    };
 }
 
 const normalizeChannels = (channels: unknown): string[] => {
@@ -256,5 +280,13 @@ export const SmartAlertService = {
             body: JSON.stringify(input)
         });
         return normalizeRule(payload.subscription);
+    },
+
+    createWalletActivityAlert: async (input: WalletActivityAlertInput): Promise<SmartAlertRule> => {
+        const payload = await requestJson<{ rule: unknown }>('/api/smart-alerts/wallet-activity-rules', {
+            method: 'POST',
+            body: JSON.stringify(input)
+        });
+        return normalizeRule(payload.rule);
     }
 };

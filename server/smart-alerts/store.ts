@@ -8,7 +8,7 @@ import { sendTelegramAlert } from './telegram';
 export type SmartAlertRow = {
   id: string;
   user_id: string;
-  alert_type: 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection';
+  alert_type: 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection' | 'Wallet';
   target: string;
   chain_id: string;
   token_address: string | null;
@@ -145,7 +145,7 @@ function normalizeRule(row: any): SmartAlertRow {
     threshold: row.threshold || '',
     trigger_label: row.trigger_label || '',
     notification_channels: normalizeChannels(row.notification_channels),
-    cooldown_minutes: Number(row.cooldown_minutes || 60),
+    cooldown_minutes: row.cooldown_minutes === null || row.cooldown_minutes === undefined ? 60 : Number(row.cooldown_minutes),
     enabled: Boolean(row.enabled),
     last_checked_at: row.last_checked_at || null,
     last_triggered_at: row.last_triggered_at || null,
@@ -400,7 +400,7 @@ export class SmartAlertStore {
       threshold: input.threshold,
       trigger_label: input.triggerLabel,
       notification_channels: input.notificationChannels?.length ? input.notificationChannels : ['in_app'],
-      cooldown_minutes: input.cooldownMinutes || 60,
+      cooldown_minutes: input.cooldownMinutes ?? 60,
       enabled: true,
       metadata: input.metadata || {},
       created_at: now,

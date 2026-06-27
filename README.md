@@ -18,7 +18,7 @@ Add provider keys to `.env` before running live scans or wallet tracking. The br
 - Bubblemaps API gateway split into client, validation, cache, routes, and report service
 - Endpoint status handling for unsupported, missing, rate-limited, and unconfigured responses
 - DexScreener liquidity lookup from the browser for public token-pair data
-- Wallet tracking with server-side Moralis balances and Alchemy EVM fallback
+- Zerion-powered wallet tracking with holdings, activity, PnL, trade history, and wallet activity alerts
 - Tests for validation, report fan-out, and Safe Scan data normalization
 
 ## Commands
@@ -36,8 +36,10 @@ Use server-only keys without a `VITE_` prefix:
 ```bash
 BUBBLEMAPS_API_KEY=
 BUBBLEMAPS_API_BASE_URL=https://api.bubblemaps.io
-MORALIS_API_KEY=
-ALCHEMY_API_KEY=
+ZERION_API_KEY=
+ZERION_WEBHOOK_CALLBACK_URL=
+ZERION_TX_SUBSCRIPTION_ID=
+ZERION_WEBHOOK_SKIP_SIGNATURE=false
 API_PORT=3101
 ```
 

@@ -1,8 +1,9 @@
-import { ArrowLeft, ArrowUpRight, Check, CheckCircle, ChevronDown, Clock, ExternalLink, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Bell, Check, CheckCircle, ChevronDown, Clock, ExternalLink, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { SmartAlertService, type WalletAlertEventType } from '../smart-alerts/smart-alert-service';
 import { SmartMoneyService } from '../smart-money/smart-money-service';
-import type { SavedWallet, WalletActivity, WalletActivityItem, WalletActivityToken, WalletCategory, WalletChain, WalletTimeFilter, WalletTradedToken } from './wallet-types';
+import type { SavedWallet, WalletActivity, WalletActivityItem, WalletActivityToken, WalletCategory, WalletChain, WalletPnlSummary, WalletPortfolio, WalletTimeFilter, WalletTradedToken, WalletTradePerformance } from './wallet-types';
 import { useWalletActivity } from './useWalletActivity';
 import { useWalletPortfolio } from './useWalletPortfolio';
 import { WalletStorage } from './wallet-storage';
@@ -28,6 +29,16 @@ const TIME_FILTERS: Array<{ value: WalletTimeFilter; label: string }> = [
 ];
 
 const WALLET_FILTERS = ['All Types', 'Smart Money', 'Whale', 'Sniper', 'Fresh Wallet'] as const;
+const WALLET_ALERT_EVENT_OPTIONS: Array<{ value: WalletAlertEventType; label: string }> = [
+  { value: 'any', label: 'Any activity' },
+  { value: 'trade', label: 'Trades / swaps' },
+  { value: 'buy', label: 'Buys' },
+  { value: 'sell', label: 'Sells' },
+  { value: 'receive', label: 'Receives' },
+  { value: 'send', label: 'Sends' },
+  { value: 'execute', label: 'Contract interactions' },
+  { value: 'approval', label: 'Approvals' }
+];
 
 function timeFilterLabel(value: WalletTimeFilter) {
   if (value === 'ALL') return 'All Time';
@@ -383,6 +394,13 @@ function WalletProfile({ address }: { address: string }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(savedWallet?.name || walletNameFor(address));
   const [categories, setCategories] = useState<WalletCategory[]>(savedWallet?.categories || []);
+  const [walletAlertOpen, setWalletAlertOpen] = useState(false);
+  const [walletAlertSaving, setWalletAlertSaving] = useState(false);
+  const [walletAlertMessage, setWalletAlertMessage] = useState('');
+  const [walletAlertError, setWalletAlertError] = useState('');
+  const [walletAlertEventTypes, setWalletAlertEventTypes] = useState<WalletAlertEventType[]>(['any']);
+  const [walletAlertChannels, setWalletAlertChannels] = useState<string[]>(['in_app']);
+  const [walletAlertIgnoreSpam, setWalletAlertIgnoreSpam] = useState(true);
   const portfolioState = useWalletPortfolio(validation.isValid ? address : undefined, chain, timeFilter);
   const incompatibleChain = validation.isValid && !isChainCompatible(chain, validation.type);
 
@@ -420,6 +438,57 @@ function WalletProfile({ address }: { address: string }) {
     const next = WalletStorage.save(address, name, categories, chain);
     setSavedWallet(next);
     setEditing(false);
+  }
+
+  function toggleWalletAlertEvent(type: WalletAlertEventType) {
+    setWalletAlertEventTypes((current) => {
+      if (type === 'any') return ['any'];
+      const withoutAny = current.filter((item) => item !== 'any');
+      const next = withoutAny.includes(type)
+        ? withoutAny.filter((item) => item !== type)
+        : [...withoutAny, type];
+      return next.length ? next : ['any'];
+    });
+    setWalletAlertError('');
+  }
+
+  function toggleWalletAlertChannel(channel: string) {
+    setWalletAlertChannels((current) => {
+      const next = current.includes(channel)
+        ? current.filter((item) => item !== channel)
+        : [...current, channel];
+      return next.length ? next : ['in_app'];
+    });
+    setWalletAlertError('');
+  }
+
+  async function createWalletAlert() {
+    if (!walletAlertEventTypes.length) {
+      setWalletAlertError('Choose at least one wallet activity trigger.');
+      return;
+    }
+
+    setWalletAlertSaving(true);
+    setWalletAlertError('');
+    setWalletAlertMessage('');
+    try {
+      await SmartAlertService.createWalletActivityAlert({
+        address,
+        chain,
+        label: savedWallet?.name || name || walletNameFor(address),
+        eventTypes: walletAlertEventTypes,
+        notificationChannels: walletAlertChannels,
+        ignoreSpam: walletAlertIgnoreSpam,
+        cooldownMinutes: 0
+      });
+      setWalletAlertOpen(false);
+      setWalletAlertMessage('Wallet alert saved. You can manage it from Smart Alerts.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      setWalletAlertError(/sign in/i.test(message) ? 'Sign in to save wallet alerts.' : message || 'Could not create wallet alert.');
+    } finally {
+      setWalletAlertSaving(false);
+    }
   }
 
   if (!validation.isValid) {
@@ -465,6 +534,8 @@ function WalletProfile({ address }: { address: string }) {
       {incompatibleChain ? <p className="form-error">This wallet address is not compatible with {chain}.</p> : null}
       {portfolioState.error ? <p className="form-error">{portfolioState.error}</p> : null}
 
+      <WalletPerformanceOverview portfolio={portfolioState.portfolio} loading={portfolioState.loading} />
+
       <section className="wallet-result-layout">
         <aside className="wallet-result-card">
           {editing ? (
@@ -505,6 +576,7 @@ function WalletProfile({ address }: { address: string }) {
               </div>
               <div className="wallet-result-actions">
                 <button className="quiet-button" type="button" onClick={() => setEditing(true)}>Edit Profile</button>
+                <button className="primary-action" type="button" onClick={() => setWalletAlertOpen(true)}>Add Alert</button>
                 {savedWallet ? (
                   <button className="quiet-button danger icon-only" type="button" onClick={() => {
                     WalletStorage.delete(address);
@@ -514,6 +586,7 @@ function WalletProfile({ address }: { address: string }) {
                   </button>
                 ) : null}
               </div>
+              {walletAlertMessage ? <p className="wallet-alert-note">{walletAlertMessage}</p> : null}
             </>
           )}
           <WalletStatsGrid loading={portfolioState.loading} stats={portfolioState.stats} />
@@ -528,7 +601,33 @@ function WalletProfile({ address }: { address: string }) {
         />
       </section>
 
-      <WalletActivityPanel address={address} chain={chain} timeFilter={timeFilter} />
+      <WalletActivityPanel
+        address={address}
+        chain={chain}
+        timeFilter={timeFilter}
+        tradePerformance={portfolioState.portfolio.tradePerformance || []}
+        walletPnl={portfolioState.portfolio.pnl}
+        assets={portfolioState.portfolio.assets}
+      />
+      <WalletAlertModal
+        open={walletAlertOpen}
+        walletName={savedWallet?.name || name || walletNameFor(address)}
+        address={address}
+        chain={chain}
+        eventTypes={walletAlertEventTypes}
+        channels={walletAlertChannels}
+        ignoreSpam={walletAlertIgnoreSpam}
+        saving={walletAlertSaving}
+        error={walletAlertError}
+        onClose={() => {
+          setWalletAlertOpen(false);
+          setWalletAlertError('');
+        }}
+        onToggleEvent={toggleWalletAlertEvent}
+        onToggleChannel={toggleWalletAlertChannel}
+        onIgnoreSpamChange={setWalletAlertIgnoreSpam}
+        onSubmit={createWalletAlert}
+      />
     </div>
   );
 }
@@ -571,11 +670,114 @@ function WalletCard({ wallet, onDelete }: { wallet: SavedWallet; onDelete: () =>
   );
 }
 
+function WalletAlertModal({
+  open,
+  walletName,
+  address,
+  chain,
+  eventTypes,
+  channels,
+  ignoreSpam,
+  saving,
+  error,
+  onClose,
+  onToggleEvent,
+  onToggleChannel,
+  onIgnoreSpamChange,
+  onSubmit
+}: {
+  open: boolean;
+  walletName: string;
+  address: string;
+  chain: WalletChain;
+  eventTypes: WalletAlertEventType[];
+  channels: string[];
+  ignoreSpam: boolean;
+  saving: boolean;
+  error: string;
+  onClose: () => void;
+  onToggleEvent: (eventType: WalletAlertEventType) => void;
+  onToggleChannel: (channel: string) => void;
+  onIgnoreSpamChange: (value: boolean) => void;
+  onSubmit: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="wallet-alert-modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section className="wallet-alert-modal" role="dialog" aria-modal="true" aria-labelledby="wallet-alert-title" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="wallet-alert-modal-head">
+          <div>
+            <p>Wallet Activity Alert</p>
+            <h3 id="wallet-alert-title">{walletName}</h3>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close wallet alert setup">
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="wallet-alert-summary">
+          <span>{shortAddress(address)}</span>
+          <span>{chain}</span>
+        </div>
+
+        <div className="wallet-alert-section">
+          <span className="wallet-alert-label">Trigger</span>
+          <div className="wallet-alert-options">
+            {WALLET_ALERT_EVENT_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={eventTypes.includes(option.value) ? 'selected' : ''}
+                onClick={() => onToggleEvent(option.value)}
+              >
+                {option.label}
+                {eventTypes.includes(option.value) ? <Check size={14} /> : null}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="wallet-alert-section">
+          <span className="wallet-alert-label">Notify</span>
+          <div className="wallet-alert-options compact">
+            <button type="button" className={channels.includes('in_app') ? 'selected' : ''} onClick={() => onToggleChannel('in_app')}>
+              In-app
+              {channels.includes('in_app') ? <Check size={14} /> : null}
+            </button>
+            <button type="button" className={channels.includes('telegram') ? 'selected' : ''} onClick={() => onToggleChannel('telegram')}>
+              Telegram
+              {channels.includes('telegram') ? <Check size={14} /> : null}
+            </button>
+          </div>
+        </div>
+
+        <label className="wallet-alert-toggle">
+          <input type="checkbox" checked={ignoreSpam} onChange={(event) => onIgnoreSpamChange(event.target.checked)} />
+          <span>Ignore Zerion spam and trash transactions</span>
+        </label>
+
+        {error ? <p className="form-error">{error}</p> : null}
+
+        <div className="wallet-alert-actions">
+          <button className="quiet-button" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-action" type="button" onClick={onSubmit} disabled={saving}>
+            {saving ? <Loader2 size={17} className="spin" /> : <Bell size={17} />}
+            Create Alert
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function WalletStatsGrid({ stats, loading }: { stats: ReturnType<typeof useWalletPortfolio>['stats']; loading: boolean }) {
   const items = [
     ['Net Worth', stats.netWorth],
     ['Win Rate', stats.winRate],
     ['Total PnL', stats.totalPnl],
+    ['Realized PnL', stats.realizedPnl],
+    ['Unrealized PnL', stats.unrealizedPnl],
     ['Active Positions', stats.activePositions],
     ['Profitable Positions', stats.profitablePositions],
     ['Avg Hold Time', stats.avgHoldTime]
@@ -593,6 +795,60 @@ function WalletStatsGrid({ stats, loading }: { stats: ReturnType<typeof useWalle
   );
 }
 
+function WalletPerformanceOverview({ portfolio, loading }: { portfolio: WalletPortfolio; loading: boolean }) {
+  const cards = [
+    ['Realized PnL', portfolio.pnl ? formatPerformanceUsd(portfolio.pnl.realizedGain) : 'N/A'],
+    ['Unrealized PnL', portfolio.pnl ? formatPerformanceUsd(portfolio.pnl.unrealizedGain) : 'N/A'],
+    ['Net invested', portfolio.pnl ? formatPerformanceUsd(portfolio.pnl.netInvested) : 'N/A'],
+    ['Fees', portfolio.pnl ? formatPerformanceUsd(-Math.abs(portfolio.pnl.totalFee)) : 'N/A']
+  ];
+
+  return (
+    <section className="wallet-performance-overview">
+      <div className="wallet-performance-summary">
+        {cards.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong className={String(value).startsWith('+') ? 'positive' : String(value).startsWith('-') ? 'negative' : ''}>
+              {loading ? <Loader2 size={18} className="spin" /> : value}
+            </strong>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function hasReportedTokenBalance(asset: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number]) {
+  return typeof asset.rawBalance === 'number' ? asset.rawBalance > 0 : asset.rawValue > 0;
+}
+
+function shouldShowHolding(asset: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number], showSmallBalances: boolean) {
+  if (!hasReportedTokenBalance(asset)) return false;
+  if (asset.rawValue <= 0 || asset.currentPrice <= 0) return false;
+  if (showSmallBalances) return true;
+  return asset.rawValue >= 1;
+}
+
+function holdingStatusLabel(status: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number]['performanceStatus']) {
+  if (status === 'reported') return 'Reported by Zerion';
+  if (status === 'cost_basis_missing') return 'Cost basis missing';
+  return 'Unavailable';
+}
+
+function holdingTimeStatusLabel(status: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number]['timeHeldStatus']) {
+  if (status === 'reported') return 'Reported by Zerion';
+  return 'Unknown';
+}
+
+function holdingTone(asset: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number]) {
+  if (asset.pnlPercent && asset.pnlPercent > 0) return 'positive';
+  if (asset.pnlPercent && asset.pnlPercent < 0) return 'negative';
+  if (asset.pnl?.startsWith('+')) return 'positive';
+  if (asset.pnl?.startsWith('-')) return 'negative';
+  return '';
+}
+
 function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
   assets: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'];
   loading: boolean;
@@ -602,8 +858,8 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
 }) {
   const [showSmallBalances, setShowSmallBalances] = useState(false);
   const rows = useMemo(() => assets
-    .filter((asset) => showSmallBalances || asset.rawValue >= 1)
-    .sort((a, b) => b.rawValue - a.rawValue), [assets, showSmallBalances]);
+    .filter((asset) => shouldShowHolding(asset, showSmallBalances))
+    .sort((a, b) => (b.rawValue - a.rawValue) || ((b.rawBalance || 0) - (a.rawBalance || 0)) || a.symbol.localeCompare(b.symbol)), [assets, showSmallBalances]);
 
   return (
     <section className="holdings-panel">
@@ -629,8 +885,9 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
               <tr>
                 <th>Asset</th>
                 <th>Balance</th>
+                <th>Price</th>
                 <th>Value</th>
-                <th>{timeFilter === 'ALL' ? 'PnL' : `${timeFilter} PnL`}</th>
+                <th>{timeFilter === 'ALL' ? 'Unrealized PnL' : `${timeFilter} Unrealized PnL`}</th>
                 <th>Time Held</th>
               </tr>
             </thead>
@@ -641,9 +898,22 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
                     <TokenAssetLink asset={asset} />
                   </td>
                   <td>{asset.balance}</td>
+                  <td>{asset.price}</td>
                   <td>{asset.value}</td>
-                  <td className={asset.pnlPercent && asset.pnlPercent > 0 ? 'positive' : asset.pnlPercent && asset.pnlPercent < 0 ? 'negative' : ''}>{asset.pnl || 'N/A'}</td>
-                  <td>{formatTimeHeld(asset.buyTime)}</td>
+                  <td className={holdingTone(asset)}>
+                    <span className="holding-metric">
+                      <strong>
+                        {asset.pnl || holdingStatusLabel(asset.performanceStatus)}
+                        {asset.pnl && asset.pnlPercent !== undefined ? <span className="holding-return"> ({formatPerformanceReturn(asset.pnlPercent)})</span> : null}
+                      </strong>
+                      {asset.pnl && asset.performanceStatus === 'cost_basis_missing' ? <small>{holdingStatusLabel(asset.performanceStatus)}</small> : null}
+                    </span>
+                  </td>
+                  <td>
+                    <span className="holding-metric">
+                      <strong>{asset.buyTime ? formatTimeHeld(asset.buyTime) : holdingTimeStatusLabel(asset.timeHeldStatus)}</strong>
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -660,7 +930,7 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
   );
 }
 
-function WalletActivityPanel({ address, chain, timeFilter }: { address: string; chain: WalletChain; timeFilter: WalletTimeFilter }) {
+function WalletActivityPanel({ address, chain, timeFilter, tradePerformance, walletPnl, assets }: { address: string; chain: WalletChain; timeFilter: WalletTimeFilter; tradePerformance: WalletTradePerformance[]; walletPnl?: WalletPnlSummary; assets: WalletPortfolio['assets'] }) {
   const [requested, setRequested] = useState(true);
   const { activity, loading, error, refreshActivity } = useWalletActivity(address, chain, timeFilter, 'all', requested);
   const rows = activity.activities;
@@ -715,13 +985,76 @@ function WalletActivityPanel({ address, chain, timeFilter }: { address: string; 
           </div>
         ) : null}
       </section>
-      {requested ? <TradePerformancePanel activity={activity} /> : null}
+      {requested ? <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} /> : null}
     </section>
   );
 }
 
-function TradePerformancePanel({ activity }: { activity: WalletActivity }) {
-  const rows = buildTradePerformanceRows(activity);
+function tradeRowKey(row: WalletTradePerformance) {
+  return (row.token.address || row.id || row.token.symbol).toLowerCase();
+}
+
+function hasPerformanceValue(row: WalletTradePerformance) {
+  return row.realizedPnl !== undefined || row.unrealizedPnl !== undefined || row.totalPnl !== undefined || row.returnPct !== undefined;
+}
+
+function mergeTradePerformanceRows(rows: WalletTradePerformance[]) {
+  const merged = new Map<string, WalletTradePerformance>();
+  rows.forEach((row) => {
+    const key = tradeRowKey(row);
+    const existing = merged.get(key);
+    if (!existing || (!hasPerformanceValue(existing) && hasPerformanceValue(row))) {
+      merged.set(key, row);
+    }
+  });
+  return Array.from(merged.values());
+}
+
+function positionPerformanceRows(assets: WalletPortfolio['assets']): WalletTradePerformance[] {
+  return assets
+    .filter((asset) => !asset.isStablecoin)
+    .filter((asset) => asset.totalPnl !== undefined || asset.totalReturnPct !== undefined || asset.realizedPnl !== undefined || asset.unrealizedPnl !== undefined || asset.performanceStatus === 'cost_basis_missing')
+    .map((asset) => {
+      const totalPnl = asset.totalPnl ?? (asset.realizedPnl !== undefined || asset.unrealizedPnl !== undefined
+        ? (asset.realizedPnl || 0) + (asset.unrealizedPnl || 0)
+        : undefined);
+      const status: WalletTradePerformance['status'] = asset.performanceStatus === 'cost_basis_missing'
+        ? 'Cost basis missing'
+        : asset.rawBalance && asset.rawBalance > 0 ? asset.realizedPnl !== undefined ? 'Partial' : 'Open position' : 'Closed';
+
+      return {
+        id: asset.address || asset.symbol,
+        token: {
+          address: asset.address,
+          symbol: asset.symbol,
+          logo: asset.logo
+        },
+        realizedPnl: asset.realizedPnl,
+        unrealizedPnl: asset.unrealizedPnl,
+        totalPnl,
+        returnPct: asset.totalReturnPct,
+        invested: asset.costBasisUsd,
+        openCostBasis: asset.openCostBasisUsd,
+        status
+      };
+    });
+}
+
+function TradePerformancePanel({ activity, tradePerformance, walletPnl, assets }: { activity: WalletActivity; tradePerformance: WalletTradePerformance[]; walletPnl?: WalletPnlSummary; assets: WalletPortfolio['assets'] }) {
+  const activityRows = buildTradePerformanceRows(activity);
+  const derivedRows: WalletTradePerformance[] = activityRows.map((row) => ({
+    id: `${row.token.address || row.token.symbol}:${row.status}`,
+    token: row.token,
+    realizedPnl: row.realizedPnl,
+    totalPnl: row.realizedPnl,
+    returnPct: row.returnPct,
+    status: row.status as WalletTradePerformance['status']
+  }));
+  const rows = mergeTradePerformanceRows([
+    ...tradePerformance,
+    ...positionPerformanceRows(assets),
+    ...derivedRows
+  ]);
 
   return (
     <aside className="wallet-performance-panel">
@@ -730,27 +1063,43 @@ function TradePerformancePanel({ activity }: { activity: WalletActivity }) {
         <span>{rows.length}</span>
       </header>
       {rows.length ? rows.map((row) => (
-        <div className="wallet-performance-card" key={`${row.token.address || row.token.symbol}:${row.status}`}>
+        <div className="wallet-performance-card" key={`${row.token.address || row.token.symbol}:${row.status}:${row.realizedPnl || row.totalPnl || ''}`}>
           <div className="wallet-performance-main">
             <span className="wallet-performance-token">
               {row.token.logo ? <img src={row.token.logo} alt="" /> : <i>{row.token.symbol.slice(0, 1)}</i>}
               <strong>{row.token.symbol}</strong>
             </span>
           </div>
-          <small>
-            {row.realizedPnl === undefined ? (
+          <small className="wallet-performance-metric">
+            {row.realizedPnl === undefined && row.totalPnl === undefined ? (
               <span>{row.status}</span>
             ) : (
               <>
-                <span className={row.realizedPnl > 0 ? 'positive' : row.realizedPnl < 0 ? 'negative' : ''}>{formatPerformanceUsd(row.realizedPnl)}</span>
+                <span className={(row.totalPnl ?? row.realizedPnl ?? 0) > 0 ? 'positive' : (row.totalPnl ?? row.realizedPnl ?? 0) < 0 ? 'negative' : ''}>Total {formatPerformanceUsd(row.totalPnl ?? row.realizedPnl)}</span>
                 <span className={row.returnPct && row.returnPct > 0 ? 'positive' : row.returnPct && row.returnPct < 0 ? 'negative' : ''}>({formatPerformanceReturn(row.returnPct)})</span>
+                {row.realizedPnl !== undefined && row.unrealizedPnl !== undefined ? (
+                  <span className="wallet-performance-breakdown">Realized {formatPerformanceUsd(row.realizedPnl)} / Open {formatPerformanceUsd(row.unrealizedPnl)}</span>
+                ) : null}
               </>
             )}
           </small>
           <span className={`wallet-performance-status ${row.status.toLowerCase().replace(/\s+/g, '-')}`}>{row.status}</span>
         </div>
       )) : (
-        <p>No completed trade data yet.</p>
+        <div className="wallet-performance-empty">
+          {walletPnl ? (
+            <>
+              <p>Zerion returned wallet-level PnL only for this filter.</p>
+              <small>
+                <span>Total {formatPerformanceUsd(walletPnl.totalGain)}</span>
+                <span>Realized {formatPerformanceUsd(walletPnl.realizedGain)}</span>
+                <span>Unrealized {formatPerformanceUsd(walletPnl.unrealizedGain)}</span>
+              </small>
+            </>
+          ) : (
+            <p>No completed trade data yet.</p>
+          )}
+        </div>
       )}
     </aside>
   );
@@ -814,8 +1163,10 @@ function TokenAssetLink({ asset }: { asset: ReturnType<typeof useWalletPortfolio
   const content = (
     <>
       {asset.logo ? <img src={asset.logo} alt="" /> : <span>{asset.symbol.slice(0, 1)}</span>}
-      <strong>{asset.symbol}</strong>
-      <small>{asset.chain || 'Unknown'}</small>
+      <span className="wallet-asset-text">
+        <strong>{asset.symbol}</strong>
+        <small>{asset.chain || 'Unknown'}</small>
+      </span>
     </>
   );
   const path = tokenDetailsPath(asset);

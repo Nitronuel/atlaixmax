@@ -43,7 +43,9 @@ export function useWalletActivity(address: string | undefined, chain: WalletChai
     setError(null);
 
     WalletPortfolioService.getActivity(address, chain, timeFilter, kind, controller.signal, refreshKey > 0)
-      .then(setActivity)
+      .then((nextActivity) => {
+        if (!controller.signal.aborted) setActivity(nextActivity);
+      })
       .catch((nextError: unknown) => {
         if (controller.signal.aborted || isAbortError(nextError)) return;
         setActivity({ ...emptyActivity, providerStatus: 'error', message: 'Wallet activity is unavailable.' });

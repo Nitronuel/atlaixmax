@@ -1,4 +1,4 @@
-import type { SmartMoneyQualification, SupportedWalletChain, WalletAddressType, WalletAsset, WalletCategory, WalletChain, WalletStats } from './wallet-types';
+import type { SmartMoneyQualification, SupportedWalletChain, WalletAddressType, WalletAsset, WalletCategory, WalletChain, WalletPnlSummary, WalletStats } from './wallet-types';
 import { evaluateSmartMoneyWallet } from '../../shared/smart-money-qualification';
 
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -109,14 +109,25 @@ export function evaluateSmartMoney(stats: WalletStats): SmartMoneyQualification 
   });
 }
 
-export function buildWalletStats(assets: WalletAsset[], fallbackNetWorth = '$0.00'): WalletStats {
+function formatPercent(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return 'N/A';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+function formatCurrency(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return 'N/A';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  return `${sign}${Math.abs(value).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}`;
+}
+
+export function buildWalletStats(assets: WalletAsset[], fallbackNetWorth = '$0.00', pnl?: WalletPnlSummary): WalletStats {
   const activeAssets = assets.filter((asset) => asset.rawValue > 1);
-  const pnlAssets = activeAssets.filter((asset) => typeof asset.pnlPercent === 'number');
+  const pnlAssets = activeAssets.filter((asset) => !asset.isStablecoin && typeof asset.pnlPercent === 'number');
   const winners = pnlAssets.filter((asset) => (asset.pnlPercent || 0) > 0);
   const netWorth = assets.reduce((total, asset) => total + asset.rawValue, 0);
-  let totalPnl = 'N/A';
+  let totalPnl = pnl ? formatCurrency(pnl.totalGain) : 'N/A';
 
-  if (pnlAssets.length) {
+  if (!pnl && pnlAssets.length) {
     let costBasis = 0;
     let currentValue = 0;
     pnlAssets.forEach((asset) => {
@@ -130,8 +141,10 @@ export function buildWalletStats(assets: WalletAsset[], fallbackNetWorth = '$0.0
   }
 
   return {
-    winRate: pnlAssets.length ? `${Math.round((winners.length / pnlAssets.length) * 100)}%` : 'N/A',
+    winRate: pnlAssets.length ? `${Math.round((winners.length / pnlAssets.length) * 100)}%` : pnl?.totalGainPercent !== undefined ? formatPercent(pnl.totalGainPercent) : 'N/A',
     totalPnl,
+    realizedPnl: pnl ? formatCurrency(pnl.realizedGain) : 'N/A',
+    unrealizedPnl: pnl ? formatCurrency(pnl.unrealizedGain) : 'N/A',
     netWorth: netWorth > 0 ? netWorth.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : fallbackNetWorth,
     activePositions: activeAssets.length,
     profitablePositions: pnlAssets.length ? String(winners.length) : 'N/A',

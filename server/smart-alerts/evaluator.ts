@@ -1,4 +1,4 @@
-export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection';
+export type SmartAlertType = 'Price' | 'Volume' | 'Liquidity' | 'Whale' | 'Alpha' | 'Risk' | 'Detection' | 'Wallet';
 
 export type SmartAlertCondition =
     | 'above'
@@ -82,6 +82,7 @@ export const getThresholdKindForCondition = (
     if (condition === 'changes_by_percent') return 'percent';
     if (alertType === 'Alpha') return 'event';
     if (alertType === 'Risk') return 'severity';
+    if (alertType === 'Wallet') return 'event';
     return 'currency';
 };
 
@@ -233,6 +234,10 @@ export const evaluateSmartAlertRule = (
                     snapshot.riskSeverity.toLowerCase() === rule.threshold.toLowerCase()
                 ));
                 observedValue = snapshot.riskSeverity || null;
+                break;
+            case 'Wallet':
+                matched = false;
+                observedValue = null;
                 break;
         }
     }

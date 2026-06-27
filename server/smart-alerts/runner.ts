@@ -210,6 +210,10 @@ export class SmartAlertRunner {
       return 0;
     }
 
+    if (metadata.alertMode === 'wallet_activity') {
+      return 0;
+    }
+
     if (metadata.status === 'completed' || Number(rule.trigger_count || 0) > 0) {
       await this.store.updateRule(rule.id, {
         enabled: false,

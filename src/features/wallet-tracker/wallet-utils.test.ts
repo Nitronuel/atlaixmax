@@ -25,6 +25,8 @@ describe('wallet utilities', () => {
       netWorth: '$125,000.00',
       winRate: '67%',
       totalPnl: '+24.50%',
+      realizedPnl: 'N/A',
+      unrealizedPnl: 'N/A',
       activePositions: 5,
       profitablePositions: '4',
       avgHoldTime: 'N/A'
@@ -39,6 +41,8 @@ describe('wallet utilities', () => {
       netWorth: '$4,500.00',
       winRate: '30%',
       totalPnl: '-8.00%',
+      realizedPnl: 'N/A',
+      unrealizedPnl: 'N/A',
       activePositions: 1,
       profitablePositions: '0',
       avgHoldTime: 'N/A'
