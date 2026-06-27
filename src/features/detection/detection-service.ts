@@ -13,7 +13,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const DetectionService = {
   getEvents() {
-    return fetchJson<DetectionEventsResponse>('/api/detection/events?limit=100');
+    return fetchJson<DetectionEventsResponse>('/api/detection/events?limit=500');
   },
 
   runNow() {

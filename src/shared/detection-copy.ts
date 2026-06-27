@@ -19,6 +19,105 @@ const DETECTION_EVENT_SUMMARIES: Record<string, string> = {
   DISTRIBUTION: 'Sellers may be pushing supply into the market.'
 };
 
+type DetectionTableCopy = {
+  title: string;
+  description: string;
+  type: string;
+};
+
+const DETECTION_EVENT_TABLE_COPY: Record<string, DetectionTableCopy> = {
+  BULLISH_CONTINUATION_PUMP: {
+    title: 'Bullish continuation detected',
+    description: 'Uptrend showing follow-through',
+    type: 'Bullish Continuation'
+  },
+  BEARISH_CONTINUATION_DUMP: {
+    title: 'Bearish continuation detected',
+    description: 'Sell-side pressure still extending',
+    type: 'Bearish Continuation'
+  },
+  BEARISH_RELIEF_BOUNCE: {
+    title: 'Relief bounce detected',
+    description: 'Short bounce inside weak structure',
+    type: 'Short-Term Bounce in Bearish Trend'
+  },
+  BULLISH_PULLBACK: {
+    title: 'Bullish pullback detected',
+    description: 'Price cooling inside an uptrend',
+    type: 'Pullback in Bullish Trend'
+  },
+  BEARISH_REVERSAL_ATTEMPT: {
+    title: 'Bullish reversal attempt detected',
+    description: 'Buyers testing bearish structure',
+    type: 'Possible Bullish Reversal Attempt'
+  },
+  BULLISH_BREAKDOWN_ATTEMPT: {
+    title: 'Bearish breakdown attempt detected',
+    description: 'Sellers testing key support',
+    type: 'Possible Bearish Breakdown Attempt'
+  },
+  RANGE_BREAKOUT_ATTEMPT: {
+    title: 'Range breakout attempt detected',
+    description: 'Price testing range resistance',
+    type: 'Range Breakout Attempt'
+  },
+  RANGE_BREAKDOWN_ATTEMPT: {
+    title: 'Range breakdown attempt detected',
+    description: 'Price testing range support',
+    type: 'Range Breakdown Attempt'
+  },
+  LOW_LIQUIDITY_PRICE_SPIKE: {
+    title: 'Thin-liquidity price spike detected',
+    description: 'Price jumped in shallow liquidity',
+    type: 'Low-Liquidity Price Spike'
+  },
+  LOW_LIQUIDITY_SELL_OFF: {
+    title: 'Thin-liquidity sell-off detected',
+    description: 'Price dropped in shallow liquidity',
+    type: 'Low-Liquidity Sell-Off'
+  },
+  LIQUIDITY_DRAIN: {
+    title: 'Liquidity drain detected',
+    description: 'Liquidity removed from the pool',
+    type: 'Liquidity Drain'
+  },
+  LIQUIDITY_ADDED: {
+    title: 'Liquidity addition detected',
+    description: 'New liquidity entered the market',
+    type: 'Liquidity Added'
+  },
+  PUMP: {
+    title: 'Price pump detected',
+    description: 'Sharp upward price acceleration',
+    type: 'Pump'
+  },
+  DUMP: {
+    title: 'Price dump detected',
+    description: 'Sharp downside price movement',
+    type: 'Dump'
+  },
+  BUY_RECOVERY: {
+    title: 'Buy recovery detected',
+    description: 'Buyers returning after weakness',
+    type: 'Buy Recovery'
+  },
+  SELL_OFF: {
+    title: 'Sell-off detected',
+    description: 'Sellers pressing price lower',
+    type: 'Sell-Off'
+  },
+  ACCUMULATION: {
+    title: 'Accumulation detected',
+    description: 'Consistent wallet accumulation observed',
+    type: 'Accumulation'
+  },
+  DISTRIBUTION: {
+    title: 'Distribution detected',
+    description: 'Sell-side supply entering the market',
+    type: 'Distribution'
+  }
+};
+
 const DISPLAY_LABEL_KEYS: Record<string, string> = {
   'Bullish Continuation': 'BULLISH_CONTINUATION_PUMP',
   'Bearish Continuation': 'BEARISH_CONTINUATION_DUMP',
@@ -102,8 +201,30 @@ function detectionLabelKey(label: string) {
   return DISPLAY_LABEL_KEYS[label.trim()] || normalizeDetectionLabel(label);
 }
 
+function titleCaseDetectionLabel(label: string) {
+  return label
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export function detectionEventSummaryForLabel(label: string, fallback = '') {
   return DETECTION_EVENT_SUMMARIES[detectionLabelKey(label)] || fallback;
+}
+
+export function detectionEventTableCopyForLabel(label: string, fallback = ''): DetectionTableCopy {
+  const key = detectionLabelKey(label);
+  const copy = DETECTION_EVENT_TABLE_COPY[key];
+  if (copy) return copy;
+
+  const title = titleCaseDetectionLabel(label || 'Detection Event');
+  return {
+    title: /detected|attempt|continuation|recovery|pullback|bounce/i.test(title) ? title : `${title} Detected`,
+    description: DETECTION_EVENT_SUMMARIES[key] || fallback || 'Detection Engine flagged new token activity',
+    type: title.split(' ')[0] || 'Event'
+  };
 }
 
 export function detectionEventAssessmentForLabel(label: string, tokenName: string, fallback = '') {

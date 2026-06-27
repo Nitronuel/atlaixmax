@@ -765,6 +765,8 @@ export class DetectionStore {
   }
 
   async saveEvent(event: DetectionEvent, tokenId: string) {
+    const lifecycleId = event.lifecycleId || event.dedupeKey;
+    const eventDedupeKey = `${lifecycleId}:${event.classificationId || event.id}`;
     const row = {
       id: event.id,
       token_id: tokenId,
@@ -777,8 +779,8 @@ export class DetectionStore {
       detected_at: new Date(event.detectedAt).toISOString(),
       token: event.token,
       metrics: event.metrics,
-      dedupe_key: event.dedupeKey,
-      lifecycle_id: event.lifecycleId || event.dedupeKey,
+      dedupe_key: eventDedupeKey,
+      lifecycle_id: lifecycleId,
       lifecycle_status: event.lifecycleStatus || null,
       event_version: event.eventVersion || 1,
       last_updated_at: new Date(event.lastUpdatedAt || event.detectedAt).toISOString(),
@@ -791,7 +793,8 @@ export class DetectionStore {
       try {
         const params = new URLSearchParams({
           select: EVENT_COLUMNS,
-          dedupe_key: `eq.${event.dedupeKey}`,
+          lifecycle_id: `eq.${lifecycleId}`,
+          order: 'detected_at.desc',
           limit: '1'
         });
         let existingRows: any[];
@@ -799,71 +802,53 @@ export class DetectionStore {
           existingRows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
         } catch {
           params.set('select', EVENT_BASE_COLUMNS);
+          params.delete('lifecycle_id');
+          params.delete('order');
+          params.set('dedupe_key', `eq.${lifecycleId}`);
           existingRows = await supabaseFetch<any[]>(`detection_events?${params.toString()}`);
         }
         const existing = Array.isArray(existingRows) && existingRows[0] ? eventFromRow(existingRows[0]) : null;
-        if (existing) {
-          const update = {
-            classification_id: row.classification_id,
-            event_type: row.event_type,
-            summary: row.summary,
-            sentiment: row.sentiment,
-            severity: row.severity,
-            score: row.score,
-            detected_at: row.detected_at,
-            token: row.token,
-            metrics: row.metrics,
-            lifecycle_status: row.lifecycle_status,
-            event_version: (existing.eventVersion || 1) + 1,
-            last_updated_at: row.last_updated_at,
-            previous_score: existing.score,
-            score_delta: row.score - existing.score,
-            risk_delta: severityRank(row.severity) - severityRank(existing.severity)
-          };
-          await supabaseFetch(`detection_events?id=eq.${existing.id}`, {
-            method: 'PATCH',
-            headers: { Prefer: 'return=minimal' },
-            body: JSON.stringify(update)
-          });
-          return false;
-        }
+        const nextRow = existing ? {
+          ...row,
+          event_version: (existing.eventVersion || 1) + 1,
+          previous_score: existing.score,
+          score_delta: row.score - existing.score,
+          risk_delta: severityRank(row.severity) - severityRank(existing.severity)
+        } : row;
 
         await supabaseFetch('detection_events', {
           method: 'POST',
-          body: JSON.stringify(row)
+          body: JSON.stringify(nextRow)
         });
-        return true;
+        return !existing;
       } catch {
         this.useLocalOnly = true;
       }
     }
 
     const state = readLocalState();
-    const existingIndex = state.events.findIndex((existing) => existing.dedupeKey === event.dedupeKey);
-    if (existingIndex >= 0) {
-      const existing = state.events[existingIndex];
-      state.events.splice(existingIndex, 1);
-      state.events.unshift({
-        ...event,
-        id: existing.id,
-        eventVersion: (existing.eventVersion || 1) + 1,
-        previousScore: existing.score,
-        scoreDelta: event.score - existing.score,
-        riskDelta: severityRank(event.severity) - severityRank(existing.severity),
-        lastUpdatedAt: event.lastUpdatedAt || event.detectedAt
-      });
-      state.events = state.events.slice(0, 500);
-      writeLocalState(state);
-      return false;
-    }
-    state.events.unshift(event);
+    const existing = state.events.find((candidate) => (candidate.lifecycleId || candidate.dedupeKey) === lifecycleId);
+    state.events.unshift(existing ? {
+      ...event,
+      dedupeKey: eventDedupeKey,
+      lifecycleId,
+      eventVersion: (existing.eventVersion || 1) + 1,
+      previousScore: existing.score,
+      scoreDelta: event.score - existing.score,
+      riskDelta: severityRank(event.severity) - severityRank(existing.severity),
+      lastUpdatedAt: event.lastUpdatedAt || event.detectedAt
+    } : {
+      ...event,
+      dedupeKey: eventDedupeKey,
+      lifecycleId
+    });
     state.events = state.events.slice(0, 500);
     writeLocalState(state);
-    return true;
+    return !existing;
   }
 
   async listEvents(filters: DetectionEventFilters = {}): Promise<DetectionEventsResponse> {
-    const limit = Math.max(1, Math.min(250, Number(filters.limit || 100)));
+    const limit = Math.max(1, Math.min(500, Number(filters.limit || 100)));
     let events: DetectionEvent[] = [];
 
     if (!this.useLocalOnly) {

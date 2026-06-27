@@ -80,10 +80,11 @@ export class SmartAlertRoutes {
     if (ruleMatch && method === 'PATCH') {
       const user = await requireAuthenticatedUser(request);
       const body = await readJsonBody(request);
-      const rule = await this.store.updateRule(decodeURIComponent(ruleMatch[1]), {
-        enabled: Boolean(body.enabled),
-        metadata: body.metadata
-      }, user.id);
+      const patch: Partial<SmartAlertRow> = {};
+      if ('enabled' in body) patch.enabled = Boolean(body.enabled);
+      if ('metadata' in body) patch.metadata = body.metadata;
+      if (Array.isArray(body.notificationChannels)) patch.notification_channels = body.notificationChannels;
+      const rule = await this.store.updateRule(decodeURIComponent(ruleMatch[1]), patch, user.id);
       sendJson(response, 200, { rule });
       return;
     }

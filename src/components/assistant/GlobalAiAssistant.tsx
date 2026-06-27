@@ -275,9 +275,9 @@ const readDetectionEngineSnapshot = (): DetectionEngineSnapshot | null => {
         // Fall through to reading rendered cards.
     }
 
-    const cards = Array.from(document.querySelectorAll<HTMLElement>('.detection-event-card')).slice(0, 10);
-    const events = cards.map((card) => {
-        const text = card.innerText.replace(/\s+/g, ' ').trim();
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('.detection-event-row, .detection-event-card')).slice(0, 10);
+    const events = rows.map((row) => {
+        const text = row.innerText.replace(/\s+/g, ' ').trim();
         if (!text) return null;
         return {
             eventType: text.slice(0, 80),

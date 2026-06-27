@@ -226,6 +226,14 @@ export const SmartAlertService = {
         return normalizeRule(payload.rule);
     },
 
+    setRuleNotificationChannels: async (ruleId: string, notificationChannels: string[]): Promise<SmartAlertRule> => {
+        const payload = await requestJson<{ rule: unknown }>(`/api/smart-alerts/rules/${encodeURIComponent(ruleId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ notificationChannels })
+        });
+        return normalizeRule(payload.rule);
+    },
+
     deleteRule: async (ruleId: string): Promise<void> => {
         await requestJson(`/api/smart-alerts/rules/${encodeURIComponent(ruleId)}`, { method: 'DELETE' });
     },

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { appUrl } from '../config';
 import type { ProfileUpdate, UserProfile } from '../services/ProfileService';
 
 interface AuthContextValue {
@@ -170,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = await requireSupabase();
     const options = {
       data: { display_name: displayName || email.split('@')[0] },
-      emailRedirectTo: `${window.location.origin}/dashboard`
+      emailRedirectTo: appUrl('/dashboard')
     };
     const { data, error } = await supabase.auth.signUp({ email, password, options });
 
@@ -191,7 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = await requireSupabase();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/dashboard` }
+      options: { redirectTo: appUrl('/dashboard') }
     });
     if (error) throw error;
   }, []);
@@ -206,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const resetPassword = useCallback(async (email: string) => {
     const supabase = await requireSupabase();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`
+      redirectTo: appUrl('/login')
     });
     if (error) throw error;
   }, []);

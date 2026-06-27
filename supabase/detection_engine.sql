@@ -134,7 +134,7 @@ create table if not exists public.detection_events (
     created_at timestamptz not null default timezone('utc', now())
 );
 
-create unique index if not exists detection_events_dedupe_idx
+create index if not exists detection_events_dedupe_idx
 on public.detection_events (dedupe_key);
 
 create index if not exists detection_events_detected_idx
@@ -179,6 +179,11 @@ add column if not exists last_updated_at timestamptz,
 add column if not exists previous_score integer,
 add column if not exists score_delta integer,
 add column if not exists risk_delta integer;
+
+drop index if exists public.detection_events_dedupe_idx;
+
+create index if not exists detection_events_dedupe_idx
+on public.detection_events (dedupe_key);
 
 create index if not exists detection_events_lifecycle_idx
 on public.detection_events (lifecycle_id);
