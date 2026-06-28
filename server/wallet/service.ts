@@ -3,7 +3,9 @@ import { TtlCache } from '../shared/cache';
 import type {
   WalletActivity,
   WalletActivityFilter,
+  WalletActivityToken,
   WalletChain,
+  WalletTradePerformance,
   WalletPortfolio
 } from '../../src/features/wallet-tracker/wallet-types';
 import { normalizeZerionIntelligence, type ZerionIntelligenceResponse } from './zerion-normalizer';
@@ -25,12 +27,26 @@ type ActivityOptions = {
   limit: number;
 };
 
+type DexPair = {
+  baseToken?: { address?: string; symbol?: string };
+  quoteToken?: { address?: string; symbol?: string };
+  liquidity?: { usd?: number };
+  volume?: { h24?: number };
+  info?: { imageUrl?: string };
+};
+
 const ZERION_BASE_URL = 'https://api.zerion.io/v1';
+const DEXSCREENER_BASE_URL = 'https://api.dexscreener.com';
+const BUBBLEMAPS_BASE_URL = 'https://api.bubblemaps.io';
 const WALLET_CACHE_TTL_MS = 60_000;
+const LOGO_CACHE_TTL_MS = 6 * 60 * 60_000;
 const TRANSACTION_PAGE_LIMIT = 8;
 const REQUEST_RETRY_LIMIT = 2;
 const REQUEST_RETRY_DELAY_MS = 1_200;
+const LOGO_LOOKUP_LIMIT = 40;
+const LOGO_LOOKUP_CONCURRENCY = 4;
 const cache = new TtlCache();
+const logoCache = new TtlCache();
 const pending = new Map<string, Promise<WalletIntelligenceResponse>>();
 
 const chainIds: Partial<Record<WalletChain, string>> = {
@@ -46,6 +62,14 @@ const chainIds: Partial<Record<WalletChain, string>> = {
 
 function getZerionKey() {
   return readEnv('ZERION_API_KEY', 'VITE_ZERION_API_KEY');
+}
+
+function getBubblemapsKey() {
+  return readEnv('BUBBLEMAPS_API_KEY');
+}
+
+function getBubblemapsBaseUrl() {
+  return readEnv('BUBBLEMAPS_API_BASE_URL') || BUBBLEMAPS_BASE_URL;
 }
 
 function authHeader(apiKey: string) {
@@ -118,6 +142,181 @@ async function zerionGet(path: string, params: Record<string, string | undefined
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function logoKey(chain: string, address: string) {
+  return `${chain.toLowerCase()}:${address.toLowerCase()}`;
+}
+
+function dexScreenerChainId(chain: WalletChain | string | undefined) {
+  const normalized = String(chain || '').trim().toLowerCase();
+  if (['ethereum', 'eth'].includes(normalized)) return 'ethereum';
+  if (['base'].includes(normalized)) return 'base';
+  if (['bsc', 'binance-smart-chain', 'binance smart chain', 'bnb chain'].includes(normalized)) return 'bsc';
+  if (['arbitrum', 'arb'].includes(normalized)) return 'arbitrum';
+  if (['optimism', 'op'].includes(normalized)) return 'optimism';
+  if (['polygon', 'matic'].includes(normalized)) return 'polygon';
+  if (['avalanche', 'avax'].includes(normalized)) return 'avalanche';
+  if (['solana', 'sol'].includes(normalized)) return 'solana';
+  return '';
+}
+
+function bubblemapsChainId(chain: string) {
+  if (chain === 'ethereum') return 'eth';
+  if (['base', 'bsc', 'arbitrum', 'polygon', 'avalanche', 'solana'].includes(chain)) return chain;
+  return '';
+}
+
+function scoreDexPair(pair: DexPair) {
+  return Number(pair.liquidity?.usd || 0) + Number(pair.volume?.h24 || 0) * 0.1;
+}
+
+async function reachableImageUrl(url: string) {
+  if (!url) return null;
+
+  try {
+    const response = await fetch(url, {
+      headers: { accept: 'image/*,*/*;q=0.8' },
+      signal: AbortSignal.timeout(6_000)
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (response.ok && (contentType.startsWith('image/') || /\.(avif|gif|jpe?g|png|svg|webp)(\?|$)/iu.test(url))) return url;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function tokenLogoFallback(symbol: string, address: string) {
+  const text = (symbol.replace(/[^a-z0-9]+/giu, '').slice(0, 2) || 'T').toUpperCase();
+  const hash = Array.from(`${address}:${symbol}`).reduce((total, char) => (total * 31 + char.charCodeAt(0)) >>> 0, 0);
+  const hue = hash % 360;
+  const accent = (hue + 38) % 360;
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">',
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 72% 34%)"/><stop offset="1" stop-color="hsl(${accent} 82% 52%)"/></linearGradient></defs>`,
+    '<rect width="64" height="64" rx="32" fill="url(#g)"/>',
+    '<circle cx="44" cy="18" r="10" fill="rgba(255,255,255,0.18)"/>',
+    `<text x="32" y="38" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="${text.length === 1 ? 28 : 23}" font-weight="700" fill="#fff">${text}</text>`,
+    '</svg>'
+  ].join('');
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+async function fetchBubblemapsLogo(chain: string, address: string) {
+  const apiKey = getBubblemapsKey();
+  const metadataChain = bubblemapsChainId(chain);
+  if (!apiKey || !metadataChain) return null;
+
+  try {
+    const response = await fetch(`${getBubblemapsBaseUrl()}/v0/tokens/metadata/${encodeURIComponent(metadataChain)}/${encodeURIComponent(address)}`, {
+      headers: {
+        accept: 'application/json',
+        'X-ApiKey': apiKey
+      },
+      signal: AbortSignal.timeout(8_000)
+    });
+
+    if (response.ok) {
+      const body = await response.json() as { metadata?: { img_url?: string | null } };
+      return reachableImageUrl(firstString(body.metadata?.img_url));
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function fetchDexScreenerLogo(chain: string, address: string) {
+  try {
+    const response = await fetch(`${DEXSCREENER_BASE_URL}/token-pairs/v1/${encodeURIComponent(chain)}/${encodeURIComponent(address)}`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(8_000)
+    });
+
+    if (!response.ok) return null;
+
+    const pairs = await response.json() as DexPair[];
+    const addressKey = address.toLowerCase();
+    const pair = pairs
+      .filter((item) => firstString(item.info?.imageUrl))
+      .filter((item) => String(item.baseToken?.address || '').toLowerCase() === addressKey)
+      .sort((left, right) => scoreDexPair(right) - scoreDexPair(left))[0];
+    return reachableImageUrl(firstString(pair?.info?.imageUrl));
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTokenLogo(chain: string, address: string) {
+  const key = logoKey(chain, address);
+  const cached = logoCache.get(key);
+  if (cached) return cached.value as string | null;
+
+  const logo = await fetchBubblemapsLogo(chain, address) || await fetchDexScreenerLogo(chain, address);
+  logoCache.set(key, logo, LOGO_CACHE_TTL_MS);
+  return logo;
+}
+
+async function mapWithConcurrency<T>(items: T[], concurrency: number, task: (item: T) => Promise<void>) {
+  let index = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const item = items[index];
+      index += 1;
+      await task(item);
+    }
+  });
+
+  await Promise.all(workers);
+}
+
+function setTokenLogo(token: WalletActivityToken | WalletTradePerformance['token'] | undefined, logoByAddress: Map<string, string>, logoBySymbol: Map<string, string>) {
+  if (!token || token.logo) return;
+  token.logo = logoByAddress.get(String(token.address || '').toLowerCase()) || logoBySymbol.get(token.symbol.toLowerCase());
+}
+
+async function enrichMissingLogos(intelligence: WalletIntelligenceResponse) {
+  const missingAssets = intelligence.portfolio.assets
+    .filter((asset) => !asset.logo && asset.address)
+    .map((asset) => ({
+      asset,
+      chainId: dexScreenerChainId(asset.chain)
+    }))
+    .filter((item) => item.chainId)
+    .slice(0, LOGO_LOOKUP_LIMIT);
+
+  if (!missingAssets.length) return intelligence;
+
+  const logoByAddress = new Map<string, string>();
+  const logoBySymbol = new Map<string, string>();
+
+  await mapWithConcurrency(missingAssets, LOGO_LOOKUP_CONCURRENCY, async ({ asset, chainId }) => {
+    const logo = await fetchTokenLogo(chainId, asset.address) || tokenLogoFallback(asset.symbol, asset.address);
+    if (!logo) return;
+    asset.logo = logo;
+    logoByAddress.set(asset.address.toLowerCase(), logo);
+    logoBySymbol.set(asset.symbol.toLowerCase(), logo);
+  });
+
+  intelligence.portfolio.tradePerformance?.forEach((row) => setTokenLogo(row.token, logoByAddress, logoBySymbol));
+  intelligence.activity.tradedTokens.forEach((token) => setTokenLogo(token, logoByAddress, logoBySymbol));
+  intelligence.activity.activities.forEach((activity) => {
+    setTokenLogo(activity.tokenIn, logoByAddress, logoBySymbol);
+    setTokenLogo(activity.tokenOut, logoByAddress, logoBySymbol);
+    activity.tokens.forEach((token) => setTokenLogo(token, logoByAddress, logoBySymbol));
+  });
+
+  return intelligence;
 }
 
 function mergeTransactionPages(parts: ZerionPart[]): ZerionPart {
@@ -296,12 +495,13 @@ export class WalletPortfolioService {
     if (!force && existing) return existing;
 
     const request = loadRawIntelligence(address, chain, period, force, apiKey)
-      .then((raw) => {
+      .then(async (raw) => {
         const normalized = normalizeZerionIntelligence(raw);
+        const enriched = await enrichMissingLogos(normalized);
         if (!hasThrottle(raw)) {
-          cache.set(key, normalized, WALLET_CACHE_TTL_MS, normalized.portfolio.generatedAt);
+          cache.set(key, enriched, WALLET_CACHE_TTL_MS, enriched.portfolio.generatedAt);
         }
-        return normalized;
+        return enriched;
       })
       .finally(() => pending.delete(key));
 

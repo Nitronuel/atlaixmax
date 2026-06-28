@@ -143,6 +143,10 @@ function related(resource: unknown, name: string, map: Map<string, AnyRecord>) {
   return map.get(`${type}:${id}`) || map.get(id) || null;
 }
 
+function relationshipData(resource: unknown, name: string) {
+  return record(record(record(resource).relationships)[name]).data;
+}
+
 function deepGet(value: unknown, path: string[]) {
   return path.reduce<unknown>((current, key) => record(current)[key], value);
 }
@@ -841,7 +845,7 @@ function normalizePositions(raw: unknown, pnlByToken: Map<string, WalletTradePer
   return dataArray(raw).map((position): WalletAsset => {
     const row = attrs(position);
     const chain = related(position, 'chain', included);
-    const chainId = firstString(record(chain).id, row.chain_id, row.chain);
+    const chainId = firstString(record(chain).id, record(relationshipData(position, 'chain')).id, row.chain_id, row.chain);
     const fungible = related(position, 'fungible', included) || record(row.fungible_info) || record(row.fungible);
     const fungibleAttrs = attrs(fungible);
     const symbol = firstString(fungibleAttrs.symbol, row.symbol, 'TOKEN');
