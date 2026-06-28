@@ -84,6 +84,7 @@ interface AlertTableRow {
     lastTriggeredAt: string | null;
     triggerCount: number;
     observedValue: string | null;
+    lastError: string | null;
     rule: SmartAlertRule | null;
     trigger: SmartAlertTrigger | null;
 }
@@ -492,24 +493,32 @@ export const SmartAlerts: React.FC = () => {
         };
     }, []);
 
-    useEffect(() => {
+    const refreshTelegramStatus = useCallback(async () => {
         if (!user) {
             setTelegramConnected(false);
-            return;
+            return false;
         }
 
+        try {
+            const status = await TelegramService.getStatus();
+            setTelegramConnected(status.connected);
+            return status.connected;
+        } catch {
+            setTelegramConnected(false);
+            return false;
+        }
+    }, [user]);
+
+    useEffect(() => {
         let cancelled = false;
-        TelegramService.getStatus()
-            .then((status) => {
-                if (!cancelled) setTelegramConnected(status.connected);
-            })
-            .catch(() => {
-                if (!cancelled) setTelegramConnected(false);
-            });
+        refreshTelegramStatus().then((connected) => {
+            if (cancelled) return;
+            setTelegramConnected(connected);
+        });
         return () => {
             cancelled = true;
         };
-    }, [user]);
+    }, [refreshTelegramStatus]);
 
     const alertRows = useMemo<AlertTableRow[]>(() => {
         const latestTriggerByRule = new Map<string, SmartAlertTrigger>();
@@ -551,6 +560,7 @@ export const SmartAlerts: React.FC = () => {
                 lastTriggeredAt: trigger?.created_at || rule.last_triggered_at,
                 triggerCount: Number(rule.trigger_count || 0),
                 observedValue: trigger?.observed_value || rule.last_observed_value,
+                lastError: rule.last_error,
                 rule,
                 trigger
             };
@@ -576,6 +586,7 @@ export const SmartAlerts: React.FC = () => {
                 lastTriggeredAt: trigger.created_at,
                 triggerCount: 1,
                 observedValue: trigger.observed_value,
+                lastError: null,
                 rule: null,
                 trigger
             }));
@@ -607,7 +618,8 @@ export const SmartAlerts: React.FC = () => {
                 row.type,
                 row.conditionText,
                 row.source,
-                row.observedValue || ''
+                row.observedValue || '',
+                row.lastError || ''
             ].some((value) => value.toLowerCase().includes(query));
         });
     }, [alertRows, alertTableSearch, alertTableTab, alertTypeFilter]);
@@ -619,7 +631,7 @@ export const SmartAlerts: React.FC = () => {
         tokenAddress: token?.address || draft.tokenAddress
     });
 
-    const lookupToken = async (nextAddress?: string): Promise<SmartAlertTokenSnapshot | null> => {
+    const lookupToken = async (nextAddress?: string, nextChain?: string): Promise<SmartAlertTokenSnapshot | null> => {
         const address = (nextAddress ?? tokenQuery).trim();
         if (!address) {
             setTokenLookupError('Enter a token contract address.');
@@ -635,6 +647,8 @@ export const SmartAlerts: React.FC = () => {
         setTokenLookupError(null);
         try {
             const params = new URLSearchParams({ address });
+            const chain = (nextChain || setupDraft.chainId || searchParams.get('chain') || '').trim();
+            if (chain) params.set('chain', chain);
             const response = await fetch(apiUrl(`/api/smart-alerts/token-lookup?${params.toString()}`));
             const payload = await response.json();
             if (!response.ok) throw new Error(payload?.error || 'Token lookup failed.');
@@ -658,7 +672,7 @@ export const SmartAlerts: React.FC = () => {
         linkedTokenProcessedRef.current = linkedTokenAddress;
         setTokenQuery(linkedTokenAddress);
         if (isLikelyTokenOrPairAddress(linkedTokenAddress)) {
-            void lookupToken(linkedTokenAddress);
+            void lookupToken(linkedTokenAddress, searchParams.get('chain') || '');
         } else {
             setSelectedToken(null);
             setTokenLookupError('Use a full token contract address, not a ticker or token name.');
@@ -680,6 +694,7 @@ export const SmartAlerts: React.FC = () => {
         const timer = window.setTimeout(async () => {
             try {
                 const params = new URLSearchParams({ address });
+                if (setupDraft.chainId.trim()) params.set('chain', setupDraft.chainId.trim());
                 const response = await fetch(apiUrl(`/api/smart-alerts/token-lookup?${params.toString()}`));
                 const payload = await response.json();
                 if (!response.ok || !payload?.token) throw new Error(payload?.error || 'Token lookup failed.');
@@ -738,6 +753,7 @@ export const SmartAlerts: React.FC = () => {
     };
 
     const openAlertWizard = () => {
+        void refreshTelegramStatus();
         setWizardOpen(true);
         setWizardStep('token');
         setSetupType(null);
@@ -831,7 +847,7 @@ export const SmartAlerts: React.FC = () => {
 
     const continueFromToken = async () => {
         const address = (setupDraft.tokenAddress || tokenQuery).trim();
-        const token = await lookupToken(address);
+        const token = await lookupToken(address, setupDraft.chainId || searchParams.get('chain') || '');
         if (!token) return;
         setSetupDraft((current) => applySelectedToken({ ...current, tokenAddress: token.address || address }, token));
         setWizardStep('mode');
@@ -903,10 +919,13 @@ export const SmartAlerts: React.FC = () => {
         setLinkedConditions((current) => current.filter((condition) => condition.id !== id));
     };
 
-    const toggleNotificationChannel = (channel: string) => {
+    const toggleNotificationChannel = async (channel: string) => {
         if (channel === 'telegram' && !telegramConnected) {
-            setFormError('Connect Telegram in Settings before using bot alerts.');
-            return;
+            const connected = await refreshTelegramStatus();
+            if (!connected) {
+                setFormError('Connect Telegram in Settings before using bot alerts.');
+                return;
+            }
         }
 
         setSetupDraft((current) => {
@@ -982,9 +1001,7 @@ export const SmartAlerts: React.FC = () => {
         if (!user) return;
 
         try {
-            const response = await fetch(apiUrl('/api/smart-alerts/run'), { method: 'POST' });
-            if (!response.ok) return;
-            let status = await response.json() as BackendStatus;
+            let status = await SmartAlertService.runCheck() as BackendStatus;
 
             for (let attempt = 0; attempt < 8 && status.running; attempt += 1) {
                 await sleep(1_500);
@@ -1262,6 +1279,7 @@ export const SmartAlerts: React.FC = () => {
                                                     <td>
                                                         <strong className="smart-alert-table-condition">{row.conditionText}</strong>
                                                         {row.observedValue && <small>Observed {row.observedValue}</small>}
+                                                        {row.lastError && <small className="smart-alert-table-error">{row.lastError}</small>}
                                                     </td>
                                                     <td>
                                                         <div className="smart-alert-table-alert">
@@ -1519,7 +1537,7 @@ export const SmartAlerts: React.FC = () => {
                                             <div className="grid grid-cols-1 gap-2 rounded-xl border border-border bg-main p-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleNotificationChannel('in_app')}
+                                                    onClick={() => void toggleNotificationChannel('in_app')}
                                                     className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-bold transition-colors ${setupDraft.notificationChannels.includes('in_app') ? 'border-primary-green/40 bg-primary-green/10 text-primary-green' : 'border-border bg-card text-text-medium hover:text-text-light'}`}
                                                 >
                                                     <span>In-app history</span>
@@ -1527,7 +1545,7 @@ export const SmartAlerts: React.FC = () => {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleNotificationChannel('telegram')}
+                                                    onClick={() => void toggleNotificationChannel('telegram')}
                                                     className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm font-bold transition-colors ${setupDraft.notificationChannels.includes('telegram') ? 'border-primary-green/40 bg-primary-green/10 text-primary-green' : 'border-border bg-card text-text-medium hover:text-text-light'} ${telegramConnected ? '' : 'opacity-60'}`}
                                                 >
                                                     <span>{telegramConnected ? 'Telegram bot' : 'Telegram bot unavailable'}</span>

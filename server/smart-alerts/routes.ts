@@ -44,6 +44,7 @@ export class SmartAlertRoutes {
     }
 
     if (method === 'POST' && pathname === '/api/smart-alerts/run') {
+      await requireAuthenticatedUser(request);
       sendJson(response, 200, await this.runner.runNow());
       return;
     }

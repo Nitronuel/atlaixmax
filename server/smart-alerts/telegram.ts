@@ -39,6 +39,12 @@ type TelegramUser = {
   first_name?: string;
 };
 
+export type TelegramAlertDeliveryResult = {
+  attempted: boolean;
+  delivered: boolean;
+  reason?: string;
+};
+
 let botUsernameCache: string | null = null;
 
 function hasTelegramChannel(rule: SmartAlertRow | null) {
@@ -353,17 +359,27 @@ async function postTelegramMessage(botToken: string, chatId: string, text: strin
 }
 
 export async function sendTelegramAlert(trigger: SmartAlertTriggerRow, rule: SmartAlertRow | null) {
-  if (!hasTelegramChannel(rule)) return;
+  if (!hasTelegramChannel(rule)) {
+    return { attempted: false, delivered: false, reason: 'Telegram is not selected for this alert.' };
+  }
 
   const botToken = readEnv('TELEGRAM_BOT_TOKEN');
   const connection = rule?.user_id ? await findConnectionByUserId(rule.user_id) : null;
-  const chatId = connection?.telegram_chat_id || readEnv('TELEGRAM_CHAT_ID');
-  if (!botToken || !chatId) {
-    console.warn('[SmartAlerts] Telegram alert skipped because the bot token or chat ID is missing.');
-    return;
+  const chatId = connection?.telegram_chat_id || (rule?.user_id ? '' : readEnv('TELEGRAM_CHAT_ID'));
+  if (!botToken) {
+    return { attempted: true, delivered: false, reason: 'Telegram bot token is not configured.' };
+  }
+  if (!chatId) {
+    return { attempted: true, delivered: false, reason: 'Telegram is selected, but this user has no connected Telegram chat.' };
   }
 
-  await postTelegramMessage(botToken, chatId, formatTelegramMessage(trigger, rule));
+  try {
+    await postTelegramMessage(botToken, chatId, formatTelegramMessage(trigger, rule));
+    return { attempted: true, delivered: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Telegram delivery failed.';
+    return { attempted: true, delivered: false, reason: message };
+  }
 }
 
 export async function sendTelegramText(chatId: string, text: string) {

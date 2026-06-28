@@ -972,7 +972,10 @@ export class DetectionStore {
         const token = Array.isArray(tokenRows) && tokenRows[0] ? tokenFromRow(tokenRows[0]) : null;
         if (!token) return emptyDetail();
 
-        const [latestClassification, events] = await Promise.all([
+        const [snapshotHistory, featureHistory, classificationHistory, latestClassification, events] = await Promise.all([
+          this.getRecentSnapshots(token.tokenId, 24),
+          this.getRecentFeatures(token.tokenId, 24),
+          this.getRecentClassifications(token.tokenId, 24),
           this.getLatestClassificationSummary(token.tokenId),
           this.listTokenEvents(token.tokenAddress, 100)
         ]);
@@ -980,12 +983,12 @@ export class DetectionStore {
         return {
           generatedAt: new Date().toISOString(),
           token,
-          latestSnapshot: null,
-          latestFeatures: null,
+          latestSnapshot: snapshotHistory[0] || null,
+          latestFeatures: featureHistory[0] || null,
           latestClassification,
           events: events.filter((event) => event.token.address.toLowerCase() === normalizedAddress || event.token.pairAddress.toLowerCase() === normalizedPair),
-          snapshotHistory: [],
-          classificationHistory: []
+          snapshotHistory,
+          classificationHistory
         };
       } catch {
         this.useLocalOnly = true;
@@ -1001,16 +1004,19 @@ export class DetectionStore {
     }) || null;
     if (!token) return emptyDetail();
 
-    const latestClassification = state.classifications[token.tokenId]?.at(-1) || null;
+    const snapshotHistory = (state.snapshots[token.tokenId] || []).slice(-24).reverse();
+    const featureHistory = (state.features[token.tokenId] || []).slice(-24).reverse();
+    const classificationHistory = (state.classifications[token.tokenId] || []).slice(-24).reverse();
+    const latestClassification = classificationHistory[0] || null;
     return {
       generatedAt: new Date().toISOString(),
       token,
-      latestSnapshot: null,
-      latestFeatures: null,
+      latestSnapshot: snapshotHistory[0] || null,
+      latestFeatures: featureHistory[0] || null,
       latestClassification,
       events: state.events.filter((event) => event.token.address.toLowerCase() === normalizedAddress).slice(0, 100),
-      snapshotHistory: [],
-      classificationHistory: []
+      snapshotHistory,
+      classificationHistory
     };
   }
 

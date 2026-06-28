@@ -236,14 +236,28 @@ export type CreateRuleInput = {
 
 export class SmartAlertStore {
   private useLocalOnly = false;
+  private telegramDeliveryErrors = new Map<string, string>();
 
   private async deliverTrigger(row: SmartAlertTriggerRow) {
     if (!row.alert_rule_id) return;
+    if (row.metadata?.eventType === 'partial_met') return;
     try {
       const rule = (await this.listRules(row.user_id)).find((item) => item.id === row.alert_rule_id) || null;
-      await sendTelegramAlert(row, rule);
+      const result = await sendTelegramAlert(row, rule);
+      if (!result.attempted) return;
+      if (result.delivered) {
+        this.telegramDeliveryErrors.delete(row.alert_rule_id);
+        return;
+      }
+
+      const reason = result.reason || 'Telegram delivery failed.';
+      this.telegramDeliveryErrors.set(row.alert_rule_id, reason);
+      await this.updateRule(row.alert_rule_id, { last_error: reason }, row.user_id);
     } catch (error) {
       console.warn('[SmartAlerts] Telegram delivery failed.', error);
+      const reason = error instanceof Error ? error.message : 'Telegram delivery failed.';
+      this.telegramDeliveryErrors.set(row.alert_rule_id, reason);
+      await this.updateRule(row.alert_rule_id, { last_error: reason }, row.user_id).catch(() => undefined);
     }
   }
 
@@ -314,6 +328,7 @@ export class SmartAlertStore {
     const condition = input.condition === 'severity_is' ? 'severity_is' : 'event_is';
     const thresholdKind = condition === 'severity_is' ? 'severity' : 'event';
     const threshold = input.threshold?.trim() || (condition === 'severity_is' ? 'Any severity' : 'Any detection event');
+    const tokenLabel = input.tokenSymbol || input.tokenName || (tokenAddress ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-6)}` : 'all tokens');
     const existing = scope === 'token' && tokenAddress
       ? await this.getDetectionSubscription(input.userId, chainId, tokenAddress, condition, threshold)
       : (await this.listRules(input.userId)).find((rule) => (
@@ -324,9 +339,32 @@ export class SmartAlertStore {
         rule.condition === condition &&
         String(rule.threshold || '').toLowerCase() === threshold.toLowerCase()
       )) || null;
-    if (existing) return existing;
+    if (existing) {
+      const notificationChannels = input.notificationChannels?.length ? input.notificationChannels : existing.notification_channels;
+      return this.updateRule(existing.id, {
+        notification_channels: notificationChannels,
+        last_error: null,
+        metadata: {
+          ...existing.metadata,
+          alertMode: 'detection_event',
+          detectionScope: scope,
+          createdFrom: input.source === 'smart_alerts_page' ? 'smart_alerts_page' : existing.metadata?.createdFrom || 'detection_page',
+          detectionFilter: {
+            condition,
+            thresholdKind,
+            threshold
+          },
+          status: 'active',
+          token: scope === 'token' ? {
+            address: tokenAddress,
+            chainId,
+            name: input.tokenName || tokenLabel,
+            symbol: input.tokenSymbol || tokenLabel
+          } : null
+        }
+      }, input.userId);
+    }
 
-    const tokenLabel = input.tokenSymbol || input.tokenName || (tokenAddress ? `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-6)}` : 'all tokens');
     return this.createRule({
       alertType: 'Detection',
       target: scope === 'all' ? 'All Detection Engine events' : tokenLabel,
@@ -459,7 +497,12 @@ export class SmartAlertStore {
   }
 
   async updateRule(id: string, patch: Partial<SmartAlertRow>, userId?: string) {
-    const nextPatch = { ...patch, updated_at: new Date().toISOString() };
+    const deliveryError = this.telegramDeliveryErrors.get(id);
+    const nextPatch = {
+      ...patch,
+      ...(deliveryError && (patch.last_error === null || patch.last_error === undefined) ? { last_error: deliveryError } : {}),
+      updated_at: new Date().toISOString()
+    };
     if (!this.useLocalOnly) {
       try {
         const filters = new URLSearchParams({

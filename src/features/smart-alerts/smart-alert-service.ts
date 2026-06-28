@@ -81,6 +81,17 @@ export interface WalletActivityAlertInput {
     cooldownMinutes?: number;
 }
 
+export interface SmartAlertBackendStatus {
+    enabled?: boolean;
+    running?: boolean;
+    lastRunStartedAt?: string | null;
+    lastRunCompletedAt?: string | null;
+    lastRunStatus?: string;
+    lastError?: string;
+    rulesChecked?: number;
+    triggersCreated?: number;
+}
+
 export interface SmartAlertRuleInput {
     alertType: SmartAlertType;
     target: string;
@@ -288,5 +299,9 @@ export const SmartAlertService = {
             body: JSON.stringify(input)
         });
         return normalizeRule(payload.rule);
+    },
+
+    runCheck: async (): Promise<SmartAlertBackendStatus> => {
+        return requestJson<SmartAlertBackendStatus>('/api/smart-alerts/run', { method: 'POST' });
     }
 };

@@ -285,6 +285,11 @@ function positionPrice(value: unknown, fungibleAttrs: AnyRecord) {
   );
 }
 
+function isDisplayablePosition(value: unknown) {
+  const flags = record(attrs(value).flags);
+  return flags.is_trash !== true && flags.displayable !== false;
+}
+
 function pnlTotal(row: AnyRecord) {
   return firstNumber(
     row.total_gain,
@@ -842,7 +847,7 @@ function deriveHistoryPerformanceRows(recentFlows: Map<string, RecentTokenFlowSu
 
 function normalizePositions(raw: unknown, pnlByToken: Map<string, WalletTradePerformance>, recentFlows: Map<string, RecentTokenFlowSummary>) {
   const included = includedMap(raw);
-  return dataArray(raw).map((position): WalletAsset => {
+  return dataArray(raw).filter(isDisplayablePosition).map((position): WalletAsset => {
     const row = attrs(position);
     const chain = related(position, 'chain', included);
     const chainId = firstString(record(chain).id, record(relationshipData(position, 'chain')).id, row.chain_id, row.chain);

@@ -177,6 +177,12 @@ function DetectionEventRow({ event }: { event: DetectionEvent }) {
   return (
     <tr className={`detection-event-row sentiment-${event.sentiment}`} onClick={openEvent} onKeyDown={handleKeyDown} tabIndex={0}>
       <td>
+        <div className="detection-event-cell">
+          <strong>{tableCopy.title}</strong>
+          <small>{tableCopy.description}</small>
+        </div>
+      </td>
+      <td>
         <div className="detection-token">
           {event.token.logo ? <img src={event.token.logo} alt="" /> : <span className="detection-token-fallback">{tokenLabel.slice(0, 2).toUpperCase()}</span>}
           <span>
@@ -187,12 +193,6 @@ function DetectionEventRow({ event }: { event: DetectionEvent }) {
       </td>
       <td><span className="detection-chain-pill">{event.token.chain}</span></td>
       <td><span className={`detection-type-pill sentiment-${event.sentiment}`}>{tableCopy.type}</span></td>
-      <td>
-        <div className="detection-event-cell">
-          <strong>{tableCopy.title}</strong>
-          <small>{tableCopy.description}</small>
-        </div>
-      </td>
       <td><time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventAge(event.detectedAt)}</time></td>
       <td>
         <Link className="detection-row-action" to={href} onClick={(event) => event.stopPropagation()} aria-label={`Open ${tokenLabel} detection details`}>
@@ -335,10 +335,10 @@ export function DetectionPage() {
                   <table className="detection-table">
                     <thead>
                       <tr>
+                        <th>Event</th>
                         <th>Token</th>
                         <th>Chain</th>
                         <th>Type</th>
-                        <th>Event</th>
                         <th>Time</th>
                         <th aria-label="Actions" />
                       </tr>

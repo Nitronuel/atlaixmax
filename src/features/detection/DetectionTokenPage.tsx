@@ -19,6 +19,42 @@ function formatUsd(value: unknown) {
   return `$${numberValue.toFixed(0)}`;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function firstNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const numberValue = Number(value);
+    if (Number.isFinite(numberValue)) return numberValue;
+  }
+  return null;
+}
+
+function formatMetricUsd(value: number | null) {
+  return value === null ? 'N/A' : formatUsd(value);
+}
+
+function formatPrice(value: number | null) {
+  if (value === null) return 'N/A';
+  if (value >= 1) return `$${value.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  return `$${value.toLocaleString(undefined, { maximumFractionDigits: 10 })}`;
+}
+
+function formatPercentChange(value: number | null) {
+  if (value === null) return '';
+  const sign = value > 0 ? '+' : '';
+  const digits = Math.abs(value) >= 10 ? 1 : 2;
+  return `${sign}${value.toFixed(digits)}%`;
+}
+
+function changeTone(value: number | null) {
+  if (value === null || value === 0) return 'neutral';
+  return value > 0 ? 'positive' : 'negative';
+}
+
 function formatEventTimestamp(value: number) {
   if (!Number.isFinite(value)) return 'Time unavailable';
   return new Intl.DateTimeFormat(undefined, {
@@ -90,6 +126,45 @@ export function DetectionTokenPage() {
   const fallbackAssessment = detectionEventAssessmentForLabel(assessmentEvent, tokenName, `${tokenName}'s latest scan did not produce a clean directional event.`);
   const assessmentBadge = aiAssessment?.context?.relationship ? relationshipLabel(aiAssessment.context.relationship) : assessmentEvent;
   const structuredAssessment = aiAssessment?.assessment;
+  const latestSnapshot = asRecord(detail?.latestSnapshot);
+  const latestFeatures = asRecord(detail?.latestFeatures);
+  const latestEvent = detail?.events[0] || null;
+  const eventReadCount = aiAssessment?.events?.length || Math.min(detail?.events.length || 0, 5);
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const events24h = detail?.events.filter((event) => Number(event.detectedAt) >= dayAgo).length || 0;
+  const headerSentiment = aiAssessment?.context?.bias && aiAssessment.context.bias !== 'mixed'
+    ? aiAssessment.context.bias
+    : latestEvent?.sentiment || 'neutral';
+  const marketBias = structuredAssessment?.marketBias || aiAssessment?.context?.marketBias || (latestEvent ? `${humanizeLabel(latestEvent.sentiment)} Bias` : '');
+  const priceChange24h = firstNumber(latestSnapshot.priceChange24h, latestEvent?.metrics.priceChange24h);
+  const marketStats = [
+    {
+      label: 'Price (24h)',
+      value: formatPrice(firstNumber(latestSnapshot.priceUsd)),
+      change: priceChange24h
+    },
+    {
+      label: 'Market Cap',
+      value: formatMetricUsd(firstNumber(latestSnapshot.marketCap, latestEvent?.metrics.marketCap)),
+      change: null
+    },
+    {
+      label: 'Liquidity',
+      value: formatMetricUsd(firstNumber(latestSnapshot.liquidityUsd, latestEvent?.metrics.liquidity)),
+      change: firstNumber(latestFeatures.liquidityChangePercentage)
+    },
+    {
+      label: 'Volume (24h)',
+      value: formatMetricUsd(firstNumber(latestSnapshot.volume24h, latestEvent?.metrics.volume24h)),
+      change: null
+    },
+    {
+      label: '24h Events',
+      value: String(events24h),
+      change: null,
+      action: 'View events'
+    }
+  ];
 
   function copyValue(value?: string | null) {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard) return;
@@ -130,7 +205,24 @@ export function DetectionTokenPage() {
                 {shortAddress(token.tokenAddress)} <Copy size={14} />
               </button>
             </div>
+            <div className="detection-token-badges">
+              {marketBias ? <span className={`detection-token-badge sentiment-${headerSentiment}`}>{marketBias}</span> : null}
+              {eventReadCount ? <span className="detection-token-badge">{eventReadCount}-event read</span> : null}
+            </div>
           </div>
+        </div>
+        <div className="detection-token-market-strip" aria-label="Latest token market snapshot">
+          {marketStats.map((stat) => (
+            <div className="detection-token-stat" key={stat.label}>
+              <span>{stat.label}</span>
+              <strong>{stat.value}</strong>
+              {stat.change !== null ? (
+                <small className={`metric-change-${changeTone(stat.change)}`}>{formatPercentChange(stat.change)}</small>
+              ) : stat.action ? (
+                <a href="#detection-event-history">{stat.action}</a>
+              ) : null}
+            </div>
+          ))}
         </div>
       </header>
 
@@ -201,7 +293,7 @@ export function DetectionTokenPage() {
         </nav>
       </div>
 
-      <section className="detection-detail-panel detection-timeline-panel">
+      <section className="detection-detail-panel detection-timeline-panel" id="detection-event-history">
         <h3>{tokenName} Event History</h3>
         {detail.events.length ? (
           <div className="detection-token-timeline">

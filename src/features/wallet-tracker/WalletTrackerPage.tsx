@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SmartAlertService, type WalletAlertEventType } from '../smart-alerts/smart-alert-service';
 import { SmartMoneyService } from '../smart-money/smart-money-service';
+import { TelegramService } from '../../services/TelegramService';
 import type { SavedWallet, WalletActivity, WalletActivityItem, WalletActivityToken, WalletCategory, WalletChain, WalletPnlSummary, WalletPortfolio, WalletTimeFilter, WalletTradedToken, WalletTradePerformance } from './wallet-types';
 import { useWalletActivity } from './useWalletActivity';
 import { useWalletPortfolio } from './useWalletPortfolio';
@@ -400,7 +401,7 @@ function WalletProfile({ address }: { address: string }) {
   const [walletAlertError, setWalletAlertError] = useState('');
   const [walletAlertEventTypes, setWalletAlertEventTypes] = useState<WalletAlertEventType[]>(['any']);
   const [walletAlertChannels, setWalletAlertChannels] = useState<string[]>(['in_app']);
-  const [walletAlertIgnoreSpam, setWalletAlertIgnoreSpam] = useState(true);
+  const [walletTelegramConnected, setWalletTelegramConnected] = useState(false);
   const portfolioState = useWalletPortfolio(validation.isValid ? address : undefined, chain, timeFilter);
   const incompatibleChain = validation.isValid && !isChainCompatible(chain, validation.type);
 
@@ -440,6 +441,22 @@ function WalletProfile({ address }: { address: string }) {
     setEditing(false);
   }
 
+  async function refreshWalletTelegramStatus() {
+    try {
+      const status = await TelegramService.getStatus();
+      setWalletTelegramConnected(status.connected);
+      return status.connected;
+    } catch {
+      setWalletTelegramConnected(false);
+      return false;
+    }
+  }
+
+  function openWalletAlert() {
+    setWalletAlertOpen(true);
+    void refreshWalletTelegramStatus();
+  }
+
   function toggleWalletAlertEvent(type: WalletAlertEventType) {
     setWalletAlertEventTypes((current) => {
       if (type === 'any') return ['any'];
@@ -452,7 +469,15 @@ function WalletProfile({ address }: { address: string }) {
     setWalletAlertError('');
   }
 
-  function toggleWalletAlertChannel(channel: string) {
+  async function toggleWalletAlertChannel(channel: string) {
+    if (channel === 'telegram' && !walletTelegramConnected) {
+      const connected = await refreshWalletTelegramStatus();
+      if (!connected) {
+        setWalletAlertError('Connect Telegram in Settings before using bot alerts.');
+        return;
+      }
+    }
+
     setWalletAlertChannels((current) => {
       const next = current.includes(channel)
         ? current.filter((item) => item !== channel)
@@ -467,6 +492,10 @@ function WalletProfile({ address }: { address: string }) {
       setWalletAlertError('Choose at least one wallet activity trigger.');
       return;
     }
+    if (walletAlertChannels.includes('telegram') && !await refreshWalletTelegramStatus()) {
+      setWalletAlertError('Connect Telegram in Settings before using bot alerts.');
+      return;
+    }
 
     setWalletAlertSaving(true);
     setWalletAlertError('');
@@ -478,7 +507,7 @@ function WalletProfile({ address }: { address: string }) {
         label: savedWallet?.name || name || walletNameFor(address),
         eventTypes: walletAlertEventTypes,
         notificationChannels: walletAlertChannels,
-        ignoreSpam: walletAlertIgnoreSpam,
+        ignoreSpam: true,
         cooldownMinutes: 0
       });
       setWalletAlertOpen(false);
@@ -576,7 +605,7 @@ function WalletProfile({ address }: { address: string }) {
               </div>
               <div className="wallet-result-actions">
                 <button className="quiet-button" type="button" onClick={() => setEditing(true)}>Edit Profile</button>
-                <button className="primary-action" type="button" onClick={() => setWalletAlertOpen(true)}>Add Alert</button>
+                <button className="primary-action" type="button" onClick={openWalletAlert}>Add Alert</button>
                 {savedWallet ? (
                   <button className="quiet-button danger icon-only" type="button" onClick={() => {
                     WalletStorage.delete(address);
@@ -616,7 +645,7 @@ function WalletProfile({ address }: { address: string }) {
         chain={chain}
         eventTypes={walletAlertEventTypes}
         channels={walletAlertChannels}
-        ignoreSpam={walletAlertIgnoreSpam}
+        telegramConnected={walletTelegramConnected}
         saving={walletAlertSaving}
         error={walletAlertError}
         onClose={() => {
@@ -625,7 +654,6 @@ function WalletProfile({ address }: { address: string }) {
         }}
         onToggleEvent={toggleWalletAlertEvent}
         onToggleChannel={toggleWalletAlertChannel}
-        onIgnoreSpamChange={setWalletAlertIgnoreSpam}
         onSubmit={createWalletAlert}
       />
     </div>
@@ -677,13 +705,12 @@ function WalletAlertModal({
   chain,
   eventTypes,
   channels,
-  ignoreSpam,
+  telegramConnected,
   saving,
   error,
   onClose,
   onToggleEvent,
   onToggleChannel,
-  onIgnoreSpamChange,
   onSubmit
 }: {
   open: boolean;
@@ -692,13 +719,12 @@ function WalletAlertModal({
   chain: WalletChain;
   eventTypes: WalletAlertEventType[];
   channels: string[];
-  ignoreSpam: boolean;
+  telegramConnected: boolean;
   saving: boolean;
   error: string;
   onClose: () => void;
   onToggleEvent: (eventType: WalletAlertEventType) => void;
-  onToggleChannel: (channel: string) => void;
-  onIgnoreSpamChange: (value: boolean) => void;
+  onToggleChannel: (channel: string) => void | Promise<void>;
   onSubmit: () => void;
 }) {
   if (!open) return null;
@@ -745,17 +771,12 @@ function WalletAlertModal({
               In-app
               {channels.includes('in_app') ? <Check size={14} /> : null}
             </button>
-            <button type="button" className={channels.includes('telegram') ? 'selected' : ''} onClick={() => onToggleChannel('telegram')}>
-              Telegram
+            <button type="button" className={`${channels.includes('telegram') ? 'selected' : ''} ${telegramConnected ? '' : 'muted'}`} onClick={() => void onToggleChannel('telegram')}>
+              {telegramConnected ? 'Telegram' : 'Telegram unavailable'}
               {channels.includes('telegram') ? <Check size={14} /> : null}
             </button>
           </div>
         </div>
-
-        <label className="wallet-alert-toggle">
-          <input type="checkbox" checked={ignoreSpam} onChange={(event) => onIgnoreSpamChange(event.target.checked)} />
-          <span>Ignore Zerion spam and trash transactions</span>
-        </label>
 
         {error ? <p className="form-error">{error}</p> : null}
 
@@ -1075,8 +1096,12 @@ function TradePerformancePanel({ activity, tradePerformance, walletPnl, assets }
               <span>{row.status}</span>
             ) : (
               <>
-                <span className={(row.totalPnl ?? row.realizedPnl ?? 0) > 0 ? 'positive' : (row.totalPnl ?? row.realizedPnl ?? 0) < 0 ? 'negative' : ''}>Total {formatPerformanceUsd(row.totalPnl ?? row.realizedPnl)}</span>
-                <span className={row.returnPct && row.returnPct > 0 ? 'positive' : row.returnPct && row.returnPct < 0 ? 'negative' : ''}>({formatPerformanceReturn(row.returnPct)})</span>
+                <span className="wallet-performance-metric-line">
+                  <span className={(row.totalPnl ?? row.realizedPnl ?? 0) > 0 ? 'positive' : (row.totalPnl ?? row.realizedPnl ?? 0) < 0 ? 'negative' : ''}>{formatPerformanceUsd(row.totalPnl ?? row.realizedPnl)}</span>
+                  {row.returnPct !== undefined ? (
+                    <span className={row.returnPct > 0 ? 'positive' : row.returnPct < 0 ? 'negative' : ''}>({formatPerformanceReturn(row.returnPct)})</span>
+                  ) : null}
+                </span>
                 {row.realizedPnl !== undefined && row.unrealizedPnl !== undefined ? (
                   <span className="wallet-performance-breakdown">Realized {formatPerformanceUsd(row.realizedPnl)} / Open {formatPerformanceUsd(row.unrealizedPnl)}</span>
                 ) : null}
