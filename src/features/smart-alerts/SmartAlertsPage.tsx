@@ -2,14 +2,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     Activity,
+    ArrowRight,
     Bell,
     CheckCircle2,
     ExternalLink,
     Link2,
     Loader2,
+    Mail,
     Plus,
     Radar,
+    RefreshCw,
     Search,
+    Send,
     ShieldCheck,
     SlidersHorizontal,
     TrendingUp,
@@ -26,7 +30,7 @@ import {
 } from './smart-alert-service';
 import { apiUrl } from '../../config';
 import { useAuth } from '../../contexts/AuthContext';
-import { TelegramService } from '../../services/TelegramService';
+import { TelegramService, type TelegramLink, type TelegramStatus } from '../../services/TelegramService';
 
 interface BasicAlertType {
     id: string;
@@ -417,6 +421,11 @@ export const SmartAlerts: React.FC = () => {
     const [showLinkedTypePicker, setShowLinkedTypePicker] = useState(false);
     const [timeWindowMinutes, setTimeWindowMinutes] = useState(1440);
     const [telegramConnected, setTelegramConnected] = useState(false);
+    const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
+    const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
+    const [telegramLoading, setTelegramLoading] = useState(false);
+    const [notificationSaving, setNotificationSaving] = useState(false);
+    const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
     const [tokenQuery, setTokenQuery] = useState('');
     const [selectedToken, setSelectedToken] = useState<SmartAlertTokenSnapshot | null>(null);
     const [tokenLookupLoading, setTokenLookupLoading] = useState(false);
@@ -496,15 +505,19 @@ export const SmartAlerts: React.FC = () => {
     const refreshTelegramStatus = useCallback(async () => {
         if (!user) {
             setTelegramConnected(false);
+            setTelegramStatus(null);
             return false;
         }
 
         try {
             const status = await TelegramService.getStatus();
             setTelegramConnected(status.connected);
+            setTelegramStatus(status);
+            if (status.connected) setTelegramLink(null);
             return status.connected;
         } catch {
             setTelegramConnected(false);
+            setTelegramStatus(null);
             return false;
         }
     }, [user]);
@@ -623,6 +636,7 @@ export const SmartAlerts: React.FC = () => {
             ].some((value) => value.toLowerCase().includes(query));
         });
     }, [alertRows, alertTableSearch, alertTableTab, alertTypeFilter]);
+    const telegramChannelEnabled = rules.some((rule) => rule.notification_channels.includes('telegram'));
 
     const applySelectedToken = (draft: AlertSetupDraft, token: SmartAlertTokenSnapshot | null = selectedToken) => ({
         ...draft,
@@ -1151,6 +1165,77 @@ export const SmartAlerts: React.FC = () => {
         }
     };
 
+    const handleTelegramConnect = async () => {
+        if (!user) {
+            requireLogin('Sign in to connect Telegram alert delivery.');
+            return;
+        }
+
+        setTelegramLoading(true);
+        setNotificationMessage(null);
+        setError(null);
+        try {
+            const link = await TelegramService.createLink();
+            setTelegramLink(link);
+            window.open(link.url, '_blank', 'noopener,noreferrer');
+            setNotificationMessage('Telegram link opened. Return here after connecting.');
+        } catch (err) {
+            setError(formatSmartAlertError(err, 'Could not create Telegram link.'));
+        } finally {
+            setTelegramLoading(false);
+        }
+    };
+
+    const refreshNotificationSettings = async () => {
+        setTelegramLoading(true);
+        setNotificationMessage(null);
+        setError(null);
+        try {
+            const connected = await refreshTelegramStatus();
+            setNotificationMessage(connected ? 'Telegram connected.' : 'Telegram is not connected yet.');
+        } finally {
+            setTelegramLoading(false);
+        }
+    };
+
+    const handleTelegramChannelToggle = async () => {
+        if (!user) {
+            requireLogin('Sign in to manage alert delivery channels.');
+            return;
+        }
+
+        if (!rules.length) {
+            setNotificationMessage('Create an alert before changing delivery channels.');
+            return;
+        }
+
+        const connected = telegramConnected || await refreshTelegramStatus();
+        if (!connected) {
+            setNotificationMessage('Connect Telegram before turning bot alerts on.');
+            return;
+        }
+
+        setNotificationSaving(true);
+        setNotificationMessage(null);
+        setError(null);
+        try {
+            const enableTelegram = !telegramChannelEnabled;
+            const updatedRules = await Promise.all(rules.map((rule) => {
+                const currentChannels = rule.notification_channels.length ? rule.notification_channels : ['in_app'];
+                const nextChannels = enableTelegram
+                    ? Array.from(new Set([...currentChannels, 'telegram']))
+                    : currentChannels.filter((channel) => channel !== 'telegram');
+                return SmartAlertService.setRuleNotificationChannels(rule.id, nextChannels.length ? nextChannels : ['in_app']);
+            }));
+            setRules(updatedRules);
+            setNotificationMessage(enableTelegram ? 'Telegram alerts turned on.' : 'Telegram alerts turned off.');
+        } catch (err) {
+            setError(formatSmartAlertError(err, 'Could not update Telegram alert delivery.'));
+        } finally {
+            setNotificationSaving(false);
+        }
+    };
+
     const previewTrigger = setupType ? getAlertTrigger(setupType, setupDraft) : '';
     const setupValueOptions = setupType ? valueOptionsFor(setupType.type, setupDraft.thresholdKind) : null;
     const wizardStepIndex = Math.max(0, ALERT_WIZARD_STEPS.findIndex((step) => step.id === wizardStep));
@@ -1190,7 +1275,7 @@ export const SmartAlerts: React.FC = () => {
                 </button>
             </div>
 
-            <div className="flex flex-col gap-6">
+            <div className="smart-alert-workspace-grid">
                 <section className="green-corner-card smart-alert-table-panel">
                     <div className="smart-alert-table-head">
                         <div>
@@ -1324,6 +1409,76 @@ export const SmartAlerts: React.FC = () => {
                         </div>
                     )}
                 </section>
+
+                <aside className="smart-alert-notification-panel" aria-label="Smart Alert notification settings">
+                    <div className="smart-alert-notification-heading">
+                        <small>Notifications</small>
+                        <h3>Alert channels</h3>
+                        <p>Choose where saved Smart Alerts should reach you.</p>
+                    </div>
+
+                    <div className="smart-alert-channel-settings">
+                        <button className="smart-alert-channel-row is-static" type="button">
+                            <span className="smart-alert-channel-icon"><Bell size={16} /></span>
+                            <span>In-app notifications</span>
+                            <strong>On</strong>
+                            <ArrowRight className="smart-alert-channel-arrow" size={15} />
+                        </button>
+                        <button
+                            className="smart-alert-channel-row is-action"
+                            type="button"
+                            onClick={handleTelegramChannelToggle}
+                            disabled={notificationSaving || telegramLoading || loadingAlerts}
+                        >
+                            <span className="smart-alert-channel-icon"><Send size={16} /></span>
+                            <span>Telegram bot</span>
+                            <strong className={telegramChannelEnabled && telegramConnected ? '' : 'is-muted'}>
+                                {notificationSaving ? 'Saving' : telegramChannelEnabled && telegramConnected ? 'On' : 'Off'}
+                            </strong>
+                            <ArrowRight className="smart-alert-channel-arrow" size={15} />
+                        </button>
+                        <button className="smart-alert-channel-row is-disabled" type="button" disabled>
+                            <span className="smart-alert-channel-icon"><Mail size={16} /></span>
+                            <span>Email alerts</span>
+                            <strong>Planned</strong>
+                            <ArrowRight className="smart-alert-channel-arrow" size={15} />
+                        </button>
+                        <button className="smart-alert-channel-row is-disabled" type="button" disabled>
+                            <span className="smart-alert-channel-icon"><Link2 size={16} /></span>
+                            <span>Webhook</span>
+                            <strong>Planned</strong>
+                            <ArrowRight className="smart-alert-channel-arrow" size={15} />
+                        </button>
+                    </div>
+
+                    <div className="smart-alert-notification-account">
+                        <span className="smart-alert-channel-icon"><Send size={17} /></span>
+                        <div>
+                            <strong>{telegramConnected ? (telegramStatus?.telegramUsername || 'Telegram connected') : 'No Telegram account connected'}</strong>
+                            <p>{telegramConnected ? 'Bot delivery can be used for saved alert rules.' : 'Connect Telegram before turning bot delivery on.'}</p>
+                        </div>
+                    </div>
+
+                    <div className="smart-alert-notification-actions">
+                        <button type="button" onClick={handleTelegramConnect} disabled={telegramLoading || !user}>
+                            <Send size={15} />
+                            <span>{telegramLoading ? 'Working...' : telegramConnected ? 'Change account' : 'Connect Telegram'}</span>
+                        </button>
+                        <button type="button" onClick={refreshNotificationSettings} disabled={telegramLoading || !user}>
+                            <RefreshCw size={15} className={telegramLoading ? 'animate-spin' : ''} />
+                            <span>Refresh</span>
+                        </button>
+                    </div>
+
+                    {telegramLink ? (
+                        <a className="smart-alert-telegram-link" href={telegramLink.url} target="_blank" rel="noreferrer">
+                            <ExternalLink size={15} />
+                            <span>Open @{telegramLink.botUsername}</span>
+                        </a>
+                    ) : null}
+
+                    {notificationMessage ? <div className="smart-alert-notification-note">{notificationMessage}</div> : null}
+                </aside>
             </div>
 
             {wizardOpen && (

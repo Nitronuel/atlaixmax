@@ -163,6 +163,8 @@ function DetectionEventRow({ event }: { event: DetectionEvent }) {
   const href = detectionEventHref(event);
   const tableCopy = detectionEventTableCopyForLabel(event.eventType, event.summary);
   const tokenLabel = event.token.ticker || event.token.name || 'Token';
+  const tokenName = event.token.name || tokenLabel;
+  const previewCopy = detectionEventAssessmentForLabel(event.eventType, tokenName, event.summary);
 
   function openEvent() {
     navigate(href);
@@ -180,6 +182,14 @@ function DetectionEventRow({ event }: { event: DetectionEvent }) {
         <div className="detection-event-cell">
           <strong>{tableCopy.title}</strong>
           <small>{tableCopy.description}</small>
+          <div className={`detection-row-preview sentiment-${event.sentiment}`} role="tooltip">
+            <header>
+              <span>{tableCopy.type}</span>
+              <time dateTime={new Date(event.detectedAt).toISOString()}>{formatEventAge(event.detectedAt)}</time>
+            </header>
+            <strong>{tokenName}</strong>
+            <p>{previewCopy}</p>
+          </div>
         </div>
       </td>
       <td>

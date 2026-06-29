@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowUpRight, Bell, Check, CheckCircle, ChevronDown, Clock, ExternalLink, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { SmartAlertService, type WalletAlertEventType } from '../smart-alerts/smart-alert-service';
+import { SmartAlertService, type SmartAlertRule, type WalletAlertEventType } from '../smart-alerts/smart-alert-service';
 import { SmartMoneyService } from '../smart-money/smart-money-service';
 import { TelegramService } from '../../services/TelegramService';
 import type { SavedWallet, WalletActivity, WalletActivityItem, WalletActivityToken, WalletCategory, WalletChain, WalletPnlSummary, WalletPortfolio, WalletTimeFilter, WalletTradedToken, WalletTradePerformance } from './wallet-types';
@@ -107,6 +107,10 @@ function formatActivityTime(timestamp: number) {
 
 function formatExactActivityTime(timestamp: number) {
   return timestamp ? new Date(timestamp).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' }) : 'No timestamp';
+}
+
+function formatWalletTimelineDate(timestamp: number | undefined) {
+  return timestamp ? new Date(timestamp).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A';
 }
 
 function formatActivityUsd(value: number | undefined) {
@@ -402,8 +406,22 @@ function WalletProfile({ address }: { address: string }) {
   const [walletAlertEventTypes, setWalletAlertEventTypes] = useState<WalletAlertEventType[]>(['any']);
   const [walletAlertChannels, setWalletAlertChannels] = useState<string[]>(['in_app']);
   const [walletTelegramConnected, setWalletTelegramConnected] = useState(false);
+  const [walletAlertRules, setWalletAlertRules] = useState<SmartAlertRule[]>([]);
+  const [walletAlertRulesLoading, setWalletAlertRulesLoading] = useState(false);
   const portfolioState = useWalletPortfolio(validation.isValid ? address : undefined, chain, timeFilter);
+  const activityState = useWalletActivity(validation.isValid ? address : undefined, chain, timeFilter, 'all');
   const incompatibleChain = validation.isValid && !isChainCompatible(chain, validation.type);
+  const walletTimeline = useMemo(() => {
+    const activityTimes = activityState.activity.activities.map((item) => item.timestamp).filter(Boolean);
+    const assetTimes = portfolioState.portfolio.assets.map((asset) => asset.buyTime || 0).filter(Boolean);
+    const firstSeenAt = [...activityTimes, ...assetTimes].sort((a, b) => a - b)[0];
+    const lastActiveAt = activityState.activity.summary.lastActiveAt || activityTimes.sort((a, b) => b - a)[0];
+
+    return {
+      firstSeen: formatWalletTimelineDate(firstSeenAt),
+      lastActive: formatWalletTimelineDate(lastActiveAt)
+    };
+  }, [activityState.activity, portfolioState.portfolio.assets]);
 
   useEffect(() => {
     if (!validation.isValid) return;
@@ -434,6 +452,31 @@ function WalletProfile({ address }: { address: string }) {
       SmartMoneyService.promoteWallet(wallet).catch(() => undefined);
     }
   }, [address, portfolioState.loading, portfolioState.stats, validation.isValid]);
+
+  useEffect(() => {
+    if (!validation.isValid) return;
+    let cancelled = false;
+    setWalletAlertRulesLoading(true);
+    SmartAlertService.listRules()
+      .then((rules) => {
+        if (cancelled) return;
+        const normalizedAddress = address.toLowerCase();
+        setWalletAlertRules(rules.filter((rule) => {
+          const walletAddress = rule.metadata.wallet?.address?.toLowerCase();
+          return rule.alert_type === 'Wallet' && walletAddress === normalizedAddress;
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) setWalletAlertRules([]);
+      })
+      .finally(() => {
+        if (!cancelled) setWalletAlertRulesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address, validation.isValid]);
 
   function saveProfile() {
     const next = WalletStorage.save(address, name, categories, chain);
@@ -501,7 +544,7 @@ function WalletProfile({ address }: { address: string }) {
     setWalletAlertError('');
     setWalletAlertMessage('');
     try {
-      await SmartAlertService.createWalletActivityAlert({
+      const rule = await SmartAlertService.createWalletActivityAlert({
         address,
         chain,
         label: savedWallet?.name || name || walletNameFor(address),
@@ -510,6 +553,7 @@ function WalletProfile({ address }: { address: string }) {
         ignoreSpam: true,
         cooldownMinutes: 0
       });
+      setWalletAlertRules((current) => [rule, ...current.filter((item) => item.id !== rule.id)]);
       setWalletAlertOpen(false);
       setWalletAlertMessage('Wallet alert saved. You can manage it from Smart Alerts.');
     } catch (error) {
@@ -563,81 +607,95 @@ function WalletProfile({ address }: { address: string }) {
       {incompatibleChain ? <p className="form-error">This wallet address is not compatible with {chain}.</p> : null}
       {portfolioState.error ? <p className="form-error">{portfolioState.error}</p> : null}
 
-      <WalletPerformanceOverview portfolio={portfolioState.portfolio} loading={portfolioState.loading} />
-
-      <section className="wallet-result-layout">
-        <aside className="wallet-result-card">
-          {editing ? (
-            <div className="wallet-edit-panel">
-              <label>
-                <span>Wallet Name</span>
-                <input className="wallet-name-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Wallet name" />
-              </label>
-              <label>
-                <span>Categories</span>
-                <div className="category-row">
-                  {WALLET_CATEGORIES.map((category) => (
-                    <button
-                      key={category}
-                      type="button"
-                      className={categories.includes(category) ? 'selected' : ''}
-                      onClick={() => setCategories((current) => current.includes(category) ? current.filter((item) => item !== category) : [...current, category])}
-                    >
-                      {category}
-                    </button>
-                  ))}
+      <section className="wallet-detail-grid">
+        <div className="wallet-detail-main">
+          <section className="wallet-result-layout">
+            <aside className="wallet-result-card">
+              {editing ? (
+                <div className="wallet-edit-panel">
+                  <label>
+                    <span>Wallet Name</span>
+                    <input className="wallet-name-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Wallet name" />
+                  </label>
+                  <label>
+                    <span>Categories</span>
+                    <div className="category-row">
+                      {WALLET_CATEGORIES.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          className={categories.includes(category) ? 'selected' : ''}
+                          onClick={() => setCategories((current) => current.includes(category) ? current.filter((item) => item !== category) : [...current, category])}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+                  <div className="wallet-edit-actions">
+                    <button className="primary-action" type="button" onClick={saveProfile}><Check size={17} /> Save Profile</button>
+                    <button className="quiet-button" type="button" onClick={() => setEditing(false)}><X size={17} /> Cancel</button>
+                  </div>
                 </div>
-              </label>
-              <div className="wallet-edit-actions">
-                <button className="primary-action" type="button" onClick={saveProfile}><Check size={17} /> Save Profile</button>
-                <button className="quiet-button" type="button" onClick={() => setEditing(false)}><X size={17} /> Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <h2>{savedWallet?.name || name}</h2>
-              <div className="category-row wallet-result-categories">
-                {categories.length ? categories.map((category) => <span key={category}>{category}</span>) : <span>Uncategorized</span>}
-              </div>
-              <div className="wallet-address-pill">
-                <span>{address}</span>
-                <CheckCircle size={14} />
-              </div>
-              <div className="wallet-result-actions">
-                <button className="quiet-button" type="button" onClick={() => setEditing(true)}>Edit Profile</button>
-                <button className="primary-action" type="button" onClick={openWalletAlert}>Add Alert</button>
-                {savedWallet ? (
-                  <button className="quiet-button danger icon-only" type="button" onClick={() => {
-                    WalletStorage.delete(address);
-                    navigate('/wallet');
-                  }} aria-label="Stop tracking wallet">
-                    <Trash2 size={17} />
-                  </button>
-                ) : null}
-              </div>
-              {walletAlertMessage ? <p className="wallet-alert-note">{walletAlertMessage}</p> : null}
-            </>
-          )}
-          <WalletStatsGrid loading={portfolioState.loading} stats={portfolioState.stats} />
-        </aside>
+              ) : (
+                <>
+                  <h2>{savedWallet?.name || name}</h2>
+                  <div className="category-row wallet-result-categories">
+                    {categories.length ? categories.map((category) => <span key={category}>{category}</span>) : <span>Uncategorized</span>}
+                  </div>
+                  <div className="wallet-address-pill">
+                    <span>{address}</span>
+                    <CheckCircle size={14} />
+                  </div>
+                  <div className="wallet-result-actions">
+                    <button className="quiet-button" type="button" onClick={() => setEditing(true)}>Edit Profile</button>
+                    <button className="primary-action" type="button" onClick={openWalletAlert}>Add Alert</button>
+                    {savedWallet ? (
+                      <button className="quiet-button danger icon-only" type="button" onClick={() => {
+                        WalletStorage.delete(address);
+                        navigate('/wallet');
+                      }} aria-label="Stop tracking wallet">
+                        <Trash2 size={17} />
+                      </button>
+                    ) : null}
+                  </div>
+                  {walletAlertMessage ? <p className="wallet-alert-note">{walletAlertMessage}</p> : null}
+                </>
+              )}
+              <WalletStatsGrid loading={portfolioState.loading} timelineLoading={activityState.loading} stats={portfolioState.stats} timeline={walletTimeline} />
+            </aside>
 
-        <HoldingsTable
+            <HoldingsTable
+              assets={portfolioState.portfolio.assets}
+              loading={portfolioState.loading}
+              message={portfolioState.portfolio.message}
+              timeFilter={timeFilter}
+              onRefresh={portfolioState.refreshPortfolio}
+            />
+          </section>
+
+          <WalletActivityPanel
+            timeFilter={timeFilter}
+            activity={activityState.activity}
+            loading={activityState.loading}
+            error={activityState.error}
+            refreshActivity={activityState.refreshActivity}
+          />
+        </div>
+
+        <WalletInsightRail
+          walletName={savedWallet?.name || name || walletNameFor(address)}
+          categories={categories}
+          stats={portfolioState.stats}
           assets={portfolioState.portfolio.assets}
-          loading={portfolioState.loading}
-          message={portfolioState.portfolio.message}
-          timeFilter={timeFilter}
-          onRefresh={portfolioState.refreshPortfolio}
+          activity={activityState.activity}
+          alertRules={walletAlertRules}
+          loadingAlerts={walletAlertRulesLoading}
+          onCreateMonitor={openWalletAlert}
+          tradePerformance={portfolioState.portfolio.tradePerformance || []}
+          walletPnl={portfolioState.portfolio.pnl}
         />
       </section>
-
-      <WalletActivityPanel
-        address={address}
-        chain={chain}
-        timeFilter={timeFilter}
-        tradePerformance={portfolioState.portfolio.tradePerformance || []}
-        walletPnl={portfolioState.portfolio.pnl}
-        assets={portfolioState.portfolio.assets}
-      />
       <WalletAlertModal
         open={walletAlertOpen}
         walletName={savedWallet?.name || name || walletNameFor(address)}
@@ -792,50 +850,201 @@ function WalletAlertModal({
   );
 }
 
-function WalletStatsGrid({ stats, loading }: { stats: ReturnType<typeof useWalletPortfolio>['stats']; loading: boolean }) {
+function parseSignedMetricValue(value: string | number | undefined) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (!value || value === 'N/A') return 0;
+  const normalized = value.replace(/[$,%\s]/g, '').replace(/,/g, '');
+  return Number(normalized) || 0;
+}
+
+function buildWalletInsight(stats: ReturnType<typeof useWalletPortfolio>['stats'], activity: WalletActivity, categories: WalletCategory[], assets: WalletPortfolio['assets']) {
+  const trades = activity.activities.filter((item) => item.kind === 'buy' || item.kind === 'sell' || item.kind === 'swap').length;
+  const netFlow = activity.summary.netFlowUsd;
+  const activePositions = Number(stats.activePositions) || assets.filter((asset) => asset.rawValue > 1).length;
+  const pnlValue = parseSignedMetricValue(stats.totalPnl);
+  const behaviorType = trades >= 8 ? 'Active Trader' : activePositions >= 4 ? 'Portfolio Builder' : 'Watchlist Wallet';
+  const riskProfile = pnlValue < 0 || categories.includes('Sniper') ? 'Moderate' : activePositions >= 6 ? 'Elevated' : 'Low';
+  const tradingStyle = trades >= 8 ? 'Short to Mid-Term' : activity.summary.lastActiveAt ? 'Selective Rotation' : 'Holding Bias';
+  const preference = categories[0] || (assets.some((asset) => asset.rawValue < 500 && asset.rawValue > 1) ? 'Low Cap' : 'Major Assets');
+  const insight = netFlow > 0
+    ? 'Recent flow leans positive, with incoming value outweighing outgoing activity.'
+    : trades > 0
+      ? 'Recent activity shows active wallet movement across tracked positions.'
+      : 'Activity is light in this view. Monitor future swaps and transfers for a clearer pattern.';
+
+  return { behaviorType, riskProfile, tradingStyle, preference, insight };
+}
+
+function walletMonitorLabel(rule: SmartAlertRule) {
+  const events = rule.metadata.eventTypes || [];
+  if (!events.length || events.includes('any')) return 'Any wallet activity';
+  if (events.includes('trade')) return 'High Value Swaps';
+  if (events.includes('receive')) return 'Large Inflows';
+  if (events.includes('buy')) return 'Buy Activity';
+  if (events.includes('sell')) return 'Sell Activity';
+  return rule.trigger_label || 'Wallet Monitor';
+}
+
+const WALLET_MONITOR_ROWS = [
+  {
+    id: 'large-inflows',
+    label: 'Large Inflows',
+    matches: (rule: SmartAlertRule) => {
+      const events = rule.metadata.eventTypes || [];
+      return events.includes('receive') || walletMonitorLabel(rule).toLowerCase().includes('inflow');
+    }
+  },
+  {
+    id: 'high-value-swaps',
+    label: 'High Value Swaps',
+    matches: (rule: SmartAlertRule) => {
+      const events = rule.metadata.eventTypes || [];
+      return events.includes('trade') || events.includes('buy') || events.includes('sell') || walletMonitorLabel(rule).toLowerCase().includes('swap');
+    }
+  },
+  {
+    id: 'new-token-interactions',
+    label: 'New Token Interactions',
+    matches: (rule: SmartAlertRule) => {
+      const events = rule.metadata.eventTypes || [];
+      return events.includes('approval') || events.includes('execute') || events.includes('any') || walletMonitorLabel(rule).toLowerCase().includes('token');
+    }
+  }
+];
+
+function walletMonitorValue(rules: SmartAlertRule[], loading: boolean) {
+  if (loading) return <Loader2 size={14} className="spin" />;
+  if (!rules.length) return 'N/A';
+  const count = rules.reduce((total, rule) => total + Math.max(1, rule.trigger_count || 0), 0);
+  return `${count} ${count === 1 ? 'alert' : 'alerts'}`;
+}
+
+function WalletInsightRail({
+  walletName,
+  categories,
+  stats,
+  assets,
+  activity,
+  alertRules,
+  loadingAlerts,
+  onCreateMonitor,
+  tradePerformance,
+  walletPnl
+}: {
+  walletName: string;
+  categories: WalletCategory[];
+  stats: ReturnType<typeof useWalletPortfolio>['stats'];
+  assets: WalletPortfolio['assets'];
+  activity: WalletActivity;
+  alertRules: SmartAlertRule[];
+  loadingAlerts: boolean;
+  onCreateMonitor: () => void;
+  tradePerformance: WalletTradePerformance[];
+  walletPnl?: WalletPnlSummary;
+}) {
+  const insight = buildWalletInsight(stats, activity, categories, assets);
+  const activeRules = alertRules.filter((rule) => rule.enabled);
+  const monitorRows = WALLET_MONITOR_ROWS.map((row) => ({
+    ...row,
+    rules: activeRules.filter(row.matches)
+  }));
+
+  return (
+    <aside className="wallet-side-rail">
+      <section className="wallet-ai-insights-panel">
+        <header>
+          <div>
+            <h3>AI Wallet Insights <span>Beta</span></h3>
+            <p>Live read on {walletName}.</p>
+          </div>
+        </header>
+        <dl className="wallet-insight-list">
+          <div><dt>Behavior Type</dt><dd>{insight.behaviorType}</dd></div>
+          <div><dt>Risk Profile</dt><dd className={insight.riskProfile === 'Low' ? 'positive' : 'warning'}>{insight.riskProfile}</dd></div>
+          <div><dt>Trading Style</dt><dd>{insight.tradingStyle}</dd></div>
+          <div><dt>Preference</dt><dd>{insight.preference}</dd></div>
+        </dl>
+        <div className="wallet-insight-note">
+          <span>Insight</span>
+          <p>{insight.insight}</p>
+        </div>
+        <button className="primary-action wallet-ai-cta" type="button">
+          Ask AI about this wallet
+          <ArrowUpRight size={16} />
+        </button>
+      </section>
+
+      <section className="wallet-monitors-panel">
+        <header>
+          <h3>Active Monitors</h3>
+          <Link to="/smart-alerts">Manage</Link>
+        </header>
+        <div className="wallet-monitor-list">
+          {monitorRows.map((row) => (
+            <div key={row.id} className="wallet-monitor-row">
+              <strong>{row.label}</strong>
+              <em>{walletMonitorValue(row.rules, loadingAlerts)}</em>
+            </div>
+          ))}
+        </div>
+        <button className="quiet-button wallet-monitor-create" type="button" onClick={onCreateMonitor}>
+          <Plus size={17} />
+          Create New Monitor
+        </button>
+      </section>
+
+      <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} />
+    </aside>
+  );
+}
+
+function WalletStatsGrid({
+  stats,
+  loading,
+  timeline,
+  timelineLoading
+}: {
+  stats: ReturnType<typeof useWalletPortfolio>['stats'];
+  loading: boolean;
+  timeline: { firstSeen: string; lastActive: string };
+  timelineLoading: boolean;
+}) {
   const items = [
-    ['Net Worth', stats.netWorth],
-    ['Win Rate', stats.winRate],
-    ['Total PnL', stats.totalPnl],
-    ['Realized PnL', stats.realizedPnl],
-    ['Unrealized PnL', stats.unrealizedPnl],
-    ['Active Positions', stats.activePositions],
-    ['Profitable Positions', stats.profitablePositions],
-    ['Avg Hold Time', stats.avgHoldTime]
+    { label: 'Net Worth', value: stats.netWorth },
+    { label: 'Win Rate', value: stats.winRate },
+    { label: 'Total PnL', value: stats.totalPnl },
+    { label: 'Realized PnL', value: stats.realizedPnl },
+    { label: 'Unrealized PnL', value: stats.unrealizedPnl },
+    { label: 'Active Positions', value: stats.activePositions },
+    { label: 'Profitable Positions', value: stats.profitablePositions },
+    { label: 'Avg Hold Time', value: stats.avgHoldTime }
+  ];
+  const timelineItems = [
+    { label: 'First Seen', value: timeline.firstSeen },
+    { label: 'Last Activity', value: timeline.lastActive, active: timeline.lastActive !== 'N/A' }
   ];
 
   return (
     <section className="wallet-stats-grid">
-      {items.map(([label, value]) => (
+      {items.map(({ label, value }) => (
         <div key={label}>
           <span>{label}</span>
           <strong>{loading ? <Loader2 size={18} className="spin" /> : value}</strong>
         </div>
       ))}
-    </section>
-  );
-}
-
-function WalletPerformanceOverview({ portfolio, loading }: { portfolio: WalletPortfolio; loading: boolean }) {
-  const cards = [
-    ['Realized PnL', portfolio.pnl ? formatPerformanceUsd(portfolio.pnl.realizedGain) : 'N/A'],
-    ['Unrealized PnL', portfolio.pnl ? formatPerformanceUsd(portfolio.pnl.unrealizedGain) : 'N/A'],
-    ['Net invested', portfolio.pnl ? formatPerformanceUsd(portfolio.pnl.netInvested) : 'N/A'],
-    ['Fees', portfolio.pnl ? formatPerformanceUsd(-Math.abs(portfolio.pnl.totalFee)) : 'N/A']
-  ];
-
-  return (
-    <section className="wallet-performance-overview">
-      <div className="wallet-performance-summary">
-        {cards.map(([label, value]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong className={String(value).startsWith('+') ? 'positive' : String(value).startsWith('-') ? 'negative' : ''}>
-              {loading ? <Loader2 size={18} className="spin" /> : value}
-            </strong>
-          </div>
-        ))}
-      </div>
+      {timelineItems.map(({ label, value, active }) => (
+        <div key={label}>
+          <span>{label}</span>
+          <strong className="wallet-timeline-value">
+            {timelineLoading ? <Loader2 size={18} className="spin" /> : (
+              <>
+                {value}
+                {active ? <i aria-hidden="true" /> : null}
+              </>
+            )}
+          </strong>
+        </div>
+      ))}
     </section>
   );
 }
@@ -951,18 +1160,20 @@ function HoldingsTable({ assets, loading, message, timeFilter, onRefresh }: {
   );
 }
 
-function WalletActivityPanel({ address, chain, timeFilter, tradePerformance, walletPnl, assets }: { address: string; chain: WalletChain; timeFilter: WalletTimeFilter; tradePerformance: WalletTradePerformance[]; walletPnl?: WalletPnlSummary; assets: WalletPortfolio['assets'] }) {
-  const [requested, setRequested] = useState(true);
-  const { activity, loading, error, refreshActivity } = useWalletActivity(address, chain, timeFilter, 'all', requested);
+function WalletActivityPanel({
+  timeFilter,
+  activity,
+  loading,
+  error,
+  refreshActivity
+}: {
+  timeFilter: WalletTimeFilter;
+  activity: WalletActivity;
+  loading: boolean;
+  error: string | null;
+  refreshActivity: () => void;
+}) {
   const rows = activity.activities;
-
-  function loadActivity() {
-    if (requested) {
-      refreshActivity();
-      return;
-    }
-    setRequested(true);
-  }
 
   return (
     <section className="wallet-activity-shell">
@@ -971,42 +1182,39 @@ function WalletActivityPanel({ address, chain, timeFilter, tradePerformance, wal
           <div>
             <h3>Wallet Activity</h3>
           </div>
-          <button className="icon-button" type="button" onClick={loadActivity} aria-label="Refresh wallet activity">
+          <button className="icon-button" type="button" onClick={refreshActivity} aria-label="Refresh wallet activity">
             {loading ? <Loader2 size={18} className="spin" /> : <RefreshCw size={18} />}
           </button>
         </div>
 
         {error ? <p className="form-error">{error}</p> : null}
 
-        {requested ? (
-          <div className="wallet-activity-table-wrap">
-            {rows.length ? (
-              <table className="wallet-activity-table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Time</th>
-                    <th>Action</th>
-                    <th>Token Flow</th>
-                    <th>Value</th>
-                    <th>Links</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((item) => <ActivityTableRow key={item.id} item={item} />)}
-                </tbody>
-              </table>
-            ) : (
-              <div className="holdings-empty wallet-activity-empty">
-                {loading ? <Loader2 size={22} className="spin" /> : <Wallet size={24} />}
-                <h4>{loading ? 'Loading activity' : 'No activity found'}</h4>
-                <p>{loading ? 'Checking decoded history, swaps, and transfers.' : activity.message || 'No wallet actions matched this filter and time period.'}</p>
-              </div>
-            )}
-          </div>
-        ) : null}
+        <div className="wallet-activity-table-wrap">
+          {rows.length ? (
+            <table className="wallet-activity-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Time</th>
+                  <th>Action</th>
+                  <th>Token Flow</th>
+                  <th>Value</th>
+                  <th>Links</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((item) => <ActivityTableRow key={item.id} item={item} />)}
+              </tbody>
+            </table>
+          ) : (
+            <div className="holdings-empty wallet-activity-empty">
+              {loading ? <Loader2 size={22} className="spin" /> : <Wallet size={24} />}
+              <h4>{loading ? 'Loading activity' : 'No activity found'}</h4>
+              <p>{loading ? 'Checking decoded history, swaps, and transfers.' : activity.message || 'No wallet actions matched this filter and time period.'}</p>
+            </div>
+          )}
+        </div>
       </section>
-      {requested ? <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} /> : null}
     </section>
   );
 }
