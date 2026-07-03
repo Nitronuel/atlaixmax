@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectWalletAddressType, evaluateSmartMoney, getDefaultChain, isChainCompatible, normalizeWalletChain, validateWalletAddress } from './wallet-utils';
+import { buildWalletStats, detectWalletAddressType, evaluateSmartMoney, getDefaultChain, isChainCompatible, normalizeWalletChain, validateWalletAddress } from './wallet-utils';
 
 describe('wallet utilities', () => {
   it('validates EVM and Solana wallet addresses', () => {
@@ -49,5 +49,21 @@ describe('wallet utilities', () => {
     });
 
     expect(result.qualified).toBe(false);
+  });
+
+  it('does not use wallet return as win rate when position wins are unavailable', () => {
+    const stats = buildWalletStats([], '$0.11', {
+      totalGain: -284,
+      totalGainPercent: -4.12,
+      realizedGain: -264,
+      unrealizedGain: -20,
+      netInvested: 6900,
+      totalFee: 0
+    });
+
+    expect(stats.winRate).toBe('0%');
+    expect(stats.totalPnl).toBe('-$284');
+    expect(stats.realizedPnl).toBe('-$264');
+    expect(stats.unrealizedPnl).toBe('-$20');
   });
 });

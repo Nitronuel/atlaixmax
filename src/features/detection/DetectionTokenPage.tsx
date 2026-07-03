@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, ArrowRight, BarChart3, Bell, Compass, Copy, MessageCircle, Scan, ShieldCheck, Star } from 'lucide-react';
+import { Activity, ArrowLeft, BarChart3, Bell, Compass, Copy, Scan, ShieldCheck, Star } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -11,6 +11,8 @@ type LooseClassification = {
   primaryLabel?: string;
   displayLabel?: string;
 };
+
+const GLOBAL_ASSISTANT_OPEN_EVENT = 'atlaix:open-global-assistant';
 
 function formatUsd(value: unknown) {
   const numberValue = Number(value || 0);
@@ -172,12 +174,6 @@ export function DetectionTokenPage() {
       tone: events24h >= 5 ? 'positive' : 'neutral'
     }
   ];
-  const aiAssistantParams = new URLSearchParams({
-    module: 'detection',
-    chain: token?.chain || chain,
-    address: token?.tokenAddress || address,
-    token: tokenName
-  });
   const aiQuestions = [
     `Why is ${tokenSymbol} showing ${assessmentEvent.toLowerCase()}?`,
     `What would invalidate the ${headerSentiment} bias?`
@@ -247,6 +243,12 @@ export function DetectionTokenPage() {
     } finally {
       setWatchlistSaving(false);
     }
+  }
+
+  function openAssistant(prompt?: string) {
+    window.dispatchEvent(new CustomEvent(GLOBAL_ASSISTANT_OPEN_EVENT, {
+      detail: { prompt }
+    }));
   }
 
   if (loading) {
@@ -425,7 +427,19 @@ export function DetectionTokenPage() {
             </div>
           </section>
 
-          <section className="detection-ask-ai-card" aria-label="Ask Atlaix AI about this token">
+          <section
+            className="detection-ask-ai-card"
+            aria-label="Ask Atlaix AI about this token"
+            role="button"
+            tabIndex={0}
+            onClick={() => openAssistant()}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openAssistant();
+              }
+            }}
+          >
             <div className="detection-ask-ai-head">
               <div>
                 <h3>Ask Atlaix AI <small>Beta</small></h3>
@@ -433,17 +447,19 @@ export function DetectionTokenPage() {
               </div>
             </div>
             <div className="detection-ask-ai-prompts">
-              {aiQuestions.map((question) => {
-                const params = new URLSearchParams(aiAssistantParams);
-                params.set('prompt', question);
-                return <Link key={question} to={`/ai-assistant?${params.toString()}`}>{question}</Link>;
-              })}
+              {aiQuestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openAssistant(question);
+                  }}
+                >
+                  {question}
+                </button>
+              ))}
             </div>
-            <Link className="detection-ask-ai-button" to={`/ai-assistant?${aiAssistantParams.toString()}`}>
-              <MessageCircle size={17} />
-              <span>Ask AI about {tokenSymbol}</span>
-              <ArrowRight size={17} />
-            </Link>
           </section>
         </aside>
       </div>

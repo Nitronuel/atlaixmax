@@ -109,11 +109,6 @@ export function evaluateSmartMoney(stats: WalletStats): SmartMoneyQualification 
   });
 }
 
-function formatPercent(value?: number) {
-  if (value === undefined || !Number.isFinite(value)) return 'N/A';
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
-}
-
 function formatCurrency(value?: number) {
   if (value === undefined || !Number.isFinite(value)) return 'N/A';
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
@@ -141,7 +136,7 @@ export function buildWalletStats(assets: WalletAsset[], fallbackNetWorth = '$0.0
   }
 
   return {
-    winRate: pnlAssets.length ? `${Math.round((winners.length / pnlAssets.length) * 100)}%` : pnl?.totalGainPercent !== undefined ? formatPercent(pnl.totalGainPercent) : 'N/A',
+    winRate: pnlAssets.length ? `${Math.round((winners.length / pnlAssets.length) * 100)}%` : '0%',
     totalPnl,
     realizedPnl: pnl ? formatCurrency(pnl.realizedGain) : 'N/A',
     unrealizedPnl: pnl ? formatCurrency(pnl.unrealizedGain) : 'N/A',

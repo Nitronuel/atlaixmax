@@ -951,10 +951,12 @@ function WalletInsightRail({
 
   return (
     <aside className="wallet-side-rail">
+      <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} />
+
       <section className="wallet-ai-insights-panel">
         <header>
           <div>
-            <h3>AI Wallet Insights <span>Beta</span></h3>
+            <h3>Wallet Insight</h3>
             <p>Live read on {walletName}.</p>
           </div>
         </header>
@@ -964,14 +966,6 @@ function WalletInsightRail({
           <div><dt>Trading Style</dt><dd>{insight.tradingStyle}</dd></div>
           <div><dt>Preference</dt><dd>{insight.preference}</dd></div>
         </dl>
-        <div className="wallet-insight-note">
-          <span>Insight</span>
-          <p>{insight.insight}</p>
-        </div>
-        <button className="primary-action wallet-ai-cta" type="button">
-          Ask AI about this wallet
-          <ArrowUpRight size={16} />
-        </button>
       </section>
 
       <section className="wallet-monitors-panel">
@@ -992,8 +986,6 @@ function WalletInsightRail({
           Create New Monitor
         </button>
       </section>
-
-      <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} />
     </aside>
   );
 }
@@ -1009,6 +1001,14 @@ function WalletStatsGrid({
   timeline: { firstSeen: string; lastActive: string };
   timelineLoading: boolean;
 }) {
+  const pnlLabels = new Set(['Total PnL', 'Realized PnL', 'Unrealized PnL']);
+  const metricTone = (label: string, value: string | number) => {
+    if (!pnlLabels.has(label)) return '';
+    const signedValue = parseSignedMetricValue(value);
+    if (signedValue > 0) return 'positive';
+    if (signedValue < 0) return 'negative';
+    return '';
+  };
   const items = [
     { label: 'Net Worth', value: stats.netWorth },
     { label: 'Win Rate', value: stats.winRate },
@@ -1029,7 +1029,7 @@ function WalletStatsGrid({
       {items.map(({ label, value }) => (
         <div key={label}>
           <span>{label}</span>
-          <strong>{loading ? <Loader2 size={18} className="spin" /> : value}</strong>
+          <strong className={loading ? '' : metricTone(label, value)}>{loading ? <Loader2 size={18} className="spin" /> : value}</strong>
         </div>
       ))}
       {timelineItems.map(({ label, value, active }) => (
@@ -1292,17 +1292,16 @@ function TradePerformancePanel({ activity, tradePerformance, walletPnl, assets }
         <span>{rows.length}</span>
       </header>
       {rows.length ? rows.map((row) => (
-        <div className="wallet-performance-card" key={`${row.token.address || row.token.symbol}:${row.status}:${row.realizedPnl || row.totalPnl || ''}`}>
+        <div className="wallet-performance-row" key={`${row.token.address || row.token.symbol}:${row.status}:${row.realizedPnl || row.totalPnl || ''}`}>
           <div className="wallet-performance-main">
             <span className="wallet-performance-token">
               {row.token.logo ? <img src={row.token.logo} alt="" /> : <i>{row.token.symbol.slice(0, 1)}</i>}
               <strong>{row.token.symbol}</strong>
             </span>
+            <span className={`wallet-performance-status ${row.status.toLowerCase().replace(/\s+/g, '-')}`}>{row.status}</span>
           </div>
-          <small className="wallet-performance-metric">
-            {row.realizedPnl === undefined && row.totalPnl === undefined ? (
-              <span>{row.status}</span>
-            ) : (
+          {row.realizedPnl !== undefined || row.totalPnl !== undefined ? (
+            <small className="wallet-performance-metric">
               <>
                 <span className="wallet-performance-metric-line">
                   <span className={(row.totalPnl ?? row.realizedPnl ?? 0) > 0 ? 'positive' : (row.totalPnl ?? row.realizedPnl ?? 0) < 0 ? 'negative' : ''}>{formatPerformanceUsd(row.totalPnl ?? row.realizedPnl)}</span>
@@ -1314,9 +1313,8 @@ function TradePerformancePanel({ activity, tradePerformance, walletPnl, assets }
                   <span className="wallet-performance-breakdown">Realized {formatPerformanceUsd(row.realizedPnl)} / Open {formatPerformanceUsd(row.unrealizedPnl)}</span>
                 ) : null}
               </>
-            )}
-          </small>
-          <span className={`wallet-performance-status ${row.status.toLowerCase().replace(/\s+/g, '-')}`}>{row.status}</span>
+            </small>
+          ) : null}
         </div>
       )) : (
         <div className="wallet-performance-empty">

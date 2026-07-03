@@ -38,6 +38,10 @@ type FloatingMessage = {
     createdAt: number;
 };
 
+type GlobalAssistantOpenDetail = {
+    prompt?: string;
+};
+
 type RouteContext = {
     title: string;
     subtitle: string;
@@ -104,6 +108,7 @@ type DetectionEngineSnapshot = {
 
 const GLOBAL_ASSISTANT_CACHE_KEY = 'atlaix-global-ai-assistant-v2';
 const GLOBAL_ASSISTANT_HANDOFF_KEY = 'atlaix-ai-assistant-handoff-v1';
+const GLOBAL_ASSISTANT_OPEN_EVENT = 'atlaix:open-global-assistant';
 const LIVE_ALPHA_FEED_SNAPSHOT_MAX_AGE_MS = 60 * 1000;
 const DETECTION_ENGINE_SNAPSHOT_MAX_AGE_MS = 2 * 60 * 1000;
 const MARKET_HISTORY_MAX_AGE_MS = 2 * 60 * 1000;
@@ -471,20 +476,22 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
     }
 
     if (routeRoot === 'detection') {
-        const query = getPathPart(pathname, 1) === 'token' ? getPathPart(pathname, 2) : '';
+        const isTokenRoute = getPathPart(pathname, 1) === 'token';
+        const detectionChain = isTokenRoute ? getPathPart(pathname, 2) : chain;
+        const query = isTokenRoute ? getPathPart(pathname, 3) : '';
         return {
             title: 'Detection',
-            subtitle: query ? shortAddress(query) : 'Market events',
+            subtitle: query ? `${shortAddress(query)}${detectionChain ? ` on ${detectionChain}` : ''}` : 'Market events',
             systemContext: query
-                ? `The user is viewing Detection Engine context for token/query: ${query}. Explain admission reasons, event type, severity, score, triggers, risk/counter-signals, and next watch conditions for this token. If they ask "this event" or "why was it detected", use this token/query.`
+                ? `The user is viewing Detection Engine context for token/query: ${query}. Chain: ${detectionChain || 'unknown'}. Explain admission reasons, event type, severity, score, triggers, risk/counter-signals, and next watch conditions for this token. If they ask "this event" or "why was it detected", use this token/query.`
                 : [
                     'The user is on the Detection Engine page.',
                     'They may ask what was detected, which events are high-risk, why a token qualified, what an event type means, which tokens are accumulating/distributing/moving, whether a signal is bullish or risky, what to watch next, or what Smart Alert to create.',
                     'Detection Engine events are attention signals, not buy/sell commands. Explain them with event type, severity, score, market/liquidity/volume context, counter-signals, uncertainty, and next checks.'
-                ].join(' '),
+            ].join(' '),
             subjectKind: query ? 'detection' : undefined,
             subjectAddress: query,
-            subjectChain: chain,
+            subjectChain: detectionChain,
             module: 'detection',
             preferredTools: ['get_detection_filtered', 'explain_detection_admission', 'get_detection_updates', 'get_token_deep_brief', 'get_token_activity', 'run_safe_scan', 'prepare_detection_alert'],
             icon: <Radar size={18} />,
@@ -860,9 +867,28 @@ export const GlobalAiAssistant: React.FC = () => {
         setOpen(true);
     };
 
+    useEffect(() => {
+        const handleOpenAssistant = (event: Event) => {
+            const detail = (event as CustomEvent<GlobalAssistantOpenDetail>).detail;
+            const prompt = typeof detail?.prompt === 'string' ? detail.prompt.trim() : '';
+
+            if (prompt) {
+                void sendMessage(prompt);
+                return;
+            }
+
+            setOpen(true);
+        };
+
+        window.addEventListener(GLOBAL_ASSISTANT_OPEN_EVENT, handleOpenAssistant);
+        return () => window.removeEventListener(GLOBAL_ASSISTANT_OPEN_EVENT, handleOpenAssistant);
+    }, [sendMessage]);
+
     if (location.pathname.startsWith('/ai-assistant')) {
         return null;
     }
+
+    const hideLauncher = location.pathname.startsWith('/detection/token/');
 
     return (
         <div className="global-ai-assistant fixed bottom-5 right-5 z-[70] sm:bottom-6 sm:right-6">
@@ -1008,17 +1034,19 @@ export const GlobalAiAssistant: React.FC = () => {
                 </div>
             )}
 
-            <button
-                type="button"
-                onClick={() => setOpen((current) => !current)}
-                className="group flex h-14 items-center gap-3 rounded-full border border-white/80 bg-primary-green px-4 text-white shadow-[0_18px_44px_rgba(63,163,77,0.34)] transition-transform hover:scale-[1.03] focus:outline-none focus:ring-4 focus:ring-primary-green/20"
-                aria-label={open ? 'Collapse Atlaix AI assistant' : 'Open Atlaix AI assistant'}
-            >
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-white/18">
-                    {open ? <ChevronDown size={19} /> : <MessageSquare size={19} />}
-                </span>
-                <span className="hidden text-sm font-black sm:block">Ask Atlaix AI</span>
-            </button>
+            {!hideLauncher && (
+                <button
+                    type="button"
+                    onClick={() => setOpen((current) => !current)}
+                    className="group flex h-14 items-center gap-3 rounded-full border border-white/80 bg-primary-green px-4 text-white shadow-[0_18px_44px_rgba(63,163,77,0.34)] transition-transform hover:scale-[1.03] focus:outline-none focus:ring-4 focus:ring-primary-green/20"
+                    aria-label={open ? 'Collapse Atlaix AI assistant' : 'Open Atlaix AI assistant'}
+                >
+                    <span className="grid h-8 w-8 place-items-center rounded-full bg-white/18">
+                        {open ? <ChevronDown size={19} /> : <MessageSquare size={19} />}
+                    </span>
+                    <span className="hidden text-sm font-black sm:block">Ask Atlaix AI</span>
+                </button>
+            )}
         </div>
     );
 };

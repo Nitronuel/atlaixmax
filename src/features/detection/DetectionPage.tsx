@@ -1,5 +1,5 @@
-import { Activity, ChevronDown, ChevronRight, Filter, PieChart, RefreshCw, Search, SlidersHorizontal, Target, X } from 'lucide-react';
-import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
+import { ChevronDown, ChevronRight, Filter, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react';
+import type { FormEvent, KeyboardEvent } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { DetectionEvent, DetectionSentiment } from '../../shared/detection';
@@ -136,19 +136,16 @@ function FilterSelect<T extends string>({
 }
 
 function DetectionMetricCard({
-  icon,
   label,
   value,
   detail
 }: {
-  icon: ReactNode;
   label: string;
   value: string;
   detail: string;
 }) {
   return (
     <article className="detection-insight-card">
-      <span className="detection-insight-icon">{icon}</span>
       <div>
         <span>{label}</span>
         <strong>{value}</strong>
@@ -380,19 +377,16 @@ export function DetectionPage() {
 
         <aside className="detection-insights-rail" aria-label="24 hour detection summary">
           <DetectionMetricCard
-            icon={<PieChart size={18} />}
             label="Top event type"
             value={insights.topEventType}
             detail={`${insights.topEventCount} events in 24h`}
           />
           <DetectionMetricCard
-            icon={<Activity size={18} />}
             label="24h events"
             value={String(insights.recentEventCount)}
             detail="Visible activity in this view"
           />
           <DetectionMetricCard
-            icon={<Target size={18} />}
             label="24h tokens detected"
             value={String(insights.recentTokenCount)}
             detail="Unique tokens with events"
