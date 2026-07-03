@@ -74,6 +74,38 @@ function signedClass(value: unknown) {
   return Number(value || 0) >= 0 ? 'positive' : 'negative';
 }
 
+function CoinLogo({ coin }: { coin: CoinGeckoCoin }) {
+  return <span className="overview-token-logo">{coin.image ? <img src={coin.image} alt="" /> : coin.symbol.slice(0, 2)}</span>;
+}
+
+function CoinMoverPanel({ title, coins }: { title: string; coins: CoinGeckoCoin[] }) {
+  return (
+    <section className="overview-mover-panel" aria-label={title}>
+      <header>
+        <h3>{title}</h3>
+        <span>Price</span>
+        <span>Change %</span>
+      </header>
+      <div className="overview-mover-list">
+        {coins.length ? coins.map((coin, index) => (
+          <button type="button" key={coin.id} className="overview-mover-row" onClick={() => openCoin(coin)}>
+            <span className="overview-mover-rank">{index + 1}</span>
+            <CoinLogo coin={coin} />
+            <span className="overview-mover-token">
+              <strong>{coin.symbol}</strong>
+              <small>{coin.name}</small>
+            </span>
+            <span className="overview-mover-price">{formatPrice(coin.priceUsd)}</span>
+            <span className={`overview-mover-change ${signedClass(coin.change24h)}`}>{formatPercentValue(coin.change24h)}</span>
+          </button>
+        )) : (
+          <div className="overview-mover-empty">No matching coins</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function CoinAlphaFeed({
   coins,
   loading,
@@ -107,6 +139,18 @@ export function CoinAlphaFeed({
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
+  const topGainers = useMemo(() => (
+    [...filtered]
+      .filter((coin) => Number.isFinite(Number(coin.change24h)) && Number(coin.change24h) > 0)
+      .sort((left, right) => Number(right.change24h) - Number(left.change24h))
+      .slice(0, 5)
+  ), [filtered]);
+  const topLosers = useMemo(() => (
+    [...filtered]
+      .filter((coin) => Number.isFinite(Number(coin.change24h)) && Number(coin.change24h) < 0)
+      .sort((left, right) => Number(left.change24h) - Number(right.change24h))
+      .slice(0, 5)
+  ), [filtered]);
 
   useEffect(() => setPage(1), [filters, searchQuery, sortConfig]);
   useEffect(() => {
@@ -153,86 +197,93 @@ export function CoinAlphaFeed({
   }
 
   return (
-    <section className="overview-feed" ref={feedRef}>
-      <div className="overview-feed-head" ref={headRef}>
-        <div>
-          <h2>Live Alpha Feed <span>Coins</span></h2>
-          <p>{error && !coins.length ? error : `Showing ${pageRows.length} of ${limited.length} coins`}</p>
-        </div>
-        <div>
-          <button type="button" className="overview-icon-action" onClick={onRefresh} aria-label="Refresh coin feed">
-            <RefreshCw size={16} className={loading ? 'spin' : ''} />
-          </button>
-          <button type="button" className="overview-filter-button" onClick={onFiltersClick}>
-            <SlidersHorizontal size={16} />
-            Filters
-            {activeFilterCount(filters) ? <b>{activeFilterCount(filters)}</b> : null}
-          </button>
-          <small>{lastUpdated ? `Last sync ${lastUpdated.toLocaleTimeString()}` : 'Waiting for sync'}</small>
-        </div>
-      </div>
-
-      <div ref={headerRef} onScroll={() => syncScroll(headerRef.current)} className="overview-column-head">
-        <table style={{ minWidth: tableWidth }}>
-          <ColGroup />
-          <thead><HeaderRow sortConfig={sortConfig} onSort={toggleSort} /></thead>
-        </table>
-      </div>
-
-      <div ref={tableRef} onScroll={() => syncScroll(tableRef.current)} className="overview-table-wrap">
-        {loading && !coins.length ? (
-          <div className="overview-table-state">
-            <RefreshCw size={22} className="spin" />
-            <span>Loading coins</span>
+    <div className="overview-feed-layout">
+      <section className="overview-feed" ref={feedRef}>
+        <div className="overview-feed-head" ref={headRef}>
+          <div>
+            <h2>Live Alpha Feed <span>Coins</span></h2>
+            <p>{error && !coins.length ? error : `Showing ${pageRows.length} of ${limited.length} coins`}</p>
           </div>
-        ) : !pageRows.length ? (
-          <div className="overview-table-state">
-            <span>{error || 'No coins match the current filters.'}</span>
+          <div>
+            <button type="button" className="overview-icon-action" onClick={onRefresh} aria-label="Refresh coin feed">
+              <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            </button>
+            <button type="button" className="overview-filter-button" onClick={onFiltersClick}>
+              <SlidersHorizontal size={16} />
+              Filters
+              {activeFilterCount(filters) ? <b>{activeFilterCount(filters)}</b> : null}
+            </button>
+            <small>{lastUpdated ? `Last sync ${lastUpdated.toLocaleTimeString()}` : 'Waiting for sync'}</small>
           </div>
-        ) : (
+        </div>
+
+        <div ref={headerRef} onScroll={() => syncScroll(headerRef.current)} className="overview-column-head">
           <table style={{ minWidth: tableWidth }}>
             <ColGroup />
-            <tbody>
-              {pageRows.map((coin) => (
-                <tr key={coin.id} onClick={() => openCoin(coin)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openCoin(coin)}>
-                  <td className="chain-col metric-col">#{coin.marketCapRank || 'N/A'}</td>
-                  <td className="token-col">
-                    <span className="overview-token-logo">{coin.image ? <img src={coin.image} alt="" /> : coin.symbol.slice(0, 2)}</span>
-                    <span>
-                      <strong>{coin.symbol}</strong>
-                      <small>{coin.name}</small>
-                    </span>
-                  </td>
-                  <td className="metric-col">{formatPrice(coin.priceUsd)}</td>
-                  <td className={`metric-col ${signedClass(coin.change1h)}`}>{formatPercentValue(coin.change1h)}</td>
-                  <td className={`metric-col ${signedClass(coin.change24h)}`}>{formatPercentValue(coin.change24h)}</td>
-                  <td className={`metric-col ${signedClass(coin.change7d)}`}>{formatPercentValue(coin.change7d)}</td>
-                  <td className={`metric-col ${signedClass(coin.change30d)}`}>{formatPercentValue(coin.change30d)}</td>
-                  <td className="metric-col">{formatUsd(coin.marketCapUsd)}</td>
-                  <td className="metric-col">{formatUsd(coin.volume24hUsd)}</td>
-                  <td className="metric-col">{formatUsd(coin.fdvUsd)}</td>
-                  <td className="metric-col">{formatInteger(coin.circulatingSupply)}</td>
-                  <td><span className="overview-event-pill">{coin.event}</span></td>
-                </tr>
-              ))}
-            </tbody>
+            <thead><HeaderRow sortConfig={sortConfig} onSort={toggleSort} /></thead>
           </table>
-        )}
-      </div>
+        </div>
 
-      <div ref={railRef} onScroll={() => syncScroll(railRef.current)} className="overview-table-rail" aria-label="Horizontal table scroll">
-        <div style={{ width: tableWidth }} />
-      </div>
+        <div ref={tableRef} onScroll={() => syncScroll(tableRef.current)} className="overview-table-wrap">
+          {loading && !coins.length ? (
+            <div className="overview-table-state">
+              <RefreshCw size={22} className="spin" />
+              <span>Loading coins</span>
+            </div>
+          ) : !pageRows.length ? (
+            <div className="overview-table-state">
+              <span>{error || 'No coins match the current filters.'}</span>
+            </div>
+          ) : (
+            <table style={{ minWidth: tableWidth }}>
+              <ColGroup />
+              <tbody>
+                {pageRows.map((coin) => (
+                  <tr key={coin.id} onClick={() => openCoin(coin)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openCoin(coin)}>
+                    <td className="chain-col metric-col">#{coin.marketCapRank || 'N/A'}</td>
+                    <td className="token-col">
+                      <CoinLogo coin={coin} />
+                      <span>
+                        <strong>{coin.symbol}</strong>
+                        <small>{coin.name}</small>
+                      </span>
+                    </td>
+                    <td className="metric-col">{formatPrice(coin.priceUsd)}</td>
+                    <td className={`metric-col ${signedClass(coin.change1h)}`}>{formatPercentValue(coin.change1h)}</td>
+                    <td className={`metric-col ${signedClass(coin.change24h)}`}>{formatPercentValue(coin.change24h)}</td>
+                    <td className={`metric-col ${signedClass(coin.change7d)}`}>{formatPercentValue(coin.change7d)}</td>
+                    <td className={`metric-col ${signedClass(coin.change30d)}`}>{formatPercentValue(coin.change30d)}</td>
+                    <td className="metric-col">{formatUsd(coin.marketCapUsd)}</td>
+                    <td className="metric-col">{formatUsd(coin.volume24hUsd)}</td>
+                    <td className="metric-col">{formatUsd(coin.fdvUsd)}</td>
+                    <td className="metric-col">{formatInteger(coin.circulatingSupply)}</td>
+                    <td><span className="overview-event-pill">{coin.event}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-      <div className="overview-pagination">
-        <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
-          <ChevronLeft size={16} /> Previous
-        </button>
-        <span>Page {page} of {totalPages}</span>
-        <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-          Next <ChevronRight size={16} />
-        </button>
-      </div>
-    </section>
+        <div ref={railRef} onScroll={() => syncScroll(railRef.current)} className="overview-table-rail" aria-label="Horizontal table scroll">
+          <div style={{ width: tableWidth }} />
+        </div>
+
+        <div className="overview-pagination">
+          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+            <ChevronLeft size={16} /> Previous
+          </button>
+          <span>Page {page} of {totalPages}</span>
+          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+            Next <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
+
+      <aside className="overview-movers" aria-label="Coin Live Alpha Feed movers">
+        <CoinMoverPanel title="Top Gainers" coins={topGainers} />
+        <CoinMoverPanel title="Top Losers" coins={topLosers} />
+      </aside>
+    </div>
   );
 }

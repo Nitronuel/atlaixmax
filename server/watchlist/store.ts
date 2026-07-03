@@ -306,6 +306,10 @@ export class WatchlistStore {
 
   async updateAsset(id: string, patch: Partial<WatchlistAssetInput>, userId: string) {
     const normalizedPatch: Record<string, unknown> = {};
+    if (patch.chainId !== undefined) normalizedPatch.chain_id = patch.chainId?.trim().toLowerCase() || null;
+    if (patch.tokenAddress !== undefined) normalizedPatch.token_address = patch.tokenAddress?.trim() || null;
+    if (patch.pairAddress !== undefined) normalizedPatch.pair_address = patch.pairAddress?.trim() || null;
+    if (patch.coinId !== undefined) normalizedPatch.coin_id = patch.coinId?.trim().toLowerCase() || null;
     if (patch.symbol !== undefined) normalizedPatch.symbol = patch.symbol;
     if (patch.name !== undefined) normalizedPatch.name = patch.name;
     if (patch.imageUrl !== undefined) normalizedPatch.image_url = patch.imageUrl;

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { sendJson } from '../http/response';
-import { getOverviewFeed, getOverviewTokenDetails, ingestOverviewTokens, searchOverviewTokens } from './database';
+import { getOverviewFeed, getOverviewTokenDetails, getOverviewTokenTrades, ingestOverviewTokens, searchOverviewTokens } from './database';
 
 export class OverviewRoutes {
   async handle(request: IncomingMessage, response: ServerResponse, requestUrl: URL) {
@@ -42,6 +42,19 @@ export class OverviewRoutes {
         return;
       }
       sendJson(response, 200, await getOverviewTokenDetails(
+        requestUrl.searchParams.get('address') || '',
+        requestUrl.searchParams.get('chain') || '',
+        requestUrl.searchParams.get('pair') || ''
+      ));
+      return;
+    }
+
+    if (requestUrl.pathname === '/api/overview/token/trades') {
+      if (method !== 'GET') {
+        sendJson(response, 405, { error: 'Method not allowed.' });
+        return;
+      }
+      sendJson(response, 200, await getOverviewTokenTrades(
         requestUrl.searchParams.get('address') || '',
         requestUrl.searchParams.get('chain') || '',
         requestUrl.searchParams.get('pair') || ''

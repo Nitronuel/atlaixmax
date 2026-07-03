@@ -98,7 +98,6 @@ const BASIC_ALERT_TYPES: BasicAlertType[] = [
     { id: 'price-move', title: '24h Price Move', desc: 'Token price moves by a selected percentage.', type: 'Price', icon: <Activity size={18} /> },
     { id: 'volume', title: '24h Volume', desc: 'Volume crosses a dollar threshold or changes by a percentage.', type: 'Volume', icon: <Activity size={18} /> },
     { id: 'liquidity', title: 'Liquidity', desc: 'Liquidity crosses a dollar threshold or changes by a percentage.', type: 'Liquidity', icon: <ShieldCheck size={18} /> },
-    { id: 'risk', title: 'Risk Severity', desc: 'A token appears with a selected risk severity.', type: 'Risk', icon: <ShieldCheck size={18} /> },
     { id: 'detection-event', title: 'Detection Event', desc: 'A Detection Engine event arrives for this token.', type: 'Detection', icon: <Radar size={18} /> }
 ];
 

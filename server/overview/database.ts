@@ -62,6 +62,43 @@ type DexPair = {
   info?: { imageUrl?: string };
 };
 
+type GeckoTerminalTrade = {
+  id?: string;
+  attributes?: {
+    tx_hash?: string;
+    tx_from_address?: string;
+    from_token_amount?: string;
+    to_token_amount?: string;
+    price_from_in_usd?: string;
+    price_to_in_usd?: string;
+    block_timestamp?: string;
+    kind?: string;
+    volume_in_usd?: string;
+    from_token_address?: string;
+    to_token_address?: string;
+  };
+};
+
+export type OverviewTokenTrade = {
+  id: string;
+  kind: 'buy' | 'sell';
+  timestamp: string;
+  txHash: string;
+  trader: string;
+  tokenAmount: number | null;
+  quoteAmount: number | null;
+  volumeUsd: number;
+  priceUsd: number | null;
+  explorerUrl: string;
+};
+
+export type OverviewTokenTradesResponse = {
+  generatedAt: string;
+  minVolumeUsd: number;
+  trades: OverviewTokenTrade[];
+  source: 'geckoterminal';
+};
+
 const CACHE_TTL_MS = 60_000;
 const FEED_READ_TIMEOUT_MS = 3_500;
 const STALE_TOKEN_RETENTION_DAYS = 30;
@@ -85,6 +122,8 @@ const NORMAL_DISCOVERY_SEARCHES_PER_SCAN = 100;
 const FORCE_DISCOVERY_SEARCHES_PER_SCAN = 120;
 const DEXSCREENER_SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
 const DEXSCREENER_RATE_LIMIT_COOLDOWN_MS = 45 * 1000;
+const TOKEN_TRADES_CACHE_TTL_MS = 30 * 1000;
+const TOKEN_TRADE_MIN_VOLUME_USD = 1_000;
 
 let feedCache: { expiresAt: number; response: OverviewFeedResponse } | null = null;
 let feedRefreshInFlight: Promise<void> | null = null;
@@ -112,6 +151,8 @@ const dexSearchCache = new Map<string, { expiresAt: number; pairs: DexPair[] }>(
 const dexInflightSearches = new Map<string, Promise<DexPair[]>>();
 const tokenDetailsCache = new Map<string, { expiresAt: number; response: OverviewTokenDetailsResponse }>();
 const tokenDetailsInflight = new Map<string, Promise<OverviewTokenDetailsResponse>>();
+const tokenTradesCache = new Map<string, { expiresAt: number; response: OverviewTokenTradesResponse }>();
+const tokenTradesInflight = new Map<string, Promise<OverviewTokenTradesResponse>>();
 
 export type OverviewIngestionResponse = {
   generatedAt: string;
@@ -294,6 +335,28 @@ function getDexScreenerChainId(chain?: string) {
   if (['arb', 'arbitrum'].includes(normalized)) return 'arbitrum';
   if (['op', 'optimism'].includes(normalized)) return 'optimism';
   return normalized;
+}
+
+function getGeckoTerminalNetwork(chain?: string) {
+  const normalized = getDexScreenerChainId(chain);
+  if (normalized === 'ethereum') return 'eth';
+  if (normalized === 'polygon') return 'polygon_pos';
+  if (normalized === 'avalanche') return 'avax';
+  return normalized;
+}
+
+function getTransactionExplorerUrl(chain: string, txHash: string) {
+  const normalized = getDexScreenerChainId(chain);
+  if (!txHash) return '';
+  if (normalized === 'solana') return `https://solscan.io/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'ethereum') return `https://etherscan.io/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'base') return `https://basescan.org/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'bsc') return `https://bscscan.com/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'polygon') return `https://polygonscan.com/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'arbitrum') return `https://arbiscan.io/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'optimism') return `https://optimistic.etherscan.io/tx/${encodeURIComponent(txHash)}`;
+  if (normalized === 'avalanche') return `https://snowtrace.io/tx/${encodeURIComponent(txHash)}`;
+  return '';
 }
 
 function getPairAddressKey(pair: DexPair) {
@@ -850,6 +913,29 @@ async function fetchDexScreenerTokenPairs(chain: string, address: string): Promi
   }
 }
 
+async function fetchDexScreenerPair(chain: string, pairAddress: string): Promise<DexPair | null> {
+  const chainId = getDexScreenerChainId(chain);
+  if (!chainId || !pairAddress.trim()) return null;
+
+  const endpoint = new URL(`https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chainId)}/${encodeURIComponent(pairAddress.trim())}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const response = await fetch(endpoint, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) return null;
+    const payload = await response.json().catch(() => ({}));
+    return payload?.pair && typeof payload.pair === 'object' ? payload.pair as DexPair : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function pickBestPair(pairs: DexPair[], tokenAddress: string, preferredPairAddress = '') {
   const normalizedToken = tokenAddress.trim().toLowerCase();
   const normalizedPair = preferredPairAddress.trim().toLowerCase();
@@ -866,6 +952,64 @@ function pickBestPair(pairs: DexPair[], tokenAddress: string, preferredPairAddre
   }
 
   return [...candidates].sort((left, right) => Number(right.liquidity?.usd || 0) - Number(left.liquidity?.usd || 0))[0] || null;
+}
+
+function normalizeGeckoTrade(trade: GeckoTerminalTrade, chain: string, baseTokenAddress: string): OverviewTokenTrade | null {
+  const attrs = trade.attributes || {};
+  const txHash = String(attrs.tx_hash || '').trim();
+  const volumeUsd = Number(attrs.volume_in_usd || 0);
+  const kind = String(attrs.kind || '').toLowerCase() === 'sell' ? 'sell' : 'buy';
+  if (!txHash || !Number.isFinite(volumeUsd) || volumeUsd < TOKEN_TRADE_MIN_VOLUME_USD) return null;
+
+  const baseAddress = baseTokenAddress.trim().toLowerCase();
+  const fromAddress = String(attrs.from_token_address || '').trim().toLowerCase();
+  const toAddress = String(attrs.to_token_address || '').trim().toLowerCase();
+  const fromAmount = Number(attrs.from_token_amount || 0);
+  const toAmount = Number(attrs.to_token_amount || 0);
+  const tokenAmount = fromAddress === baseAddress ? fromAmount : toAddress === baseAddress ? toAmount : null;
+  const quoteAmount = fromAddress === baseAddress ? toAmount : toAddress === baseAddress ? fromAmount : null;
+  const priceUsd = fromAddress === baseAddress
+    ? Number(attrs.price_from_in_usd || 0)
+    : toAddress === baseAddress
+      ? Number(attrs.price_to_in_usd || 0)
+      : null;
+
+  return {
+    id: String(trade.id || txHash),
+    kind,
+    timestamp: String(attrs.block_timestamp || ''),
+    txHash,
+    trader: String(attrs.tx_from_address || ''),
+    tokenAmount: tokenAmount !== null && Number.isFinite(tokenAmount) ? tokenAmount : null,
+    quoteAmount: quoteAmount !== null && Number.isFinite(quoteAmount) ? quoteAmount : null,
+    volumeUsd,
+    priceUsd: priceUsd !== null && Number.isFinite(priceUsd) && priceUsd > 0 ? priceUsd : null,
+    explorerUrl: getTransactionExplorerUrl(chain, txHash)
+  };
+}
+
+async function fetchGeckoTerminalTrades(chain: string, pairAddress: string, baseTokenAddress: string): Promise<OverviewTokenTrade[]> {
+  const network = getGeckoTerminalNetwork(chain);
+  if (!network || !pairAddress.trim() || !baseTokenAddress.trim()) return [];
+
+  const endpoint = new URL(`https://api.geckoterminal.com/api/v2/networks/${encodeURIComponent(network)}/pools/${encodeURIComponent(pairAddress.trim())}/trades`);
+  endpoint.searchParams.set('trade_volume_in_usd_greater_than', String(TOKEN_TRADE_MIN_VOLUME_USD));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const response = await fetch(endpoint, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) throw new Error(`GeckoTerminal trades request failed with status ${response.status}.`);
+    const payload = await response.json().catch(() => ({})) as { data?: GeckoTerminalTrade[] };
+    return (Array.isArray(payload.data) ? payload.data : [])
+      .map((trade) => normalizeGeckoTrade(trade, chain, baseTokenAddress))
+      .filter((trade): trade is OverviewTokenTrade => Boolean(trade));
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function mapTokenToFallbackPair(token: OverviewToken): DexPair {
@@ -932,15 +1076,25 @@ export async function getOverviewTokenDetails(address: string, chain: string, pr
     const pair = pickBestPair(pairs, tokenAddress, preferredPairAddress);
     let response: OverviewTokenDetailsResponse;
     if (!pair) {
-      const fallbackToken = await findFallbackTokenDetails(tokenAddress, chainId, preferredPairAddress);
-      if (!fallbackToken) throw new Error('Token details were not found on DexScreener.');
-      const fallbackPair = mapTokenToFallbackPair(fallbackToken);
-      response = {
-        generatedAt: new Date().toISOString(),
-        pair: fallbackPair,
-        pairs: [fallbackPair],
-        poolCount: 1
-      };
+      const pairByAddress = preferredPairAddress ? await fetchDexScreenerPair(chainId, preferredPairAddress) : null;
+      if (pairByAddress) {
+        response = {
+          generatedAt: new Date().toISOString(),
+          pair: pairByAddress,
+          pairs: [pairByAddress],
+          poolCount: 1
+        };
+      } else {
+        const fallbackToken = await findFallbackTokenDetails(tokenAddress, chainId, preferredPairAddress);
+        if (!fallbackToken) throw new Error('Token details were not found on DexScreener.');
+        const fallbackPair = mapTokenToFallbackPair(fallbackToken);
+        response = {
+          generatedAt: new Date().toISOString(),
+          pair: fallbackPair,
+          pairs: [fallbackPair],
+          poolCount: 1
+        };
+      }
     } else {
       response = {
         generatedAt: new Date().toISOString(),
@@ -960,6 +1114,45 @@ export async function getOverviewTokenDetails(address: string, chain: string, pr
   });
 
   tokenDetailsInflight.set(cacheKey, request);
+  return request;
+}
+
+export async function getOverviewTokenTrades(address: string, chain: string, preferredPairAddress = ''): Promise<OverviewTokenTradesResponse> {
+  const tokenAddress = address.trim();
+  const chainId = getDexScreenerChainId(chain);
+  const pairAddress = preferredPairAddress.trim();
+  if (!tokenAddress) throw new Error('Token address is required.');
+  if (!chainId) throw new Error('Token chain is required.');
+  if (!pairAddress) throw new Error('Pair address is required.');
+
+  const cacheKey = `${chainId}:${tokenAddress.toLowerCase()}:${pairAddress.toLowerCase()}:${TOKEN_TRADE_MIN_VOLUME_USD}`;
+  const cached = tokenTradesCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.response;
+
+  const inflight = tokenTradesInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const request = (async () => {
+    const pair = await fetchDexScreenerPair(chainId, pairAddress);
+    const tradeChain = pair?.chainId || chainId;
+    const baseTokenAddress = pair?.baseToken?.address || tokenAddress;
+    const trades = await fetchGeckoTerminalTrades(tradeChain, pairAddress, baseTokenAddress);
+    const response: OverviewTokenTradesResponse = {
+      generatedAt: new Date().toISOString(),
+      minVolumeUsd: TOKEN_TRADE_MIN_VOLUME_USD,
+      trades,
+      source: 'geckoterminal'
+    };
+    tokenTradesCache.set(cacheKey, {
+      expiresAt: Date.now() + TOKEN_TRADES_CACHE_TTL_MS,
+      response
+    });
+    return response;
+  })().finally(() => {
+    tokenTradesInflight.delete(cacheKey);
+  });
+
+  tokenTradesInflight.set(cacheKey, request);
   return request;
 }
 

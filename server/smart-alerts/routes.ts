@@ -5,6 +5,8 @@ import { lookupSmartAlertToken, SmartAlertRunner } from './runner';
 import { SmartAlertStore, type SmartAlertRow, type SmartAlertTriggerRow } from './store';
 import { createWalletActivityAlert, processWalletWebhook } from './wallet-alerts';
 
+const MARKET_RULE_TYPES = new Set<SmartAlertRow['alert_type']>(['Price', 'Volume', 'Liquidity']);
+
 async function readRawJsonBody(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -24,6 +26,14 @@ function isVisibleAlertTrigger(trigger: SmartAlertTriggerRow) {
 
 function isVisibleAlertRule(rule: SmartAlertRow) {
   return rule.alert_type !== 'Detection' || rule.metadata?.alertMode !== 'detection_event' || rule.metadata?.createdFrom === 'smart_alerts_page';
+}
+
+export function unsupportedMarketRuleTypes(body: any) {
+  const types = [body?.alertType];
+  const conditions = Array.isArray(body?.metadata?.conditions) ? body.metadata.conditions : [];
+  conditions.forEach((condition: any) => types.push(condition?.alertType));
+  return Array.from(new Set(types
+    .filter((type): type is SmartAlertRow['alert_type'] => Boolean(type) && !MARKET_RULE_TYPES.has(type))));
 }
 
 export class SmartAlertRoutes {
@@ -83,6 +93,13 @@ export class SmartAlertRoutes {
     if (method === 'POST' && pathname === '/api/smart-alerts/rules') {
       const user = await requireAuthenticatedUser(request);
       const body = await readJsonBody(request);
+      const unsupportedTypes = unsupportedMarketRuleTypes(body);
+      if (unsupportedTypes.length) {
+        sendJson(response, 400, {
+          error: `${unsupportedTypes.join(', ')} Smart Alerts are not supported by the live market runner yet.`
+        });
+        return;
+      }
       const rule = await this.store.createRule(body, user.id);
       sendJson(response, 200, { rule });
       return;

@@ -401,7 +401,6 @@ export class SmartAlertStore {
       rule.enabled &&
       rule.alert_type === 'Detection' &&
       rule.metadata?.alertMode === 'detection_event' &&
-      rule.metadata?.createdFrom === 'smart_alerts_page' &&
       detectionRuleMatchesEvent(rule, event) &&
       (
         rule.metadata?.detectionScope === 'all' ||
@@ -425,7 +424,7 @@ export class SmartAlertStore {
         observed_value: event.severity,
         threshold: rule.threshold,
         source: 'detection-engine',
-        dedupe_key: `detection-event:${event.id}`,
+        dedupe_key: `detection-event:${rule.id}:${event.id}`,
         metadata: {
           eventId: event.id,
           eventType: event.eventType,
@@ -435,7 +434,7 @@ export class SmartAlertStore {
           detectedAt: new Date(event.detectedAt).toISOString(),
           token: event.token,
           metrics: event.metrics,
-          alertSource: 'smart_alerts_page',
+          alertSource: rule.metadata?.createdFrom === 'smart_alerts_page' ? 'smart_alerts_page' : 'detection_page',
           detectionUrl: `/detection/token/${encodeURIComponent(event.token.chain)}/${encodeURIComponent(event.token.address)}`
         },
         created_at: now

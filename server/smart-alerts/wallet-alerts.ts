@@ -275,7 +275,7 @@ export async function createWalletActivityAlert(store: SmartAlertStore, input: C
     threshold: eventTypes.includes('any') ? 'Any wallet activity' : eventTypes.join(','),
     triggerLabel: `${label}: ${eventLabel}`,
     notificationChannels,
-    cooldownMinutes: input.cooldownMinutes ?? 0,
+    cooldownMinutes: input.cooldownMinutes ?? 1,
     metadata
   }, userId);
 

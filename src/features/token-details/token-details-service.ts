@@ -36,6 +36,26 @@ export type TokenDetailsResponse = {
   poolCount: number;
 };
 
+export type TokenTradeHistoryItem = {
+  id: string;
+  kind: 'buy' | 'sell';
+  timestamp: string;
+  txHash: string;
+  trader: string;
+  tokenAmount: number | null;
+  quoteAmount: number | null;
+  volumeUsd: number;
+  priceUsd: number | null;
+  explorerUrl: string;
+};
+
+export type TokenTradesResponse = {
+  generatedAt: string;
+  minVolumeUsd: number;
+  trades: TokenTradeHistoryItem[];
+  source: 'geckoterminal';
+};
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(apiUrl(path));
   const payload = await response.json().catch(() => ({}));
@@ -50,6 +70,11 @@ export const TokenDetailsService = {
     const params = new URLSearchParams({ address, chain });
     if (pair) params.set('pair', pair);
     return fetchJson<TokenDetailsResponse>(`/api/overview/token?${params.toString()}`);
+  },
+
+  getTokenTrades(address: string, chain: string, pair: string) {
+    const params = new URLSearchParams({ address, chain, pair });
+    return fetchJson<TokenTradesResponse>(`/api/overview/token/trades?${params.toString()}`);
   },
 
   getBubblemapsReport(chain: BubblemapsChain, address: string) {

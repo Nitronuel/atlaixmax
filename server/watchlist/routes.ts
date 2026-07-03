@@ -3,6 +3,7 @@ import { requireAuthenticatedUser } from '../auth';
 import { sendJson, sendNotFound } from '../http/response';
 import { SmartAlertStore } from '../smart-alerts/store';
 import { buildWatchlistActivity, buildWatchlistSummary, latestActivityByAsset } from './intelligence';
+import { refreshWatchlistAssetMarketData, refreshWatchlistMarketData } from './market-refresh';
 import { WatchlistStore } from './store';
 
 async function readJsonBody(request: IncomingMessage) {
@@ -24,8 +25,13 @@ export class WatchlistRoutes {
 
   constructor(private readonly smartAlertStore = new SmartAlertStore()) {}
 
-  private async loadActivity(userId: string, limit = 30) {
+  private async loadAssets(userId: string, refreshMarket = false) {
     const assets = await this.store.listAssets(userId);
+    return refreshMarket ? refreshWatchlistMarketData(this.store, assets, userId) : assets;
+  }
+
+  private async loadActivity(userId: string, limit = 30, refreshMarket = false) {
+    const assets = await this.loadAssets(userId, refreshMarket);
     const triggers = await this.smartAlertStore.listTriggers(100, userId).catch(() => []);
     return {
       assets,
@@ -39,7 +45,7 @@ export class WatchlistRoutes {
 
     if (method === 'GET' && pathname === '/api/watchlist/assets') {
       const user = await requireAuthenticatedUser(request);
-      const { assets, activity } = await this.loadActivity(user.id, 50);
+      const { assets, activity } = await this.loadActivity(user.id, 50, true);
       const byAsset = latestActivityByAsset(activity);
       sendJson(response, 200, {
         assets: assets.map((asset) => {
@@ -102,14 +108,15 @@ export class WatchlistRoutes {
         sendJson(response, 404, { error: 'Watchlist asset was not found.' });
         return;
       }
+      const refreshedAsset = await refreshWatchlistAssetMarketData(this.store, asset, user.id, true);
       const latest = latestActivityByAsset(activity).get(asset.id);
       const refreshed = latest
-        ? await this.store.updateAsset(asset.id, {
+        ? await this.store.updateAsset(refreshedAsset.id, {
           state: latest.title,
           lastEventType: latest.title,
           lastEventAt: latest.createdAt
         }, user.id)
-        : asset;
+        : refreshedAsset;
       sendJson(response, 200, { asset: refreshed });
       return;
     }

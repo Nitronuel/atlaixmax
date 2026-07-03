@@ -10,7 +10,7 @@ import { formatPercentValue, formatPrice, formatUsd } from '../overview/overview
 import { formatCompact, formatPercent } from '../safe-scan/format';
 import { supplyPercentField, walletAddress, walletBalance } from '../safe-scan/safe-scan-data';
 import { WatchlistService } from '../watchlist/watchlist-service';
-import { type DexPairDetails, TokenDetailsService } from './token-details-service';
+import { type DexPairDetails, type TokenTradeHistoryItem, TokenDetailsService } from './token-details-service';
 
 function shortAddress(value?: string, head = 8, tail = 6) {
   if (!value) return 'N/A';
@@ -44,6 +44,11 @@ function getDexChartUrl(chain?: string, pairAddress?: string, theme: 'light' | '
   return `https://dexscreener.com/${encodeURIComponent(chain)}/${encodeURIComponent(pairAddress)}?${params.toString()}`;
 }
 
+function getDexPageUrl(chain?: string, pairAddress?: string) {
+  if (!chain || !pairAddress) return '';
+  return `https://dexscreener.com/${encodeURIComponent(chain)}/${encodeURIComponent(pairAddress)}`;
+}
+
 function bestExternalLinks(pair: DexPairDetails) {
   const links = [
     ...(pair.info?.websites || []).map((item) => ({ label: item.label || 'Website', url: item.url || '' })),
@@ -57,11 +62,24 @@ function bestExternalLinks(pair: DexPairDetails) {
   return [...unique.values()].slice(0, 4);
 }
 
-function MetricTile({ label, value, accent }: { label: string; value: string; accent?: 'positive' | 'negative' }) {
+function HeroMarketStat({
+  label,
+  value,
+  valueClass,
+  detail,
+  detailClass
+}: {
+  label: string;
+  value: string;
+  valueClass?: 'positive' | 'negative';
+  detail?: string;
+  detailClass?: 'positive' | 'negative';
+}) {
   return (
-    <div className="token-detail-metric">
+    <div className="token-detail-market-stat">
       <span>{label}</span>
-      <strong className={accent || ''}>{value}</strong>
+      <strong className={valueClass || ''}>{value}</strong>
+      {detail ? <small className={detailClass || ''}>{detail}</small> : null}
     </div>
   );
 }
@@ -117,10 +135,21 @@ function ProjectLinkIcon({ label, url }: { label: string; url: string }) {
   return <Globe size={17} />;
 }
 
-function changeAccent(value: unknown) {
+function changeAccent(value: unknown): 'positive' | 'negative' | undefined {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return undefined;
   return numeric >= 0 ? 'positive' : 'negative';
+}
+
+function formatTradeTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Time unavailable';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
 }
 
 function scannerTopHolders(report: BubblemapsScanReport) {
@@ -154,12 +183,17 @@ export function TokenDetailsPage() {
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
   const [chartLoaded, setChartLoaded] = useState(false);
+  const [chartTimedOut, setChartTimedOut] = useState(false);
   const [chartExpanded, setChartExpanded] = useState(false);
-  const [marketPanelTab, setMarketPanelTab] = useState<'activity' | 'holders'>('holders');
+  const [marketPanelTab, setMarketPanelTab] = useState<'activity' | 'holders'>('activity');
   const [topHolders, setTopHolders] = useState<TokenHolder[]>([]);
   const [holdersLoading, setHoldersLoading] = useState(false);
   const [holdersError, setHoldersError] = useState('');
   const [holdersExpanded, setHoldersExpanded] = useState(false);
+  const [tokenTrades, setTokenTrades] = useState<TokenTradeHistoryItem[]>([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
+  const [tradesError, setTradesError] = useState('');
+  const [tradesRefreshKey, setTradesRefreshKey] = useState(0);
   const [watchlistSaving, setWatchlistSaving] = useState(false);
   const [watchlistMessage, setWatchlistMessage] = useState('');
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(() => (
@@ -202,6 +236,7 @@ export function TokenDetailsPage() {
 
   useEffect(() => {
     setChartLoaded(false);
+    setChartTimedOut(false);
   }, [pair?.pairAddress, chartTheme]);
 
   const token = pair?.baseToken;
@@ -215,14 +250,29 @@ export function TokenDetailsPage() {
   const buyVolume = totalTxns > 0 ? volume24h * (buys24h / totalTxns) : volume24h / 2;
   const sellVolume = Math.max(0, volume24h - buyVolume);
   const netFlow = buyVolume - sellVolume;
-  const change5m = pair?.priceChange?.m5;
-  const change1h = pair?.priceChange?.h1;
-  const change6h = pair?.priceChange?.h6;
   const change24h = pair?.priceChange?.h24;
   const marketCap = Number(pair?.marketCap || pair?.fdv || 0);
+  const heroMarketStats = [
+    { label: 'Price (24h)', value: formatPrice(pair?.priceUsd), detail: formatPercentValue(change24h), detailClass: changeAccent(change24h) },
+    { label: 'Market cap', value: formatUsd(marketCap) },
+    { label: 'Liquidity', value: formatUsd(pair?.liquidity?.usd) },
+    { label: 'Volume 24h', value: formatUsd(volume24h) }
+  ];
   const imageUrl = pair?.info?.imageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(symbol)}&background=0f5132&color=fff`;
   const chartUrl = getDexChartUrl(pair?.chainId, pair?.pairAddress, chartTheme);
   const expandedChartUrl = getDexChartUrl(pair?.chainId, pair?.pairAddress, chartTheme);
+  const dexPageUrl = pair?.url || getDexPageUrl(pair?.chainId, pair?.pairAddress);
+
+  useEffect(() => {
+    if (!chartUrl || chartLoaded) {
+      setChartTimedOut(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setChartTimedOut(true), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [chartLoaded, chartUrl]);
+
   const holderNetwork = normalizeBubblemapsChain(pair?.chainId || chain);
   const externalLinks = useMemo(() => pair ? bestExternalLinks(pair) : [], [pair]);
   const visibleTopHolders = holdersExpanded ? topHolders : topHolders.slice(0, 10);
@@ -288,6 +338,38 @@ export function TokenDetailsPage() {
       cancelled = true;
     };
   }, [holderNetwork, tokenAddress]);
+
+  useEffect(() => {
+    const tradeChain = pair?.chainId || chain;
+    const tradePair = pair?.pairAddress || preferredPair;
+    if (!tradeChain || !tradePair || !tokenAddress || !pair) {
+      setTokenTrades([]);
+      setTradesError('');
+      setTradesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setTradesLoading(true);
+    setTradesError('');
+
+    TokenDetailsService.getTokenTrades(tokenAddress, tradeChain, tradePair)
+      .then((response) => {
+        if (!cancelled) setTokenTrades(response.trades);
+      })
+      .catch((nextError) => {
+        if (cancelled) return;
+        setTokenTrades([]);
+        setTradesError(nextError instanceof Error ? nextError.message : 'Trade history is unavailable.');
+      })
+      .finally(() => {
+        if (!cancelled) setTradesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chain, pair, preferredPair, tokenAddress, tradesRefreshKey]);
 
   function copyAddress() {
     if (!tokenAddress) return;
@@ -364,7 +446,6 @@ export function TokenDetailsPage() {
                 <span>{symbol}</span>
                 <em>{pair?.chainId || chain}</em>
               </div>
-              <p>{pair?.dexId || 'DEX'} liquidity pair</p>
               <button type="button" onClick={copyAddress} className="token-detail-address">
                 <span className="token-detail-address-full">{shortAddress(tokenAddress, 14, 10)}</span>
                 <span className="token-detail-address-compact">{shortAddress(tokenAddress, 7, 5)}</span>
@@ -381,18 +462,17 @@ export function TokenDetailsPage() {
             </div>
           </div>
         </div>
-        <div className="token-detail-hero-market">
-          <div className="token-detail-hero-metrics">
-            <MetricTile label="Price" value={formatPrice(pair?.priceUsd)} />
-            <MetricTile label="Market cap" value={formatUsd(marketCap)} />
-            <MetricTile label="Liquidity" value={formatUsd(pair?.liquidity?.usd)} />
-            <MetricTile label="Volume 24h" value={formatUsd(volume24h)} />
-          </div>
-          <div className="token-change-panel token-change-panel-inline" aria-label="Price change">
-            <MetricTile label="5m" value={formatPercentValue(change5m)} accent={changeAccent(change5m)} />
-            <MetricTile label="1h" value={formatPercentValue(change1h)} accent={changeAccent(change1h)} />
-            <MetricTile label="6h" value={formatPercentValue(change6h)} accent={changeAccent(change6h)} />
-            <MetricTile label="24h" value={formatPercentValue(change24h)} accent={changeAccent(change24h)} />
+        <div className="token-detail-hero-market" aria-label="Token market snapshot">
+          <div className="token-detail-market-strip">
+            {heroMarketStats.map((stat) => (
+              <HeroMarketStat
+                key={stat.label}
+                label={stat.label}
+                value={stat.value}
+                detail={stat.detail}
+                detailClass={stat.detailClass}
+              />
+            ))}
           </div>
         </div>
       </section>
@@ -400,18 +480,26 @@ export function TokenDetailsPage() {
       <section className="token-detail-grid token-chart-layout">
         <div className="token-chart-panel">
           <div className="token-chart-frame">
-            {!chartLoaded && chartUrl ? (
+            {!chartLoaded && chartUrl && !chartTimedOut ? (
               <div className="token-chart-loading">
                 <RefreshCw size={22} className="spin" />
                 <span>Loading chart</span>
               </div>
             ) : null}
-            {chartUrl ? (
+            {chartTimedOut ? (
+              <div className="token-chart-empty token-chart-timeout">
+                <strong>Chart is taking too long to load.</strong>
+                {dexPageUrl ? <a href={dexPageUrl} target="_blank" rel="noreferrer">Open chart on DexScreener</a> : null}
+              </div>
+            ) : chartUrl ? (
               <iframe
                 key={`${chartUrl}-${chartTheme}`}
                 title={`${symbol} chart`}
                 src={chartUrl}
-                onLoad={() => setChartLoaded(true)}
+                onLoad={() => {
+                  setChartLoaded(true);
+                  setChartTimedOut(false);
+                }}
                 allow="clipboard-write"
               />
             ) : (
@@ -482,8 +570,11 @@ export function TokenDetailsPage() {
             </div>
             {marketPanelTab === 'activity' ? (
               <div className="token-table-tools">
-                <button type="button" title="Refresh activity"><RefreshCw size={14} /></button>
-                <span>All Actions</span>
+                <button type="button" title="Refresh activity" onClick={() => setTradesRefreshKey((current) => current + 1)} disabled={tradesLoading}>
+                  <RefreshCw size={14} className={tradesLoading ? 'spin' : ''} />
+                </button>
+                <span>Buys & Sells</span>
+                <span>$1K+</span>
                 <span>24H</span>
               </div>
             ) : null}
@@ -491,8 +582,50 @@ export function TokenDetailsPage() {
           <div className="atlaix-folder-panel">
             <div className="atlaix-folder-accent" />
             {marketPanelTab === 'activity' ? (
-              <div className="token-holder-empty">
-                On-chain activity is not available for this token yet.
+              <div className="token-activity-shell">
+                <div className="token-activity-head">
+                  <span>Type</span>
+                  <span>Time</span>
+                  <span>Wallet</span>
+                  <span>Amount</span>
+                  <span>Value</span>
+                  <span>Price</span>
+                  <span>Tx</span>
+                </div>
+                {tradesLoading ? (
+                  <div className="token-holder-empty">
+                    <RefreshCw size={20} className="spin" />
+                    <span>Loading $1K+ token trades</span>
+                  </div>
+                ) : tradesError ? (
+                  <div className="token-holder-empty">{tradesError}</div>
+                ) : tokenTrades.length ? (
+                  <div className="token-activity-rows">
+                    {tokenTrades.map((trade) => (
+                      <div className={`token-activity-row ${trade.kind}`} key={trade.id}>
+                        <span className="token-activity-kind">{trade.kind}</span>
+                        <span>{formatTradeTime(trade.timestamp)}</span>
+                        <span className="token-activity-wallet">{shortAddress(trade.trader, 7, 5)}</span>
+                        <span>{trade.tokenAmount !== null ? formatCompact(trade.tokenAmount) : 'N/A'} {symbol}</span>
+                        <span>{formatUsd(trade.volumeUsd)}</span>
+                        <span>{trade.priceUsd !== null ? formatPrice(trade.priceUsd) : 'N/A'}</span>
+                        <span>
+                          {trade.explorerUrl ? (
+                            <a className="token-activity-link" href={trade.explorerUrl} target="_blank" rel="noreferrer" aria-label="Open transaction">
+                              <ExternalLink size={15} />
+                            </a>
+                          ) : (
+                            <span className="token-holder-action-empty">N/A</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="token-holder-empty">
+                    No buy or sell transactions above $1K were found in the latest pool trades.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="token-holders-shell">

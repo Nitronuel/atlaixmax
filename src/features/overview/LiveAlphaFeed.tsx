@@ -140,6 +140,10 @@ function signedClass(value: number) {
   return value >= 0 ? 'positive' : 'negative';
 }
 
+function TokenLogo({ token }: { token: OverviewToken }) {
+  return <span className="overview-token-logo">{token.logo ? <img src={token.logo} alt="" /> : token.symbol.slice(0, 2)}</span>;
+}
+
 function normalizeChainKey(chain: string) {
   const normalized = chain.trim().toLowerCase();
   if (['eth', 'ethereum'].includes(normalized)) return 'ethereum';
@@ -181,6 +185,34 @@ function ChainLogo({ chain }: { chain: string }) {
       )}
       {!image && !Icon && !['arbitrum', 'avalanche', 'abstract'].includes(key) && <span>{chain.slice(0, 2).toUpperCase()}</span>}
     </span>
+  );
+}
+
+function AlphaMoverPanel({ title, tokens, tone }: { title: string; tokens: OverviewToken[]; tone: 'positive' | 'negative' }) {
+  return (
+    <section className={`overview-mover-panel is-${tone}`} aria-label={title}>
+      <header>
+        <h3>{title}</h3>
+        <span>Price</span>
+        <span>Change %</span>
+      </header>
+      <div className="overview-mover-list">
+        {tokens.length ? tokens.map((token, index) => (
+          <button type="button" key={token.id} className="overview-mover-row" onClick={() => openToken(token)}>
+            <span className="overview-mover-rank">{index + 1}</span>
+            <TokenLogo token={token} />
+            <span className="overview-mover-token">
+              <strong>{token.symbol}</strong>
+              <small>{token.name}</small>
+            </span>
+            <span className="overview-mover-price">{formatPrice(token.priceUsd)}</span>
+            <span className={`overview-mover-change ${signedClass(Number(token.change24h))}`}>{formatPercentValue(token.change24h)}</span>
+          </button>
+        )) : (
+          <div className="overview-mover-empty">No matching tokens</div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -232,6 +264,18 @@ export function LiveAlphaFeed({
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
   const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlowUsd24h))), [pageRows]);
+  const topGainers = useMemo(() => (
+    [...eventFiltered]
+      .filter((token) => Number.isFinite(Number(token.change24h)) && Number(token.change24h) > 0)
+      .sort((left, right) => Number(right.change24h) - Number(left.change24h))
+      .slice(0, 5)
+  ), [eventFiltered]);
+  const topLosers = useMemo(() => (
+    [...eventFiltered]
+      .filter((token) => Number.isFinite(Number(token.change24h)) && Number(token.change24h) < 0)
+      .sort((left, right) => Number(left.change24h) - Number(right.change24h))
+      .slice(0, 5)
+  ), [eventFiltered]);
   const tableColumns = isMobileTable ? mobileColumns : columns;
   const tableWidth = tableColumns.reduce((sum, column) => sum + column.width, 0);
 
@@ -290,96 +334,103 @@ export function LiveAlphaFeed({
   }
 
   return (
-    <section className="overview-feed" ref={feedRef}>
-      <div className="overview-feed-head" ref={headRef}>
-        <div>
-          <h2>Live Alpha Feed <span>Live</span></h2>
-          <p>{error && !tokens.length ? error : `Showing ${pageRows.length} of ${limited.length} tokens`}</p>
-        </div>
-        <div>
-          <button type="button" className="overview-icon-action" onClick={onRefresh} aria-label="Refresh feed">
-            <RefreshCw size={16} className={loading ? 'spin' : ''} />
-          </button>
-          <button type="button" className="overview-filter-button" onClick={onFiltersClick}>
-            <SlidersHorizontal size={16} />
-            Filters
-            {activeFilterCount(filters) ? <b>{activeFilterCount(filters)}</b> : null}
-          </button>
-          <small>{lastUpdated ? `Last sync ${lastUpdated.toLocaleTimeString()}` : 'Waiting for sync'}</small>
-        </div>
-      </div>
-
-      <div ref={headerRef} onScroll={() => syncScroll(headerRef.current)} className="overview-column-head">
-        <table style={{ minWidth: tableWidth }}>
-          <ColGroup tableColumns={tableColumns} />
-          <thead><HeaderRow tableColumns={tableColumns} sortConfig={sortConfig} onSort={toggleSort} /></thead>
-        </table>
-      </div>
-
-      <div ref={tableRef} onScroll={() => syncScroll(tableRef.current)} className="overview-table-wrap">
-        {loading && !tokens.length ? (
-          <div className="overview-table-state">
-            <RefreshCw size={22} className="spin" />
-            <span>Loading live tokens</span>
+    <div className="overview-feed-layout">
+      <section className="overview-feed" ref={feedRef}>
+        <div className="overview-feed-head" ref={headRef}>
+          <div>
+            <h2>Live Alpha Feed <span>Live</span></h2>
+            <p>{error && !tokens.length ? error : `Showing ${pageRows.length} of ${limited.length} tokens`}</p>
           </div>
-        ) : !pageRows.length ? (
-          <div className="overview-table-state">
-            <span>{error || 'No tokens match the current filters.'}</span>
+          <div>
+            <button type="button" className="overview-icon-action" onClick={onRefresh} aria-label="Refresh feed">
+              <RefreshCw size={16} className={loading ? 'spin' : ''} />
+            </button>
+            <button type="button" className="overview-filter-button" onClick={onFiltersClick}>
+              <SlidersHorizontal size={16} />
+              Filters
+              {activeFilterCount(filters) ? <b>{activeFilterCount(filters)}</b> : null}
+            </button>
+            <small>{lastUpdated ? `Last sync ${lastUpdated.toLocaleTimeString()}` : 'Waiting for sync'}</small>
           </div>
-        ) : (
+        </div>
+
+        <div ref={headerRef} onScroll={() => syncScroll(headerRef.current)} className="overview-column-head">
           <table style={{ minWidth: tableWidth }}>
             <ColGroup tableColumns={tableColumns} />
-            <tbody>
-              {pageRows.map((token) => (
-                <tr key={token.id} onClick={() => openToken(token)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openToken(token)}>
-                  <td className="chain-col">
-                    <ChainLogo chain={token.chain} />
-                  </td>
-                  <td className="token-col">
-                    <span className="overview-token-logo">{token.logo ? <img src={token.logo} alt="" /> : token.symbol.slice(0, 2)}</span>
-                    <span>
-                      <strong>{token.symbol}</strong>
-                      <small>{token.name}</small>
-                    </span>
-                  </td>
-                  <td className="metric-col">{formatPrice(token.priceUsd)}</td>
-                  <td className={`metric-col ${signedClass(Number(token.change24h))}`}>{formatPercentValue(token.change24h)}</td>
-                  <td className="metric-col">{formatUsd(token.marketCapUsd)}</td>
-                  <td className="metric-col">{formatUsd(token.volume24hUsd)}</td>
-                  <td className="metric-col">{formatUsd(token.liquidityUsd)}</td>
-                  <td className="metric-col positive">{formatInteger(token.dexBuys24h)}</td>
-                  <td className="metric-col negative">{formatInteger(token.dexSells24h)}</td>
-                  <td className={`metric-col ${signedClass(token.dexFlowUsd24h)}`}><FlowBar value={token.dexFlowUsd24h} max={maxFlow} /></td>
-                  <td>
-                    {(() => {
-                      const detectionEvent = latestDetectionEventForToken(detectionEventLookup, token);
-                      return (
-                        <span className={['overview-event-pill', !detectionEvent ? 'is-empty' : ''].filter(Boolean).join(' ')}>
-                          {detectionEvent?.eventType || 'None'}
-                        </span>
-                      );
-                    })()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            <thead><HeaderRow tableColumns={tableColumns} sortConfig={sortConfig} onSort={toggleSort} /></thead>
           </table>
-        )}
-      </div>
+        </div>
 
-      <div ref={railRef} onScroll={() => syncScroll(railRef.current)} className="overview-table-rail" aria-label="Horizontal table scroll">
-        <div style={{ width: tableWidth }} />
-      </div>
+        <div ref={tableRef} onScroll={() => syncScroll(tableRef.current)} className="overview-table-wrap">
+          {loading && !tokens.length ? (
+            <div className="overview-table-state">
+              <RefreshCw size={22} className="spin" />
+              <span>Loading live tokens</span>
+            </div>
+          ) : !pageRows.length ? (
+            <div className="overview-table-state">
+              <span>{error || 'No tokens match the current filters.'}</span>
+            </div>
+          ) : (
+            <table style={{ minWidth: tableWidth }}>
+              <ColGroup tableColumns={tableColumns} />
+              <tbody>
+                {pageRows.map((token) => (
+                  <tr key={token.id} onClick={() => openToken(token)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openToken(token)}>
+                    <td className="chain-col">
+                      <ChainLogo chain={token.chain} />
+                    </td>
+                    <td className="token-col">
+                      <TokenLogo token={token} />
+                      <span>
+                        <strong>{token.symbol}</strong>
+                        <small>{token.name}</small>
+                      </span>
+                    </td>
+                    <td className="metric-col">{formatPrice(token.priceUsd)}</td>
+                    <td className={`metric-col ${signedClass(Number(token.change24h))}`}>{formatPercentValue(token.change24h)}</td>
+                    <td className="metric-col">{formatUsd(token.marketCapUsd)}</td>
+                    <td className="metric-col">{formatUsd(token.volume24hUsd)}</td>
+                    <td className="metric-col">{formatUsd(token.liquidityUsd)}</td>
+                    <td className="metric-col positive">{formatInteger(token.dexBuys24h)}</td>
+                    <td className="metric-col negative">{formatInteger(token.dexSells24h)}</td>
+                    <td className={`metric-col ${signedClass(token.dexFlowUsd24h)}`}><FlowBar value={token.dexFlowUsd24h} max={maxFlow} /></td>
+                    <td>
+                      {(() => {
+                        const detectionEvent = latestDetectionEventForToken(detectionEventLookup, token);
+                        return (
+                          <span className={['overview-event-pill', !detectionEvent ? 'is-empty' : ''].filter(Boolean).join(' ')}>
+                            {detectionEvent?.eventType || 'None'}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
 
-      <div className="overview-pagination">
-        <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
-          <ChevronLeft size={16} /> Previous
-        </button>
-        <span>Page {page} of {totalPages}</span>
-        <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
-          Next <ChevronRight size={16} />
-        </button>
-      </div>
-    </section>
+        <div ref={railRef} onScroll={() => syncScroll(railRef.current)} className="overview-table-rail" aria-label="Horizontal table scroll">
+          <div style={{ width: tableWidth }} />
+        </div>
+
+        <div className="overview-pagination">
+          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1}>
+            <ChevronLeft size={16} /> Previous
+          </button>
+          <span>Page {page} of {totalPages}</span>
+          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>
+            Next <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
+
+      <aside className="overview-movers" aria-label="Live Alpha Feed movers">
+        <AlphaMoverPanel title="Top Gainers" tokens={topGainers} tone="positive" />
+        <AlphaMoverPanel title="Top Losers" tokens={topLosers} tone="negative" />
+      </aside>
+    </div>
   );
 }

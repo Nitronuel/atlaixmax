@@ -45,6 +45,8 @@ type SmartAlertStatus = {
 
 const DEFAULT_INTERVAL_MS = 15_000;
 const DEFAULT_BATCH_SIZE = 100;
+const DEFAULT_PROVIDER_TIMEOUT_MS = 10_000;
+const MARKET_ALERT_TYPES = new Set<SmartAlertRow['alert_type']>(['Price', 'Volume', 'Liquidity']);
 
 function readNumberEnv(key: string, fallback: number) {
   const value = Number(readEnv(key));
@@ -67,9 +69,32 @@ function normalizeText(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
-function pickBestPair(pairs: DexPair[], address: string, chain = '') {
+function unsupportedMarketTypes(rule: SmartAlertRow) {
+  const metadata = rule.metadata || {};
+  if (metadata.alertMode === 'linked' && Array.isArray(metadata.conditions)) {
+    return Array.from(new Set(metadata.conditions
+      .map((condition) => (condition as { alertType?: SmartAlertRow['alert_type'] }).alertType)
+      .filter((type): type is SmartAlertRow['alert_type'] => Boolean(type))
+      .filter((type) => !MARKET_ALERT_TYPES.has(type))));
+  }
+  return MARKET_ALERT_TYPES.has(rule.alert_type) ? [] : [rule.alert_type];
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof DOMException && error.name === 'AbortError') return fallback;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
+function pickBestPair(pairs: DexPair[], address: string, chain = '', preferredPairAddress = '') {
   const normalizedAddress = normalizeText(address);
   const normalizedChain = normalizeText(chain);
+  const normalizedPair = normalizeText(preferredPairAddress);
+  if (normalizedPair) {
+    const preferred = pairs.find((pair) => normalizeText(pair.pairAddress) === normalizedPair);
+    if (preferred) return preferred;
+  }
+
   const matching = pairs.filter((pair) => {
     const base = normalizeText(pair.baseToken?.address);
     const quote = normalizeText(pair.quoteToken?.address);
@@ -82,17 +107,28 @@ function pickBestPair(pairs: DexPair[], address: string, chain = '') {
 }
 
 async function fetchPairsForAddress(address: string): Promise<DexPair[]> {
-  const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(address)}`, {
-    headers: { Accept: 'application/json' }
-  });
-  if (!response.ok) return [];
-  const payload = await response.json().catch(() => ({}));
-  return Array.isArray(payload?.pairs) ? payload.pairs : [];
+  const timeoutMs = readNumberEnv('SMART_ALERTS_PROVIDER_TIMEOUT_MS', DEFAULT_PROVIDER_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(address)}`, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) throw new Error(`DexScreener token lookup failed with ${response.status}.`);
+    const payload = await response.json().catch(() => ({}));
+    return Array.isArray(payload?.pairs) ? payload.pairs : [];
+  } catch (error) {
+    throw new Error(errorMessage(error, 'DexScreener token lookup timed out.'));
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-export async function lookupSmartAlertToken(address: string, chain = ''): Promise<SmartAlertTokenSnapshot | null> {
+export async function lookupSmartAlertToken(address: string, chain = '', preferredPairAddress = ''): Promise<SmartAlertTokenSnapshot | null> {
   const pairs = await fetchPairsForAddress(address);
-  const pair = pickBestPair(pairs, address, chain);
+  const pair = pickBestPair(pairs, address, chain, preferredPairAddress);
   if (!pair?.baseToken?.address) return null;
 
   return {
@@ -181,24 +217,36 @@ export class SmartAlertRunner {
       const rules = await this.store.listEnabledRules(this.status.batchSize);
       let triggersCreated = 0;
 
+      const errors: string[] = [];
+
       for (const rule of rules) {
-        const created = await this.evaluateRule(rule);
-        triggersCreated += created;
+        try {
+          const created = await this.evaluateRule(rule);
+          triggersCreated += created;
+        } catch (error) {
+          const message = errorMessage(error, 'Smart Alert rule evaluation failed.');
+          errors.push(`${rule.trigger_label || rule.alert_type}: ${message}`);
+          await this.store.updateRule(rule.id, {
+            last_checked_at: new Date().toISOString(),
+            last_error: message
+          }, rule.user_id).catch(() => undefined);
+        }
       }
 
       this.status.rulesChecked = rules.length;
       this.status.triggersCreated = triggersCreated;
-      this.status.lastRunStatus = 'success';
-      return this.getStatus();
+      this.status.lastRunStatus = errors.length ? 'error' : 'success';
+      this.status.lastError = errors.slice(0, 3).join(' | ');
     } catch (error) {
       this.status.lastRunStatus = 'error';
-      this.status.lastError = error instanceof Error ? error.message : 'Smart Alert runner failed.';
-      return this.getStatus();
+      this.status.lastError = errorMessage(error, 'Smart Alert runner failed.');
     } finally {
       this.status.lastRunCompletedAt = new Date().toISOString();
       this.status.running = false;
       this.inFlight = false;
     }
+
+    return this.getStatus();
   }
 
   private async evaluateRule(rule: SmartAlertRow) {
@@ -211,6 +259,18 @@ export class SmartAlertRunner {
     }
 
     if (metadata.alertMode === 'wallet_activity') {
+      return 0;
+    }
+
+    const unsupportedTypes = unsupportedMarketTypes(rule);
+    if (unsupportedTypes.length) {
+      const message = `${unsupportedTypes.join(', ')} Smart Alerts are not supported by the live market runner yet. Use Detection Engine or Wallet alerts for event-based monitoring.`;
+      await this.store.updateRule(rule.id, {
+        enabled: false,
+        last_checked_at: now.toISOString(),
+        last_error: message,
+        metadata: { ...metadata, status: 'paused' }
+      }, rule.user_id);
       return 0;
     }
 
@@ -283,8 +343,6 @@ export class SmartAlertRunner {
         patch.last_triggered_at = now.toISOString();
         patch.trigger_count = Number(rule.trigger_count || 0) + created;
         patch.metadata = { ...metadata, status: 'completed', completedAt: now.toISOString() };
-      } else {
-        patch.last_error = 'Alert condition matched, but trigger history was not created yet.';
       }
     }
 
