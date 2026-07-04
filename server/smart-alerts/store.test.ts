@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { DetectionEvent } from '../../src/shared/detection';
 import { SmartAlertStore } from './store';
 
-describe('Smart Alert store', () => {
+describe('Intelligence Monitor store', () => {
   const originalCwd = process.cwd();
   const originalSupabaseUrl = process.env.SUPABASE_URL;
   const originalSupabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

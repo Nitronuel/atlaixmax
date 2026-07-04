@@ -572,7 +572,7 @@ function WalletProfile({ address }: { address: string }) {
       });
       setWalletAlertRules((current) => [rule, ...current.filter((item) => item.id !== rule.id)]);
       setWalletAlertOpen(false);
-      setWalletAlertMessage('Wallet alert saved. You can manage it from Smart Alerts.');
+      setWalletAlertMessage('Wallet alert saved. You can manage it from Intelligence Monitor.');
     } catch (error) {
       const message = error instanceof Error ? error.message : '';
       setWalletAlertError(/sign in/i.test(message) ? 'Sign in to save wallet alerts.' : message || 'Could not create wallet alert.');

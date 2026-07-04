@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SmartAlertRunner } from './runner';
 import type { SmartAlertRow } from './store';
 
-describe('Smart Alert runner', () => {
+describe('Intelligence Monitor runner', () => {
   const originalFetch = globalThis.fetch;
   const originalTimeout = process.env.SMART_ALERTS_PROVIDER_TIMEOUT_MS;
 
@@ -66,7 +66,7 @@ describe('Smart Alert runner', () => {
     expect(status.lastRunStatus).toBe('success');
     expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(patch.enabled).toBe(false);
-    expect(patch.last_error).toContain('Whale Smart Alerts are not supported');
+    expect(patch.last_error).toContain('Whale monitor types are not supported');
     expect(patch.metadata).toMatchObject({ status: 'paused' });
   });
 });

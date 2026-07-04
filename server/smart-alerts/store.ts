@@ -99,7 +99,7 @@ function writeLocalState(state: LocalAlertState) {
 
 async function supabaseFetch(path: string, init: RequestInit = {}) {
   const { url, key } = getSupabaseConfig();
-  if (!url || !key) throw new Error('Supabase is not configured for Smart Alerts.');
+  if (!url || !key) throw new Error('Supabase is not configured for Intelligence Monitor.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
 
@@ -118,7 +118,7 @@ async function supabaseFetch(path: string, init: RequestInit = {}) {
 
     if (!response.ok) {
       const message = await response.text().catch(() => '');
-      throw new Error(`Supabase Smart Alerts request failed (${response.status}). ${message}`.trim());
+      throw new Error(`Supabase Intelligence Monitor request failed (${response.status}). ${message}`.trim());
     }
 
     if (response.status === 204) return null;
@@ -197,7 +197,7 @@ function normalizeTrigger(row: any): SmartAlertTriggerRow {
     alert_rule_id: row.alert_rule_id || null,
     user_id: String(row.user_id || getDefaultUserId()),
     alert_type: publicAlertType(row),
-    title: row.title || 'Smart Alert',
+    title: row.title || 'Intelligence Monitor',
     message: row.message || '',
     observed_value: row.observed_value || null,
     threshold: row.threshold || null,
@@ -515,7 +515,7 @@ export class SmartAlertStore {
           body: JSON.stringify(nextPatch)
         });
         const row = Array.isArray(rows) ? rows[0] : rows;
-        if (!row) throw new Error('Smart Alert rule was not found.');
+        if (!row) throw new Error('Intelligence Monitor rule was not found.');
         return normalizeRule(row);
       } catch (error) {
         if (hasSupabaseConfig()) throw error;
@@ -525,7 +525,7 @@ export class SmartAlertStore {
 
     const state = readLocalState();
     const index = state.rules.findIndex((rule) => rule.id === id && (!userId || rule.user_id === userId));
-    if (index < 0) throw new Error('Smart Alert rule was not found.');
+    if (index < 0) throw new Error('Intelligence Monitor rule was not found.');
     state.rules[index] = prepareRuleForStorage(normalizeRule({ ...state.rules[index], ...nextPatch }));
     writeLocalState(state);
     return normalizeRule(state.rules[index]);

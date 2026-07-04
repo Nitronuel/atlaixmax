@@ -219,7 +219,7 @@ export function ProfileSettings() {
           <div className="settings-telegram-heading">
             <small>Notifications</small>
             <h3>Alert channels</h3>
-            <p>Choose where Smart Alerts should reach you.</p>
+            <p>Choose where Intelligence Monitor alerts should reach you.</p>
           </div>
 
           <div className="settings-channel-list" aria-label="Alert channels">
@@ -268,7 +268,7 @@ export function ProfileSettings() {
               <span className="settings-channel-icon"><Send size={18} /></span>
               <div>
                 <strong>{telegramStatus?.connected ? (telegramStatus.telegramUsername || 'Telegram connected') : 'No Telegram account connected'}</strong>
-                <p>{telegramStatus?.connected ? 'This account can receive Telegram delivery for saved Smart Alerts.' : 'Connect Telegram before turning this channel on.'}</p>
+                <p>{telegramStatus?.connected ? 'This account can receive Telegram delivery for saved Intelligence Monitor rules.' : 'Connect Telegram before turning this channel on.'}</p>
               </div>
             </div>
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateSmartAlertRule, parseAlertThreshold, type SmartAlertRuleSnapshot } from './evaluator';
 
-describe('Smart Alert evaluator', () => {
+describe('Intelligence Monitor evaluator', () => {
   it('matches numeric price thresholds', () => {
     const result = evaluateSmartAlertRule(makeRule({
       alert_type: 'Price',

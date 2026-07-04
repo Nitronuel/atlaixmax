@@ -481,7 +481,7 @@ async function chooseToolWithModel(
     'Detection Engine questions about latest events, flagged tokens, event detail, scores, severity, or signals must use a Detection tool.',
     'For broad Detection Engine questions like "latest event" or "what is Detection seeing", no token is required.',
     'Safe Scan questions about Bubblemaps score, Gini, HHI, Nakamoto, holders, supply exposure, clusters, linked wallets, or token safety must use a Safe Scan tool.',
-    'Smart Alert tools are only for alert setup, saved alert rules, alert runner status, and alert health. They are not Detection Engine event tools.',
+    'Intelligence Monitor tools are only for alert setup, saved alert rules, alert runner status, and alert health. They are not Detection Engine event tools.',
     'Platform update tools are for broad market updates only. They are not Detection Engine event tools.',
     'Use prepare_alert_setup only to draft alert setup. The user must confirm before anything is saved.',
     'If a required token, wallet, chain, or address is missing, ask one direct question instead of guessing.',
@@ -539,7 +539,7 @@ function fallbackConversation(pageContext?: AiAssistantPageContext | null) {
   const title = pageContext?.title || 'Atlaix';
   return [
     `I am ready on ${title}.`,
-    'Ask me about token performance, Detection Engine events, wallet holdings, Safe Scan risk, Smart Alerts, or current market activity.'
+    'Ask me about token performance, Detection Engine events, wallet holdings, Safe Scan risk, Intelligence Monitor, or current market activity.'
   ].join('\n');
 }
 
@@ -617,7 +617,7 @@ export class AiAssistantRoutes {
       const status = this.smartAlerts.runner.getStatus();
       const notifications = status.lastRunStatus || status.lastError ? [{
         id: `smart-alert-status-${status.lastRunCompletedAt || status.lastRunStartedAt || 'pending'}`,
-        title: 'Smart Alerts status',
+        title: 'Intelligence Monitor status',
         body: status.lastError
           ? `Latest alert evaluation needs attention: ${status.lastError}`
           : `Latest alert run ${status.lastRunStatus || 'is pending'} after checking ${status.rulesChecked || 0} rules.`,
@@ -1230,11 +1230,11 @@ export class AiAssistantRoutes {
       const status = this.smartAlerts.runner.getStatus();
       return {
         answer: status.lastError
-          ? `Smart Alerts last run needs attention: ${status.lastError}`
-          : `Smart Alerts are available. Last run status: ${status.lastRunStatus || 'pending'}. Rules checked: ${status.rulesChecked || 0}.`,
+          ? `Intelligence Monitor last run needs attention: ${status.lastError}`
+          : `Intelligence Monitor is available. Last run status: ${status.lastRunStatus || 'pending'}. Rules checked: ${status.rulesChecked || 0}.`,
         tool: 'get_smart_alert_status',
         data: status,
-        actions: [{ label: 'Open Smart Alerts', href: '/smart-alerts', kind: 'navigate' }]
+        actions: [{ label: 'Open Intelligence Monitor', href: '/smart-alerts', kind: 'navigate' }]
       };
     }
 
@@ -1248,11 +1248,11 @@ export class AiAssistantRoutes {
       params.set('source', 'assistant');
       return {
         answer: address
-          ? `I prepared a Smart Alert setup for ${pair ? tokenLabel(pair) : compactAddress(address)}. Review the rule before saving it.`
-          : 'I can prepare the Smart Alert setup, but I need a token contract address, ticker, or token name first.',
+          ? `I prepared an Intelligence Monitor setup for ${pair ? tokenLabel(pair) : compactAddress(address)}. Review the rule before saving it.`
+          : 'I can prepare the Intelligence Monitor setup, but I need a token contract address, ticker, or token name first.',
         tool: address ? 'alert_setup' : 'alert_setup_needs_token',
         data: { token },
-        actions: [{ label: 'Open Smart Alerts', href: `/smart-alerts?${params.toString()}`, kind: 'draft', confirmationRequired: true }]
+        actions: [{ label: 'Open Intelligence Monitor', href: `/smart-alerts?${params.toString()}`, kind: 'draft', confirmationRequired: true }]
       };
     }
 
@@ -1285,7 +1285,7 @@ export class AiAssistantRoutes {
       const answer = [
         `${label} is trading at ${formatUsd(pair.priceUsd)} on ${pair.chainId || chain || 'unknown chain'}.`,
         `24h move: ${pair.priceChange?.h24 ?? 'unavailable'}%. Volume: ${formatUsd(pair.volume?.h24)}. Liquidity: ${formatUsd(pair.liquidity?.usd)}. Market cap: ${formatUsd(pair.marketCap || pair.fdv)}.`,
-        request.tool === 'get_token_deep_brief' ? `Pools found: ${token?.pairs?.length || 1}. Use Safe Scan or Smart Alerts if you want risk checks or threshold monitoring.` : ''
+        request.tool === 'get_token_deep_brief' ? `Pools found: ${token?.pairs?.length || 1}. Use Safe Scan or Intelligence Monitor if you want risk checks or threshold monitoring.` : ''
       ].filter(Boolean).join('\n');
       const params = new URLSearchParams();
       if (pair.chainId) params.set('chain', pair.chainId);
@@ -1297,7 +1297,7 @@ export class AiAssistantRoutes {
         actions: [
           { label: 'Open Token Details', href: `/token/${encodeURIComponent(pair.baseToken?.address || query)}?${params.toString()}`, kind: 'navigate' },
           { label: 'Run Safe Scan', href: `/safe-scan?${new URLSearchParams({ address: pair.baseToken?.address || query, chain: toBubblemapsChain(pair.chainId || chain, pair.baseToken?.address || query), autoScan: '1' }).toString()}`, kind: 'draft', confirmationRequired: true },
-          { label: 'Create Smart Alert', href: `/smart-alerts?${new URLSearchParams({ address: pair.baseToken?.address || query, chain: pair.chainId || chain, source: 'assistant' }).toString()}`, kind: 'draft', confirmationRequired: true }
+          { label: 'Create Intelligence Monitor', href: `/smart-alerts?${new URLSearchParams({ address: pair.baseToken?.address || query, chain: pair.chainId || chain, source: 'assistant' }).toString()}`, kind: 'draft', confirmationRequired: true }
         ]
       };
     }

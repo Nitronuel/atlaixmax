@@ -8,14 +8,14 @@ async function fetchJson<T>(path: string): Promise<T> {
     throw new Error(typeof payload?.error === 'string' ? payload.error : `Request failed with status ${response.status}.`);
   }
   if (!payload) {
-    throw new Error('Live Alpha Feed returned an invalid response.');
+    throw new Error('Live Market Feed returned an invalid response.');
   }
   return payload as T;
 }
 
 function assertOverviewFeed(payload: OverviewFeedResponse): OverviewFeedResponse {
   if (!Array.isArray(payload.tokens) || typeof payload.generatedAt !== 'string') {
-    throw new Error('Live Alpha Feed returned an invalid response.');
+    throw new Error('Live Market Feed returned an invalid response.');
   }
   return payload;
 }

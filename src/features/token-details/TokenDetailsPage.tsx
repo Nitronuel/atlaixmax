@@ -152,6 +152,23 @@ function formatTradeTime(value: string) {
   }).format(date);
 }
 
+function formatTradeAge(value: string) {
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return 'N/A';
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (elapsedSeconds < 60) return `${elapsedSeconds || 1} second${elapsedSeconds === 1 ? '' : 's'} ago`;
+  const minutes = Math.floor(elapsedSeconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  const years = Math.floor(months / 12);
+  return `${years} year${years === 1 ? '' : 's'} ago`;
+}
+
 function scannerTopHolders(report: BubblemapsScanReport) {
   const rows = report.endpoints.holders.data || report.endpoints.map.data?.nodes?.top_holders || [];
   return Array.isArray(rows) ? rows : [];
@@ -189,7 +206,6 @@ export function TokenDetailsPage() {
   const [topHolders, setTopHolders] = useState<TokenHolder[]>([]);
   const [holdersLoading, setHoldersLoading] = useState(false);
   const [holdersError, setHoldersError] = useState('');
-  const [holdersExpanded, setHoldersExpanded] = useState(false);
   const [tokenTrades, setTokenTrades] = useState<TokenTradeHistoryItem[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const [tradesError, setTradesError] = useState('');
@@ -275,7 +291,6 @@ export function TokenDetailsPage() {
 
   const holderNetwork = normalizeBubblemapsChain(pair?.chainId || chain);
   const externalLinks = useMemo(() => pair ? bestExternalLinks(pair) : [], [pair]);
-  const visibleTopHolders = holdersExpanded ? topHolders : topHolders.slice(0, 10);
   const quickActions = [
     {
       icon: Scan,
@@ -311,14 +326,12 @@ export function TokenDetailsPage() {
       setTopHolders([]);
       setHoldersError('');
       setHoldersLoading(false);
-      setHoldersExpanded(false);
       return;
     }
 
     let cancelled = false;
     setHoldersLoading(true);
     setHoldersError('');
-    setHoldersExpanded(false);
 
     TokenDetailsService.getBubblemapsReport(holderNetwork, tokenAddress)
       .then((report) => {
@@ -573,9 +586,6 @@ export function TokenDetailsPage() {
                 <button type="button" title="Refresh activity" onClick={() => setTradesRefreshKey((current) => current + 1)} disabled={tradesLoading}>
                   <RefreshCw size={14} className={tradesLoading ? 'spin' : ''} />
                 </button>
-                <span>Buys & Sells</span>
-                <span>$1K+</span>
-                <span>24H</span>
               </div>
             ) : null}
           </div>
@@ -589,7 +599,7 @@ export function TokenDetailsPage() {
                   <span>Wallet</span>
                   <span>Amount</span>
                   <span>Value</span>
-                  <span>Price</span>
+                  <span>Age</span>
                   <span>Tx</span>
                 </div>
                 {tradesLoading ? (
@@ -608,7 +618,7 @@ export function TokenDetailsPage() {
                         <span className="token-activity-wallet">{shortAddress(trade.trader, 7, 5)}</span>
                         <span>{trade.tokenAmount !== null ? formatCompact(trade.tokenAmount) : 'N/A'} {symbol}</span>
                         <span>{formatUsd(trade.volumeUsd)}</span>
-                        <span>{trade.priceUsd !== null ? formatPrice(trade.priceUsd) : 'N/A'}</span>
+                        <span>{formatTradeAge(trade.timestamp)}</span>
                         <span>
                           {trade.explorerUrl ? (
                             <a className="token-activity-link" href={trade.explorerUrl} target="_blank" rel="noreferrer" aria-label="Open transaction">
@@ -644,42 +654,33 @@ export function TokenDetailsPage() {
                   </div>
                 ) : holdersError ? (
                   <div className="token-holder-empty">{holdersError}</div>
-                ) : visibleTopHolders.length ? (
-                  <>
-                    <div className="token-holder-rows">
-                      {visibleTopHolders.map((holder, index) => {
-                        const holderAddress = walletAddress(holder);
-                        const balance = walletBalance(holder);
-                        const value = Number(pair?.priceUsd || 0) * balance;
-                        const explorerUrl = getExplorerAddressUrl(pair?.chainId || chain, holderAddress);
-                        return (
-                          <div className="token-holder-row" key={holderAddress || index}>
-                            <span>#{index + 1}</span>
-                            <span className="token-holder-wallet">
-                              <strong>{shortAddress(holderAddress, 10, 7)}</strong>
-                            </span>
-                            <span>{formatCompact(balance)}</span>
-                            <span>{Number.isFinite(value) && value > 0 ? formatUsd(value) : 'N/A'}</span>
-                            <span>{formatPercent(supplyPercentField(holder))}</span>
-                            <span>
-                              {explorerUrl ? (
-                                <a href={explorerUrl} target="_blank" rel="noreferrer">View</a>
-                              ) : (
-                                <span className="token-holder-action-empty">N/A</span>
-                              )}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {topHolders.length > 10 ? (
-                      <div className="token-holder-more">
-                        <button type="button" onClick={() => setHoldersExpanded((current) => !current)}>
-                          {holdersExpanded ? 'Show less' : `See more (${topHolders.length - 10})`}
-                        </button>
-                      </div>
-                    ) : null}
-                  </>
+                ) : topHolders.length ? (
+                  <div className="token-holder-rows">
+                    {topHolders.map((holder, index) => {
+                      const holderAddress = walletAddress(holder);
+                      const balance = walletBalance(holder);
+                      const value = Number(pair?.priceUsd || 0) * balance;
+                      const explorerUrl = getExplorerAddressUrl(pair?.chainId || chain, holderAddress);
+                      return (
+                        <div className="token-holder-row" key={holderAddress || index}>
+                          <span>#{index + 1}</span>
+                          <span className="token-holder-wallet">
+                            <strong>{shortAddress(holderAddress, 10, 7)}</strong>
+                          </span>
+                          <span>{formatCompact(balance)}</span>
+                          <span>{Number.isFinite(value) && value > 0 ? formatUsd(value) : 'N/A'}</span>
+                          <span>{formatPercent(supplyPercentField(holder))}</span>
+                          <span>
+                            {explorerUrl ? (
+                              <a href={explorerUrl} target="_blank" rel="noreferrer">View</a>
+                            ) : (
+                              <span className="token-holder-action-empty">N/A</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <div className="token-holder-empty">Top holder data is not available for this token yet.</div>
                 )}

@@ -201,7 +201,7 @@ export function CoinAlphaFeed({
       <section className="overview-feed" ref={feedRef}>
         <div className="overview-feed-head" ref={headRef}>
           <div>
-            <h2>Live Alpha Feed <span>Coins</span></h2>
+            <h2>Live Market Feed <span>Coins</span></h2>
             <p>{error && !coins.length ? error : `Showing ${pageRows.length} of ${limited.length} coins`}</p>
           </div>
           <div>
@@ -280,7 +280,7 @@ export function CoinAlphaFeed({
         </div>
       </section>
 
-      <aside className="overview-movers" aria-label="Coin Live Alpha Feed movers">
+      <aside className="overview-movers" aria-label="Coin Live Market Feed movers">
         <CoinMoverPanel title="Top Gainers" coins={topGainers} />
         <CoinMoverPanel title="Top Losers" coins={topLosers} />
       </aside>

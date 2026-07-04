@@ -96,7 +96,7 @@ export class SmartAlertRoutes {
       const unsupportedTypes = unsupportedMarketRuleTypes(body);
       if (unsupportedTypes.length) {
         sendJson(response, 400, {
-          error: `${unsupportedTypes.join(', ')} Smart Alerts are not supported by the live market runner yet.`
+          error: `${unsupportedTypes.join(', ')} monitor types are not supported by the live market runner yet.`
         });
         return;
       }

@@ -230,8 +230,8 @@ const toolLabel = (tool?: string) => {
     if (tool === 'run_safe_scan' || tool?.startsWith('get_safe_scan_') || tool === 'explain_safe_scan_metric') return 'Safe Scan';
     if (tool === 'detection_updates' || tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return 'Detection';
     if (tool === 'get_token_activity') return 'Token Activity';
-    if (tool === 'get_smart_alert_status') return 'Smart Alerts';
-    if (tool === 'alert_setup') return 'Smart Alerts';
+    if (tool === 'get_smart_alert_status') return 'Intelligence Monitor';
+    if (tool === 'alert_setup') return 'Intelligence Monitor';
     if (tool === 'unsupported_capability') return 'Coming Soon';
     if (tool === 'error') return 'Needs Attention';
     return 'Atlaix AI';

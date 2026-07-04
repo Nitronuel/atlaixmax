@@ -164,7 +164,7 @@ function activityFromTrigger(trigger: SmartAlertTriggerRow, asset: WatchlistAsse
     assetSymbol: asset.symbol,
     assetName: asset.name,
     assetType: asset.asset_type,
-    title: trigger.title || 'Smart Alert',
+    title: trigger.title || 'Intelligence Monitor',
     detail: trigger.message || 'Monitor condition was triggered.',
     tone: toneForTrigger(trigger),
     source: 'smart-alert',
@@ -203,7 +203,7 @@ function createSummaryText(assets: WatchlistAssetRow[], activity: WatchlistActiv
     .join(', ');
 
   if (!last24h.length) {
-    return `${assets.length} assets are being monitored. No fresh Detection Engine or Smart Alert events matched this watchlist in the last 24 hours.`;
+    return `${assets.length} assets are being monitored. No fresh Detection Engine or Intelligence Monitor events matched this watchlist in the last 24 hours.`;
   }
 
   const first = `${assets.length} assets are being monitored with ${last24h.length} recent changes.`;

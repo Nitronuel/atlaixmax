@@ -2,7 +2,7 @@ export type FeedMode = 'tokens' | 'coins';
 
 export function FeedModeSwitch({ value, onChange }: { value: FeedMode; onChange: (value: FeedMode) => void }) {
   return (
-    <div className="overview-feed-mode" role="tablist" aria-label="Live Alpha Feed source">
+    <div className="overview-feed-mode" role="tablist" aria-label="Live Market Feed source">
       {[
         { value: 'tokens' as const, label: 'Tokens' },
         { value: 'coins' as const, label: 'Coins' }

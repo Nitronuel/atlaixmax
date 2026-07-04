@@ -200,7 +200,7 @@ const normalizeTrigger = (row: any): SmartAlertTrigger => ({
     alert_rule_id: row.alert_rule_id || null,
     user_id: row.user_id,
     alert_type: row.alert_type,
-    title: row.title || 'Smart Alert',
+    title: row.title || 'Intelligence Monitor',
     message: row.message || '',
     observed_value: row.observed_value || null,
     threshold: row.threshold || null,
@@ -226,12 +226,12 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(typeof payload?.error === 'string' ? payload.error : 'Smart Alerts request failed.');
+            throw new Error(typeof payload?.error === 'string' ? payload.error : 'Intelligence Monitor request failed.');
         }
         return payload as T;
     } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') {
-            throw new Error('Smart Alerts server request timed out.');
+            throw new Error('Intelligence Monitor server request timed out.');
         }
         throw error;
     } finally {

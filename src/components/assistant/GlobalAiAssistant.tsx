@@ -317,7 +317,7 @@ const buildLiveAlphaFeedAnswer = (text: string, context: RouteContext): Floating
         return {
             id: `global-feed-answer-${Date.now()}`,
             role: 'assistant',
-            text: 'I do not have a fresh Live Alpha Feed snapshot right now. Refresh the dashboard once, then ask me again and I will read from the current feed directly.',
+            text: 'I do not have a fresh Live Market Feed snapshot right now. Refresh the dashboard once, then ask me again and I will read from the current feed directly.',
             tool: 'dashboard_feed',
             createdAt: Date.now()
         };
@@ -345,7 +345,7 @@ const buildLiveAlphaFeedAnswer = (text: string, context: RouteContext): Floating
         return {
             id: `global-feed-answer-${Date.now()}`,
             role: 'assistant',
-            text: 'I can see the Live Alpha Feed snapshot, but the metric you asked for is not populated on the current rows yet.',
+            text: 'I can see the Live Market Feed snapshot, but the metric you asked for is not populated on the current rows yet.',
             tool: 'dashboard_feed',
             createdAt: Date.now()
         };
@@ -371,7 +371,7 @@ const buildLiveAlphaFeedAnswer = (text: string, context: RouteContext): Floating
         id: `global-feed-answer-${Date.now()}`,
         role: 'assistant',
         text: [
-            `From the current Live Alpha Feed, ${top.token.ticker || top.token.name} has the ${wantsLowest ? 'lowest' : 'highest'} ${label}: ${value}.`,
+            `From the current Live Market Feed, ${top.token.ticker || top.token.name} has the ${wantsLowest ? 'lowest' : 'highest'} ${label}: ${value}.`,
             `${top.token.name ? `Token: ${top.token.name}.` : ''} ${top.token.chain ? `Chain: ${top.token.chain}.` : ''} Price: ${top.token.price || 'unavailable'}. 24h change: ${top.token.change24h || 'unavailable'}. ${addressLine}`.trim(),
             '',
             `Top ${Math.min(3, ranked.length)} by ${label}:`,
@@ -397,10 +397,10 @@ const toolLabel = (tool?: string) => {
     if (tool === 'get_wallet_deep_brief') return 'Wallet Brief';
     if (tool === 'get_platform_updates') return 'Platform Update';
     if (tool?.startsWith('get_detection_') || tool === 'explain_detection_event_type' || tool === 'compare_detection_events') return 'Detection';
-    if (tool === 'dashboard_feed') return 'Live Alpha Feed';
+    if (tool === 'dashboard_feed') return 'Live Market Feed';
     if (tool === 'run_safe_scan' || tool?.startsWith('get_safe_scan_') || tool === 'explain_safe_scan_metric') return 'Safe Scan';
     if (tool === 'get_token_activity') return 'Activity';
-    if (tool === 'get_smart_alert_status' || tool === 'alert_setup' || tool === 'alert_setup_needs_token') return 'Smart Alerts';
+    if (tool === 'get_smart_alert_status' || tool === 'alert_setup' || tool === 'alert_setup_needs_token') return 'Intelligence Monitor';
     if (tool === 'error') return 'Needs Attention';
     return 'Atlaix AI';
 };
@@ -446,7 +446,7 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
             icon: <Activity size={18} />,
             prompts: [
                 'Explain this token in plain English',
-                'Help me create a Smart Alert for this token',
+                'Help me create an Intelligence Monitor for this token',
                 'Run a Safe Scan on this token',
                 'What changed recently for this token?'
             ]
@@ -486,7 +486,7 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
                 ? `The user is viewing Detection Engine context for token/query: ${query}. Chain: ${detectionChain || 'unknown'}. Explain admission reasons, event type, severity, score, triggers, risk/counter-signals, and next watch conditions for this token. If they ask "this event" or "why was it detected", use this token/query.`
                 : [
                     'The user is on the Detection Engine page.',
-                    'They may ask what was detected, which events are high-risk, why a token qualified, what an event type means, which tokens are accumulating/distributing/moving, whether a signal is bullish or risky, what to watch next, or what Smart Alert to create.',
+                    'They may ask what was detected, which events are high-risk, why a token qualified, what an event type means, which tokens are accumulating/distributing/moving, whether a signal is bullish or risky, what to watch next, or what Intelligence Monitor to create.',
                     'Detection Engine events are attention signals, not buy/sell commands. Explain them with event type, severity, score, market/liquidity/volume context, counter-signals, uncertainty, and next checks.'
             ].join(' '),
             subjectKind: query ? 'detection' : undefined,
@@ -506,9 +506,9 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
 
     if (pathname.startsWith('/smart-alerts')) {
         return {
-            title: 'Smart Alerts',
+            title: 'Intelligence Monitor',
             subtitle: 'Alert setup',
-            systemContext: 'The user is on the Smart Alerts page. Help them create or understand alert setup, but never claim an alert was saved silently.',
+            systemContext: 'The user is on the Intelligence Monitor page. Help them create or understand alert setup, but never claim an alert was saved silently.',
             subjectKind: 'alert',
             module: 'smart-alerts',
             preferredTools: ['prepare_alert_setup', 'prepare_detection_alert', 'prepare_linked_alert', 'get_smart_alert_status'],
@@ -517,7 +517,7 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
                 'Help me create a price alert',
                 'What alerts should I use?',
                 'Explain detection-based alerts',
-                'Check Smart Alert status'
+                'Check Intelligence Monitor status'
             ]
         };
     }
@@ -526,7 +526,7 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
         return {
             title: 'Watchlist',
             subtitle: 'Monitored assets',
-            systemContext: 'The user is on the Watchlist Intelligence workspace. Help them review monitored assets, recent Detection Engine events, Smart Alert changes, risk shifts, and useful monitor setup.',
+            systemContext: 'The user is on the Watchlist Intelligence workspace. Help them review monitored assets, recent Detection Engine events, Intelligence Monitor changes, risk shifts, and useful monitor setup.',
             subjectKind: 'dashboard',
             module: 'watchlist',
             preferredTools: ['get_detection_updates', 'get_smart_alert_status', 'get_token_deep_brief', 'prepare_alert_setup'],
@@ -620,7 +620,7 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
 };
 
 const promptToMessage = (prompt: string, context: RouteContext) => {
-    if (prompt === 'Help me create a Smart Alert for this token') return 'Help me create a Smart Alert for this token';
+    if (prompt === 'Help me create an Intelligence Monitor for this token') return 'Help me create an Intelligence Monitor for this token';
     if (prompt === 'Run a Safe Scan on this token') return 'Run a Safe Scan on this token';
     if (prompt === 'Explain this token in plain English') return 'Explain this token in plain English';
     if (prompt === 'Analyze this wallet') return 'Analyze this wallet';
@@ -685,7 +685,7 @@ const buildPageContextPayload = (context: RouteContext, pathname: string): AiAss
         }))
     } : liveAlphaSnapshot ? {
         generatedAt: liveAlphaSnapshot.generatedAt,
-        summary: `${liveAlphaSnapshot.tokens?.length || 0} current Live Alpha Feed rows available.`,
+        summary: `${liveAlphaSnapshot.tokens?.length || 0} current Live Market Feed rows available.`,
         tokens: (liveAlphaSnapshot.tokens || []).slice(0, 10).map((token) => ({
             name: token.name,
             ticker: token.ticker,
@@ -867,7 +867,7 @@ export const GlobalAiAssistant: React.FC = () => {
         return () => window.removeEventListener(GLOBAL_ASSISTANT_OPEN_EVENT, handleOpenAssistant);
     }, [sendMessage]);
 
-    if (location.pathname.startsWith('/ai-assistant')) {
+    if (location.pathname.startsWith('/ai-assistant') || location.pathname.startsWith('/smart-alerts')) {
         return null;
     }
 

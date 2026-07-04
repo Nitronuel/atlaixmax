@@ -398,7 +398,7 @@ export function DetectionTokenPage() {
             </Link>
             <Link className="token-quick-action-button" to="/smart-alerts">
               <span className="token-quick-action-icon"><Bell size={18} /></span>
-              <span><strong>Create Alert</strong><small>Smart Alerts</small></span>
+              <span><strong>Create Alert</strong><small>Intelligence Monitor</small></span>
             </Link>
             <Link className="token-quick-action-button" to="/safe-scan">
               <span className="token-quick-action-icon"><Scan size={18} /></span>

@@ -63,7 +63,7 @@ export function OverviewFiltersModal({ open, filters, tokens, eventOptions, mode
   }
 
   return (
-    <div className="overview-filter-modal" role="dialog" aria-modal="true" aria-label="Live Alpha Feed filters">
+    <div className="overview-filter-modal" role="dialog" aria-modal="true" aria-label="Live Market Feed filters">
       <div className="overview-filter-panel">
         <header>
           <h2>Filters</h2>

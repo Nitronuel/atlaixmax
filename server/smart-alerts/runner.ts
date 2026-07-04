@@ -224,7 +224,7 @@ export class SmartAlertRunner {
           const created = await this.evaluateRule(rule);
           triggersCreated += created;
         } catch (error) {
-          const message = errorMessage(error, 'Smart Alert rule evaluation failed.');
+          const message = errorMessage(error, 'Intelligence Monitor rule evaluation failed.');
           errors.push(`${rule.trigger_label || rule.alert_type}: ${message}`);
           await this.store.updateRule(rule.id, {
             last_checked_at: new Date().toISOString(),
@@ -239,7 +239,7 @@ export class SmartAlertRunner {
       this.status.lastError = errors.slice(0, 3).join(' | ');
     } catch (error) {
       this.status.lastRunStatus = 'error';
-      this.status.lastError = errorMessage(error, 'Smart Alert runner failed.');
+      this.status.lastError = errorMessage(error, 'Intelligence Monitor runner failed.');
     } finally {
       this.status.lastRunCompletedAt = new Date().toISOString();
       this.status.running = false;
@@ -264,7 +264,7 @@ export class SmartAlertRunner {
 
     const unsupportedTypes = unsupportedMarketTypes(rule);
     if (unsupportedTypes.length) {
-      const message = `${unsupportedTypes.join(', ')} Smart Alerts are not supported by the live market runner yet. Use Detection Engine or Wallet alerts for event-based monitoring.`;
+      const message = `${unsupportedTypes.join(', ')} monitor types are not supported by the live market runner yet. Use Detection Engine or Wallet alerts for event-based monitoring.`;
       await this.store.updateRule(rule.id, {
         enabled: false,
         last_checked_at: now.toISOString(),

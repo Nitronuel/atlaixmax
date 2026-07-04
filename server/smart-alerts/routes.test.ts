@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { unsupportedMarketRuleTypes } from './routes';
 
-describe('Smart Alert route validation', () => {
+describe('Intelligence Monitor route validation', () => {
   it('allows supported live market rule types', () => {
     expect(unsupportedMarketRuleTypes({
       alertType: 'Price',

@@ -236,7 +236,7 @@ const shortenAddress = (value: string | null | undefined) => {
 const formatSmartAlertError = (value: unknown, fallback: string) => {
     const message = value instanceof Error ? value.message : String(value || '');
     if (!message) return fallback;
-    if (/linked smart alerts are being updated/i.test(message)) return message;
+    if (/linked intelligence monitor are being updated/i.test(message)) return message;
     if (/sign in/i.test(message)) return message;
     if (/supabase|api|provider|configured|configuration|network|fetch|server|database|endpoint|schema|migration|payload/i.test(message)) {
         return fallback;
@@ -396,8 +396,8 @@ const statusClassFor = (status: AlertTableStatus) => {
 const sourceLabelFor = (source: string, type: SmartAlertType) => {
     if (source === 'detection-engine') return 'Detection Engine';
     if (source === 'zerion-wallet-webhook') return 'Zerion Wallet';
-    if (source === 'smart-alert-runner') return 'Smart Alert';
-    return type === 'Detection' ? 'Detection Alert' : 'Smart Alert';
+    if (source === 'smart-alert-runner') return 'Intelligence Monitor';
+    return type === 'Detection' ? 'Detection Alert' : 'Intelligence Monitor';
 };
 
 export const SmartAlerts: React.FC = () => {
@@ -466,7 +466,7 @@ export const SmartAlerts: React.FC = () => {
                     return;
                 }
 
-                setError(formatSmartAlertError(rulesResult.reason, 'Could not load Smart Alerts.'));
+                setError(formatSmartAlertError(rulesResult.reason, 'Could not load Intelligence Monitor.'));
                 return;
             }
 
@@ -976,7 +976,7 @@ export const SmartAlerts: React.FC = () => {
 
     const toggleAlert = async (id: string) => {
         if (!user) {
-            requireLogin('Sign in to manage Smart Alerts on your Atlaix account.');
+            requireLogin('Sign in to manage Intelligence Monitor on your Atlaix account.');
             return;
         }
 
@@ -996,7 +996,7 @@ export const SmartAlerts: React.FC = () => {
 
     const removeAlert = async (id: string) => {
         if (!user) {
-            requireLogin('Sign in to delete saved Smart Alerts from your Atlaix account.');
+            requireLogin('Sign in to delete saved Intelligence Monitor rules from your Atlaix account.');
             return;
         }
 
@@ -1043,7 +1043,7 @@ export const SmartAlerts: React.FC = () => {
         }
 
         if (!user) {
-            requireLogin('Sign in to save Smart Alerts on your Atlaix account.');
+            requireLogin('Sign in to save Intelligence Monitor on your Atlaix account.');
             return;
         }
 
@@ -1107,7 +1107,7 @@ export const SmartAlerts: React.FC = () => {
         }
 
         if (!user) {
-            requireLogin('Sign in to save Smart Alerts on your Atlaix account.');
+            requireLogin('Sign in to save Intelligence Monitor on your Atlaix account.');
             return;
         }
 
@@ -1126,7 +1126,7 @@ export const SmartAlerts: React.FC = () => {
                 threshold: primaryCondition.thresholdKind === 'percent' && !primaryCondition.threshold.includes('%')
                     ? `${primaryCondition.threshold}%`
                     : primaryCondition.threshold.trim(),
-                triggerLabel: `Linked Smart Alert for ${selectedToken.symbol || selectedToken.name}: ${linkedConditions.length} conditions`,
+                triggerLabel: `Linked Intelligence Monitor for ${selectedToken.symbol || selectedToken.name}: ${linkedConditions.length} conditions`,
                 notificationChannels: setupDraft.notificationChannels,
                 cooldownMinutes: 60,
                 metadata: {
@@ -1208,17 +1208,19 @@ export const SmartAlerts: React.FC = () => {
             return;
         }
 
-        const connected = telegramConnected || await refreshTelegramStatus();
-        if (!connected) {
-            setNotificationMessage('Connect Telegram before turning bot alerts on.');
-            return;
-        }
-
         setNotificationSaving(true);
         setNotificationMessage(null);
         setError(null);
         try {
             const enableTelegram = !telegramChannelEnabled;
+            if (enableTelegram) {
+                const connected = telegramConnected || await refreshTelegramStatus();
+                if (!connected) {
+                    setNotificationMessage('Connect Telegram before turning bot alerts on.');
+                    return;
+                }
+            }
+
             const updatedRules = await Promise.all(rules.map((rule) => {
                 const currentChannels = rule.notification_channels.length ? rule.notification_channels : ['in_app'];
                 const nextChannels = enableTelegram
@@ -1227,6 +1229,7 @@ export const SmartAlerts: React.FC = () => {
                 return SmartAlertService.setRuleNotificationChannels(rule.id, nextChannels.length ? nextChannels : ['in_app']);
             }));
             setRules(updatedRules);
+            void loadUserAlerts();
             setNotificationMessage(enableTelegram ? 'Telegram alerts turned on.' : 'Telegram alerts turned off.');
         } catch (err) {
             setError(formatSmartAlertError(err, 'Could not update Telegram alert delivery.'));
@@ -1243,7 +1246,7 @@ export const SmartAlerts: React.FC = () => {
         ? selectedToken.name
         : setupDraft.chainId || selectedToken?.chainId || 'Token details';
     const reviewTitle = setupMode === 'linked-condition'
-        ? `Linked Smart Alert for ${selectedTokenTitle}`
+        ? `Linked Intelligence Monitor for ${selectedTokenTitle}`
         : previewTrigger;
 
     return (
@@ -1263,9 +1266,9 @@ export const SmartAlerts: React.FC = () => {
                 <div>
                     <div className="smart-alert-entry-kicker">
                         <Bell size={16} />
-                        Smart alert setup
+                        Intelligence Monitor setup
                     </div>
-                    <h3>Create a token alert</h3>
+                    <h3>Create an Intelligence Monitor</h3>
                     <p>Use a guided setup to choose the token, alert type, trigger details, delivery channels, and final preview.</p>
                 </div>
                 <button type="button" onClick={openAlertWizard} className="smart-alert-entry-button">
@@ -1409,11 +1412,11 @@ export const SmartAlerts: React.FC = () => {
                     )}
                 </section>
 
-                <aside className="smart-alert-notification-panel" aria-label="Smart Alert notification settings">
+                <aside className="smart-alert-notification-panel" aria-label="Intelligence Monitor notification settings">
                     <div className="smart-alert-notification-heading">
                         <small>Notifications</small>
                         <h3>Alert channels</h3>
-                        <p>Choose where saved Smart Alerts should reach you.</p>
+                        <p>Choose where Intelligence Monitor alerts should reach you.</p>
                     </div>
 
                     <div className="smart-alert-channel-settings">
@@ -1489,7 +1492,7 @@ export const SmartAlerts: React.FC = () => {
                                     {setupType?.icon || <Bell size={20} />}
                                 </div>
                                 <div>
-                                    <h3>{setupType ? `Set ${setupType.title}` : 'Create Smart Alert'}</h3>
+                                    <h3>{setupType ? `Set ${setupType.title}` : 'Create Intelligence Monitor'}</h3>
                                     <p>{setupType?.desc || 'Follow the steps to select a token, choose an alert type, add details, and review before saving.'}</p>
                                 </div>
                             </div>

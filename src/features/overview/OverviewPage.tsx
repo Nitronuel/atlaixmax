@@ -98,7 +98,7 @@ export function OverviewPage() {
       const response = await OverviewService.getFeed(force);
       applyFeed(response, setTokens, setLastUpdated);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Live Alpha Feed is unavailable.');
+      setError(nextError instanceof Error ? nextError.message : 'Live Market Feed is unavailable.');
     } finally {
       if (showLoading) setLoading(false);
     }
@@ -126,7 +126,7 @@ export function OverviewPage() {
       if (feedMode === 'coins') await loadCoinFeed(false, true);
       else await Promise.all([loadFeed(false, true), loadDetectionEvents()]);
     } catch (nextError) {
-      setError(nextError instanceof Error ? `Refresh failed: ${nextError.message}` : 'Live Alpha Feed refresh failed.');
+      setError(nextError instanceof Error ? `Refresh failed: ${nextError.message}` : 'Live Market Feed refresh failed.');
     } finally {
       setSyncing(false);
     }

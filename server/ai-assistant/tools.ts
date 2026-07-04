@@ -200,7 +200,7 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
   {
     name: 'get_smart_alert_status',
     safety: 'read',
-    description: 'Use only when the user asks about Smart Alerts, alert runner status, alert health, saved alert rules, or whether alerts are working. Do not use for Detection Engine events, flagged tokens, or market events.',
+    description: 'Use only when the user asks about Intelligence Monitor, alert runner status, alert health, saved alert rules, or whether alerts are working. Do not use for Detection Engine events, flagged tokens, or market events.',
     parameters: schema({})
   },
   {

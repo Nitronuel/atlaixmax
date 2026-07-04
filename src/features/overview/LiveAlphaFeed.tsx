@@ -350,7 +350,7 @@ export function LiveAlphaFeed({
       <section className="overview-feed" ref={feedRef}>
         <div className="overview-feed-head" ref={headRef}>
           <div>
-            <h2>Live Alpha Feed <span>Live</span></h2>
+            <h2>Live Market Feed <span>Live</span></h2>
             <p>{error && !tokens.length ? error : `Showing ${pageRows.length} of ${limited.length} tokens`}</p>
           </div>
           <div>
@@ -439,7 +439,7 @@ export function LiveAlphaFeed({
         </div>
       </section>
 
-      <aside className="overview-movers" aria-label="Live Alpha Feed movers">
+      <aside className="overview-movers" aria-label="Live Market Feed movers">
         <AlphaMoverPanel title="Top Gainers" tokens={topGainers} tone="positive" />
         <AlphaMoverPanel title="Top Losers" tokens={topLosers} tone="negative" />
       </aside>

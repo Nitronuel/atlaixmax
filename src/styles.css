@@ -8970,15 +8970,20 @@ main {
 .token-holders-shell {
   display: grid;
   min-height: 386px;
+  max-height: calc(47px + (58px * 8));
   grid-template-rows: auto minmax(0, 1fr);
   overflow: auto;
 }
 
 .token-holders-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   grid-template-columns: 70px minmax(140px, 1.2fr) repeat(4, minmax(90px, 1fr));
   min-width: 720px;
   border-bottom: 1px solid var(--border-color);
+  background: var(--folder-panel-bg);
   color: var(--text-medium);
   font-size: 11px;
   font-weight: 700;
@@ -9003,6 +9008,7 @@ main {
 .token-activity-shell {
   display: grid;
   min-height: 386px;
+  max-height: calc(47px + (68px * 8));
   grid-template-rows: auto minmax(0, 1fr);
   overflow: auto;
 }
@@ -9037,6 +9043,23 @@ main {
   min-width: 860px;
 }
 
+.token-holders-shell::-webkit-scrollbar,
+.token-activity-shell::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.token-holders-shell::-webkit-scrollbar-thumb,
+.token-activity-shell::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-medium) 42%, transparent);
+}
+
+.token-holders-shell::-webkit-scrollbar-track,
+.token-activity-shell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .token-activity-row {
   min-height: 68px;
   border-bottom: 1px solid var(--border-color);
@@ -9069,9 +9092,7 @@ main {
 .token-activity-kind {
   width: fit-content;
   min-width: 54px;
-  border-radius: 999px;
-  background: rgba(98, 108, 118, 0.12);
-  padding: 5px 9px;
+  padding: 0;
   font-size: 11px;
   font-weight: 900;
   line-height: 1;
@@ -9080,12 +9101,10 @@ main {
 }
 
 .token-activity-row.buy .token-activity-kind {
-  background: rgba(38, 211, 86, 0.12);
   color: var(--positive-green);
 }
 
 .token-activity-row.sell .token-activity-kind {
-  background: rgba(255, 92, 122, 0.12);
   color: var(--primary-red);
 }
 
