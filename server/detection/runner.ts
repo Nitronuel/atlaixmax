@@ -213,6 +213,7 @@ function detectionPriorityScore(classification: FinalClassification, eventCreate
 
 export class DetectionRunner {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private startupTimer: ReturnType<typeof setTimeout> | null = null;
   private inFlight = false;
   private cursor = 0;
   private status: DetectionRunnerStatus;
@@ -237,8 +238,20 @@ export class DetectionRunner {
 
   start() {
     if (!this.status.enabled || this.timer) return;
-    setTimeout(() => void this.runNow(), readNumberEnv('DETECTION_INITIAL_DELAY_MS', START_DELAY_MS));
+    this.startupTimer = setTimeout(() => void this.runNow(), readNumberEnv('DETECTION_INITIAL_DELAY_MS', START_DELAY_MS));
     this.timer = setInterval(() => void this.runNow(), this.status.intervalMs);
+    console.log(`[DetectionEngine] scheduler started intervalMs=${this.status.intervalMs} batchSize=${this.status.batchSize}`);
+  }
+
+  stop() {
+    if (this.startupTimer) {
+      clearTimeout(this.startupTimer);
+      this.startupTimer = null;
+    }
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
   }
 
   getStatus() {
@@ -266,6 +279,7 @@ export class DetectionRunner {
           completedAt: new Date().toISOString(),
           status: 'skipped'
         });
+        console.log('[DetectionEngine] run skipped; lock is held by another process');
       } else {
         const result = await this.runCycle();
         this.status.scanned = result.scanned;
@@ -286,6 +300,7 @@ export class DetectionRunner {
           failedCount: result.failed,
           eventCount: result.eventsCreated
         });
+        console.log(`[DetectionEngine] run success scanned=${result.scanned} classified=${result.classified} failed=${result.failed} eventsCreated=${result.eventsCreated}`);
       }
     } catch (error) {
       this.status.lastRunStatus = 'error';
@@ -297,6 +312,7 @@ export class DetectionRunner {
         status: 'error',
         error: this.status.lastError
       });
+      console.error(`[DetectionEngine] run error ${this.status.lastError}`);
     } finally {
       if (locked && hasSupabaseLockConfig()) {
         await releaseSystemLock(LOCK_NAME).catch(() => undefined);

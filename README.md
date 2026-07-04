@@ -29,6 +29,16 @@ npm run build
 npm test
 ```
 
+## Railway
+
+Railway uses `railway.toml` from this repo:
+
+- Build command: `npm run build`
+- Start command: `npm run start`
+- Healthcheck path for the app service: `/health`
+
+`npm run start` serves the app/API and starts the Detection Engine scheduler in the same Node process. Railway injects `PORT`, so leave `API_PORT` unset there unless you are debugging.
+
 ## Environment
 
 Use server-only keys without a `VITE_` prefix:

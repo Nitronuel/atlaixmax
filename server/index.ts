@@ -22,7 +22,7 @@ import { WalletRoutes } from './wallet/routes';
 loadEnvFile('.env');
 loadEnvFile('.env.local', true);
 
-const port = Number(readEnv('API_PORT', 'PORT') || 3101);
+const port = Number(readEnv('PORT', 'API_PORT') || 3101);
 const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
 const bubblemapsRoutes = new BubblemapsRoutes();
 const overviewRoutes = new OverviewRoutes();

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readEnv } from './env';
 
 const LOCK_OWNER = `${process.pid}:${randomUUID()}`;
+const LOCK_RPC_TIMEOUT_MS = 15_000;
 
 function getSupabaseConfig() {
   const url = readEnv('SUPABASE_URL');
@@ -12,16 +13,24 @@ function getSupabaseConfig() {
 async function callLockRpc<T>(name: string, body: Record<string, string | number>) {
   const { url, key } = getSupabaseConfig();
   if (!url || !key) throw new Error('Supabase is not configured for system locks.');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LOCK_RPC_TIMEOUT_MS);
 
-  const response = await fetch(`${url}/rest/v1/rpc/${name}`, {
-    method: 'POST',
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');

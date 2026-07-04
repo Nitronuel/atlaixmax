@@ -77,6 +77,12 @@ const CLASSIFICATION_SUMMARY_COLUMNS = 'classification_id,token_id,timestamp,rul
 const INTERNAL_HISTORY_TABLES = ['detection_features', 'detection_snapshots', 'detection_classifications'] as const;
 const DEFAULT_HISTORY_RETENTION_HOURS = 24;
 const HISTORY_RETENTION_INTERVAL_MS = 15 * 60 * 1000;
+const SUPABASE_TIMEOUT_MS = 30_000;
+
+function getSupabaseTimeoutMs() {
+  const configured = Number(readEnv('DETECTION_SUPABASE_TIMEOUT_MS'));
+  return Number.isFinite(configured) && configured > 0 ? configured : SUPABASE_TIMEOUT_MS;
+}
 
 function getSupabaseConfig() {
   const url = readEnv('SUPABASE_URL').replace(/\/$/, '');
@@ -122,17 +128,25 @@ function writeLocalState(state: DetectionState) {
 async function supabaseFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { url, key } = getSupabaseConfig();
   if (!url || !key) throw new Error('Supabase is not configured for Detection Engine.');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getSupabaseTimeoutMs());
 
-  const response = await fetch(`${url}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      Accept: 'application/json',
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init.headers || {})
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url}/rest/v1/${path}`, {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.headers || {})
+      },
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const message = await response.text().catch(() => '');
