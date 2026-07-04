@@ -19,6 +19,7 @@ export type OverviewToken = {
   dexFlowUsd24h: number;
   event: OverviewEvent;
   pairCreatedAt: number | null;
+  marketDataUpdatedAt: string | null;
 };
 
 export type OverviewEvent =

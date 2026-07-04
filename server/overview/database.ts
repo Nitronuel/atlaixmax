@@ -116,8 +116,15 @@ const SEARCH_RESULT_LIMIT = 50;
 const TOKEN_DETAILS_CACHE_TTL_MS = 90 * 1000;
 const OVERVIEW_INGESTION_START_DELAY_MS = 10 * 1000;
 const OVERVIEW_INGESTION_INTERVAL_MS = 4 * 60 * 1000;
+const EXISTING_TOKEN_REFRESH_START_DELAY_MS = 25 * 1000;
+const EXISTING_TOKEN_REFRESH_INTERVAL_MS = 60 * 1000;
+const EXISTING_TOKEN_REFRESH_LIMIT = 80;
+const FORCE_EXISTING_TOKEN_REFRESH_LIMIT = 140;
+const EXISTING_TOKEN_REFRESH_CONCURRENCY = 5;
 const OVERVIEW_INGESTION_LOCK_NAME = 'overview_ingestion';
 const OVERVIEW_INGESTION_LOCK_TTL_SECONDS = 5 * 60;
+const OVERVIEW_REFRESH_LOCK_NAME = 'overview_existing_token_refresh';
+const OVERVIEW_REFRESH_LOCK_TTL_SECONDS = 90;
 const NORMAL_DISCOVERY_SEARCHES_PER_SCAN = 100;
 const FORCE_DISCOVERY_SEARCHES_PER_SCAN = 120;
 const DEXSCREENER_SEARCH_CACHE_TTL_MS = 3 * 60 * 1000;
@@ -132,8 +139,11 @@ let lastStalePurgeAt = 0;
 let lastIneligiblePurgeAt = 0;
 let currentDiscoveryQueryIndex = 0;
 let ingestionInFlight: Promise<OverviewIngestionResponse> | null = null;
+let existingTokenRefreshInFlight: Promise<OverviewRefreshResponse> | null = null;
 let ingestionSchedulerStarted = false;
+let existingTokenRefreshSchedulerStarted = false;
 let dexRateLimitedUntil = 0;
+let existingTokenRefreshCursor = 0;
 
 const TARGET_QUERIES = [
   'SOL', 'BASE', 'ETH', 'BSC', 'ARB', 'ARBITRUM', 'OP', 'OPTIMISM', 'POLY', 'POLYGON', 'AVAX', 'SUI', 'APT', 'SEI', 'TRON', 'TON',
@@ -159,6 +169,14 @@ export type OverviewIngestionResponse = {
   scannedPairs: number;
   accepted: number;
   stored: number;
+  skipped?: boolean;
+  tokens: OverviewToken[];
+};
+
+export type OverviewRefreshResponse = {
+  generatedAt: string;
+  attempted: number;
+  refreshed: number;
   skipped?: boolean;
   tokens: OverviewToken[];
 };
@@ -670,7 +688,8 @@ function mapRow(row: DiscoveredTokenRow): OverviewToken | null {
     dexFlow24h,
     dexFlowUsd24h,
     event: normalizeEvent(raw.signal),
-    pairCreatedAt: Number.isFinite(raw.createdTimestamp) ? Number(raw.createdTimestamp) : null
+    pairCreatedAt: Number.isFinite(raw.createdTimestamp) ? Number(raw.createdTimestamp) : null,
+    marketDataUpdatedAt: row.last_seen_at || null
   };
 }
 
@@ -709,7 +728,8 @@ function mapDexPairToSearchToken(pair: DexPair): OverviewToken | null {
     dexFlow24h: dexBuys24h - dexSells24h,
     dexFlowUsd24h: buyVolume24h || sellVolume24h ? buyVolume24h - sellVolume24h : 0,
     event: normalizeEvent(undefined),
-    pairCreatedAt: pair.pairCreatedAt || null
+    pairCreatedAt: pair.pairCreatedAt || null,
+    marketDataUpdatedAt: new Date().toISOString()
   };
 }
 
@@ -1287,9 +1307,9 @@ function cacheOverviewFeed(tokens: OverviewToken[]) {
 
 function refreshOverviewFeedCache() {
   if (feedRefreshInFlight) return;
-  feedRefreshInFlight = loadDatabaseTokens(SUPABASE_TIMEOUT_MS + 2_000)
-    .then((tokens) => {
-      cacheOverviewFeed(tokens.slice(0, ACTIVE_FEED_LIMIT));
+  feedRefreshInFlight = refreshExistingOverviewTokens(false)
+    .then((response) => {
+      cacheOverviewFeed(response.tokens.slice(0, ACTIVE_FEED_LIMIT));
     })
     .catch(() => undefined)
     .finally(() => {
@@ -1357,6 +1377,92 @@ async function runOverviewIngestion(force = false): Promise<OverviewIngestionRes
   return ingestionInFlight;
 }
 
+function tokenFreshnessTime(token: OverviewToken) {
+  const parsed = token.marketDataUpdatedAt ? Date.parse(token.marketDataUpdatedAt) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function selectExistingTokenRefreshCandidates(tokens: OverviewToken[], limit: number, force = false) {
+  const eligible = tokens.filter((token) => token.pairAddress?.trim() && getDexScreenerChainId(token.chain));
+  const selected = new Map<string, OverviewToken>();
+
+  function addToken(token: OverviewToken) {
+    selected.set(`${getDexScreenerChainId(token.chain)}:${token.pairAddress.trim().toLowerCase()}`, token);
+  }
+
+  [...eligible]
+    .sort((left, right) => {
+      const rightScore = Math.abs(Number(right.change24h || 0)) * 250_000 + right.volume24hUsd + right.liquidityUsd * 0.2;
+      const leftScore = Math.abs(Number(left.change24h || 0)) * 250_000 + left.volume24hUsd + left.liquidityUsd * 0.2;
+      return rightScore - leftScore;
+    })
+    .slice(0, force ? 45 : 25)
+    .forEach(addToken);
+
+  [...eligible]
+    .sort((left, right) => tokenFreshnessTime(left) - tokenFreshnessTime(right))
+    .slice(0, Math.max(0, Math.floor(limit * 0.55)))
+    .forEach(addToken);
+
+  if (eligible.length) {
+    let attempts = 0;
+    while (selected.size < limit && attempts < eligible.length) {
+      const token = eligible[existingTokenRefreshCursor % eligible.length];
+      existingTokenRefreshCursor = (existingTokenRefreshCursor + 1) % eligible.length;
+      attempts += 1;
+      addToken(token);
+    }
+  }
+
+  return [...selected.values()].slice(0, limit);
+}
+
+async function refreshExistingOverviewTokens(force = false): Promise<OverviewRefreshResponse> {
+  if (existingTokenRefreshInFlight) return existingTokenRefreshInFlight;
+
+  const acquired = await acquireSystemLock(OVERVIEW_REFRESH_LOCK_NAME, OVERVIEW_REFRESH_LOCK_TTL_SECONDS);
+  if (!acquired) {
+    const tokens = (await loadDatabaseTokens().catch(() => feedCache?.response.tokens || [])).slice(0, ACTIVE_FEED_LIMIT);
+    return {
+      generatedAt: new Date().toISOString(),
+      attempted: 0,
+      refreshed: 0,
+      skipped: true,
+      tokens
+    };
+  }
+
+  existingTokenRefreshInFlight = (async () => {
+    const currentTokens = (await loadDatabaseTokens().catch(() => feedCache?.response.tokens || [])).slice(0, ACTIVE_FEED_LIMIT);
+    const candidates = selectExistingTokenRefreshCandidates(
+      currentTokens,
+      force ? FORCE_EXISTING_TOKEN_REFRESH_LIMIT : EXISTING_TOKEN_REFRESH_LIMIT,
+      force
+    );
+    const refreshedRows = (await mapWithConcurrency(candidates, EXISTING_TOKEN_REFRESH_CONCURRENCY, async (token) => {
+      const pair = await fetchDexScreenerPair(token.chain, token.pairAddress);
+      return pair ? transformPair(pair) : null;
+    })).filter((row): row is MarketCoinRow => Boolean(row));
+
+    if (refreshedRows.length) await upsertDiscoveredTokens(refreshedRows);
+
+    const tokens = (await loadDatabaseTokens().catch(() => currentTokens)).slice(0, ACTIVE_FEED_LIMIT);
+    cacheOverviewFeed(tokens);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      attempted: candidates.length,
+      refreshed: refreshedRows.length,
+      tokens
+    };
+  })().finally(async () => {
+    existingTokenRefreshInFlight = null;
+    await releaseSystemLock(OVERVIEW_REFRESH_LOCK_NAME).catch(() => undefined);
+  });
+
+  return existingTokenRefreshInFlight;
+}
+
 export async function ingestOverviewTokens(force = false): Promise<OverviewIngestionResponse> {
   if (ingestionInFlight) return ingestionInFlight;
 
@@ -1381,6 +1487,15 @@ export async function ingestOverviewTokens(force = false): Promise<OverviewInges
 }
 
 export async function getOverviewFeed(force = false): Promise<OverviewFeedResponse> {
+  if (force) {
+    try {
+      const refreshed = await refreshExistingOverviewTokens(true);
+      return cacheOverviewFeed(refreshed.tokens.slice(0, ACTIVE_FEED_LIMIT));
+    } catch {
+      feedCache = null;
+    }
+  }
+
   if (!force && feedCache && feedCache.expiresAt > Date.now()) return feedCache.response;
   if (!force && feedCache) {
     refreshOverviewFeedCache();
@@ -1406,12 +1521,31 @@ function runScheduledOverviewIngestion() {
     });
 }
 
+function runScheduledExistingTokenRefresh() {
+  void refreshExistingOverviewTokens()
+    .then((response) => {
+      cacheOverviewFeed(response.tokens.slice(0, ACTIVE_FEED_LIMIT));
+    })
+    .catch((error) => {
+      console.warn('[OverviewRefresh] scheduled run failed.', error);
+    });
+}
+
+function startExistingTokenRefreshScheduler() {
+  if (existingTokenRefreshSchedulerStarted) return;
+  existingTokenRefreshSchedulerStarted = true;
+
+  setTimeout(runScheduledExistingTokenRefresh, EXISTING_TOKEN_REFRESH_START_DELAY_MS);
+  setInterval(runScheduledExistingTokenRefresh, EXISTING_TOKEN_REFRESH_INTERVAL_MS);
+}
+
 export function startOverviewIngestionScheduler() {
   if (ingestionSchedulerStarted) return;
   ingestionSchedulerStarted = true;
 
   setTimeout(runScheduledOverviewIngestion, OVERVIEW_INGESTION_START_DELAY_MS);
   setInterval(runScheduledOverviewIngestion, OVERVIEW_INGESTION_INTERVAL_MS);
+  startExistingTokenRefreshScheduler();
 }
 
 export async function searchOverviewTokens(query: string) {

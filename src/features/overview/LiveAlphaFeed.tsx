@@ -21,6 +21,7 @@ import {
 } from './overview-utils';
 
 const PAGE_SIZE = 50;
+const MOVER_MAX_AGE_MS = 5 * 60 * 1000;
 const chainLabels: Record<string, string> = {
   abstract: 'Abstract',
   arbitrum: 'Arbitrum',
@@ -138,6 +139,17 @@ function FlowBar({ value, max }: { value: number; max: number }) {
 
 function signedClass(value: number) {
   return value >= 0 ? 'positive' : 'negative';
+}
+
+function isFreshMoverToken(token: OverviewToken) {
+  const updatedAt = token.marketDataUpdatedAt ? Date.parse(token.marketDataUpdatedAt) : 0;
+  return (
+    Number.isFinite(updatedAt) &&
+    Date.now() - updatedAt <= MOVER_MAX_AGE_MS &&
+    Number.isFinite(Number(token.priceUsd)) &&
+    Number(token.priceUsd) > 0 &&
+    Number.isFinite(Number(token.change24h))
+  );
 }
 
 function TokenLogo({ token }: { token: OverviewToken }) {
@@ -266,13 +278,13 @@ export function LiveAlphaFeed({
   const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlowUsd24h))), [pageRows]);
   const topGainers = useMemo(() => (
     [...eventFiltered]
-      .filter((token) => Number.isFinite(Number(token.change24h)) && Number(token.change24h) > 0)
+      .filter((token) => isFreshMoverToken(token) && Number(token.change24h) > 0)
       .sort((left, right) => Number(right.change24h) - Number(left.change24h))
       .slice(0, 5)
   ), [eventFiltered]);
   const topLosers = useMemo(() => (
     [...eventFiltered]
-      .filter((token) => Number.isFinite(Number(token.change24h)) && Number(token.change24h) < 0)
+      .filter((token) => isFreshMoverToken(token) && Number(token.change24h) < 0)
       .sort((left, right) => Number(left.change24h) - Number(right.change24h))
       .slice(0, 5)
   ), [eventFiltered]);

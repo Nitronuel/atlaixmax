@@ -57,6 +57,7 @@ function makeOverviewToken(overrides: Partial<OverviewToken> = {}): OverviewToke
     dexFlowUsd24h: 1_000,
     event: 'Market Watch',
     pairCreatedAt: null,
+    marketDataUpdatedAt: '2026-06-12T12:00:00.000Z',
     ...overrides
   };
 }
