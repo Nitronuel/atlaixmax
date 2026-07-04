@@ -6,7 +6,6 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
-  Sparkles,
   Trash2,
   X
 } from 'lucide-react';
@@ -196,9 +195,8 @@ export function WatchlistPage() {
     return (
       <div className="watchlist-page">
         <section className="watchlist-auth-panel">
-          <Sparkles size={28} />
           <h2>Sign in to build your watchlist</h2>
-          <p>Your Watchlist workspace saves assets, monitor settings, recent changes, and AI context to your account.</p>
+          <p>Save assets, monitor tokens and track recent changes.</p>
           <button type="button" onClick={() => navigate('/login')}>Sign in</button>
         </section>
       </div>

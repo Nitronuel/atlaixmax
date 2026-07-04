@@ -39,7 +39,6 @@ export default function App() {
                 <Route path="/sentiment" element={<ComingSoonPage title="Narrative Intelligence" />} />
                 <Route path="/smart-money" element={<SmartMoneyPage />} />
                 <Route path="/smart-money/:address" element={<SmartMoneyPage />} />
-                <Route path="/heatmap" element={<ComingSoonPage title="Token Heatmap" />} />
                 <Route path="/safe-scan" element={<SafeScanPage />} />
                 <Route path="/wallet" element={<WalletTrackerPage />} />
                 <Route path="/wallet/:address" element={<WalletTrackerPage />} />

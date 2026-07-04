@@ -8,7 +8,8 @@ import type {
   WalletTradePerformance,
   WalletPortfolio
 } from '../../src/features/wallet-tracker/wallet-types';
-import { normalizeZerionIntelligence, type ZerionIntelligenceResponse } from './zerion-normalizer';
+import { fetchTokenContractChartRange } from '../coingecko/client';
+import { collectHistoricalPriceRequests, historicalPriceKey, normalizeZerionIntelligence, type HistoricalPriceRequest, type ZerionIntelligenceResponse } from './zerion-normalizer';
 
 type ZerionPart = {
   data: unknown;
@@ -39,14 +40,22 @@ const ZERION_BASE_URL = 'https://api.zerion.io/v1';
 const DEXSCREENER_BASE_URL = 'https://api.dexscreener.com';
 const BUBBLEMAPS_BASE_URL = 'https://api.bubblemaps.io';
 const WALLET_CACHE_TTL_MS = 60_000;
+const WALLET_VALUATION_CACHE_TTL_MS = 2 * 60_000;
 const LOGO_CACHE_TTL_MS = 6 * 60 * 60_000;
-const TRANSACTION_PAGE_LIMIT = 8;
+const DEFAULT_TRANSACTION_PAGE_LIMIT = 20;
+const MAX_TRANSACTION_PAGE_LIMIT = 50;
+const DEFAULT_ZERION_REQUEST_TIMEOUT_MS = 12_000;
+const HISTORICAL_PRICE_LOOKUP_LIMIT = 40;
+const HISTORICAL_PRICE_LOOKUP_CONCURRENCY = 3;
+const HISTORICAL_PRICE_WINDOW_SECONDS = 36 * 60 * 60;
 const REQUEST_RETRY_LIMIT = 2;
 const REQUEST_RETRY_DELAY_MS = 1_200;
 const LOGO_LOOKUP_LIMIT = 40;
 const LOGO_LOOKUP_CONCURRENCY = 4;
 const cache = new TtlCache();
 const logoCache = new TtlCache();
+const valuationCache = new TtlCache();
+const historicalPriceCache = new TtlCache();
 const pending = new Map<string, Promise<WalletIntelligenceResponse>>();
 
 const chainIds: Partial<Record<WalletChain, string>> = {
@@ -60,6 +69,17 @@ const chainIds: Partial<Record<WalletChain, string>> = {
   Avalanche: 'avalanche'
 };
 
+const coinGeckoPlatforms: Record<string, string> = {
+  ethereum: 'ethereum',
+  base: 'base',
+  'binance-smart-chain': 'binance-smart-chain',
+  bsc: 'binance-smart-chain',
+  arbitrum: 'arbitrum-one',
+  optimism: 'optimistic-ethereum',
+  polygon: 'polygon-pos',
+  avalanche: 'avalanche'
+};
+
 function getZerionKey() {
   return readEnv('ZERION_API_KEY', 'VITE_ZERION_API_KEY');
 }
@@ -70,6 +90,18 @@ function getBubblemapsKey() {
 
 function getBubblemapsBaseUrl() {
   return readEnv('BUBBLEMAPS_API_BASE_URL') || BUBBLEMAPS_BASE_URL;
+}
+
+function transactionPageLimit() {
+  const configured = Number(readEnv('WALLET_TRANSACTION_PAGE_LIMIT'));
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_TRANSACTION_PAGE_LIMIT;
+  return Math.min(Math.round(configured), MAX_TRANSACTION_PAGE_LIMIT);
+}
+
+function zerionRequestTimeoutMs() {
+  const configured = Number(readEnv('ZERION_REQUEST_TIMEOUT_MS'));
+  if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_ZERION_REQUEST_TIMEOUT_MS;
+  return Math.max(1_000, Math.round(configured));
 }
 
 function authHeader(apiKey: string) {
@@ -101,12 +133,27 @@ async function readError(response: Response) {
 }
 
 async function zerionRequest(url: URL, apiKey: string, attempt = 0): Promise<ZerionPart> {
-  const response = await fetch(url, {
-    headers: {
-      authorization: authHeader(apiKey),
-      accept: 'application/json'
-    }
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), zerionRequestTimeoutMs());
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        authorization: authHeader(apiKey),
+        accept: 'application/json'
+      },
+      signal: controller.signal
+    });
+  } catch (error) {
+    return {
+      data: null,
+      status: 504,
+      error: error instanceof Error && error.name === 'AbortError' ? 'Zerion request timed out.' : 'Zerion request failed.'
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if ((response.status === 429 || response.status === 503) && attempt < REQUEST_RETRY_LIMIT) {
     const retryAfter = Number(response.headers.get('retry-after'));
@@ -359,8 +406,9 @@ function mergeTransactionPages(parts: ZerionPart[]): ZerionPart {
 async function zerionGetTransactions(path: string, params: Record<string, string | undefined>, apiKey: string) {
   const pages: ZerionPart[] = [];
   let nextUrl: URL | null = appendParams(path, params);
+  const pageLimit = transactionPageLimit();
 
-  for (let page = 0; page < TRANSACTION_PAGE_LIMIT && nextUrl; page += 1) {
+  for (let page = 0; page < pageLimit && nextUrl; page += 1) {
     const part = await zerionRequest(nextUrl, apiKey);
     pages.push(part);
     if (!part.data || part.error || part.status < 200 || part.status >= 300) break;
@@ -435,6 +483,54 @@ function cacheKey(address: string, chain: WalletChain, period: string) {
   return `${address.toLowerCase()}:${chain}:${period}`;
 }
 
+function valuationCacheKey(address: string, chain: WalletChain, period: string) {
+  return `valuation:${cacheKey(address, chain, period)}`;
+}
+
+function coinGeckoPlatform(chainId: string) {
+  return coinGeckoPlatforms[chainId.toLowerCase()] || '';
+}
+
+function closestHistoricalPrice(prices: Array<{ timestamp: number; price: number }>, timestamp: number) {
+  return prices
+    .filter((point) => Number.isFinite(point.price) && point.price > 0)
+    .sort((left, right) => Math.abs(left.timestamp - timestamp) - Math.abs(right.timestamp - timestamp))[0]?.price;
+}
+
+async function fetchHistoricalPrice(request: HistoricalPriceRequest) {
+  const cached = historicalPriceCache.get(request.key);
+  if (cached) return cached.value as number | null;
+
+  const platform = coinGeckoPlatform(request.chainId);
+  if (!platform || !request.address) {
+    historicalPriceCache.set(request.key, null, WALLET_VALUATION_CACHE_TTL_MS);
+    return null;
+  }
+
+  const timestampSeconds = Math.floor(request.timestamp / 1000);
+  const from = timestampSeconds - HISTORICAL_PRICE_WINDOW_SECONDS;
+  const to = timestampSeconds + HISTORICAL_PRICE_WINDOW_SECONDS;
+  const chart = await fetchTokenContractChartRange(platform, request.address, from, to).catch(() => null);
+  const price = chart ? closestHistoricalPrice(chart.prices, request.timestamp) : undefined;
+  const value = price && price > 0 ? price : null;
+  historicalPriceCache.set(request.key, value, WALLET_VALUATION_CACHE_TTL_MS);
+  return value;
+}
+
+async function fetchHistoricalPrices(requests: HistoricalPriceRequest[]) {
+  const prices = new Map<string, number>();
+  const limited = requests
+    .filter((request) => coinGeckoPlatform(request.chainId) && request.address)
+    .slice(0, HISTORICAL_PRICE_LOOKUP_LIMIT);
+
+  await mapWithConcurrency(limited, HISTORICAL_PRICE_LOOKUP_CONCURRENCY, async (request) => {
+    const price = await fetchHistoricalPrice(request);
+    if (price && price > 0) prices.set(historicalPriceKey(request.chainId, request.address, request.timestamp), price);
+  });
+
+  return prices;
+}
+
 function hasThrottle(body: ZerionIntelligenceResponse) {
   return [body.portfolio, body.positions, body.pnl, body.transactions].some((part) => part?.status === 429 || part?.status === 503);
 }
@@ -488,7 +584,8 @@ export class WalletPortfolioService {
     if (!apiKey) return missingProvider('Set ZERION_API_KEY in .env to load live Zerion wallet intelligence.');
 
     const key = cacheKey(address, chain, period);
-    const cached = cache.get(key);
+    const valuationKey = valuationCacheKey(address, chain, period);
+    const cached = valuationCache.get(valuationKey) || cache.get(key);
     if (!force && cached) return cached.value as WalletIntelligenceResponse;
 
     const existing = pending.get(key);
@@ -496,9 +593,11 @@ export class WalletPortfolioService {
 
     const request = loadRawIntelligence(address, chain, period, force, apiKey)
       .then(async (raw) => {
-        const normalized = normalizeZerionIntelligence(raw);
+        const historicalPrices = await fetchHistoricalPrices(collectHistoricalPriceRequests(raw.transactions?.data));
+        const normalized = normalizeZerionIntelligence(raw, { historicalPrices });
         const enriched = await enrichMissingLogos(normalized);
         if (!hasThrottle(raw)) {
+          valuationCache.set(valuationKey, enriched, WALLET_VALUATION_CACHE_TTL_MS, enriched.portfolio.generatedAt);
           cache.set(key, enriched, WALLET_CACHE_TTL_MS, enriched.portfolio.generatedAt);
         }
         return enriched;

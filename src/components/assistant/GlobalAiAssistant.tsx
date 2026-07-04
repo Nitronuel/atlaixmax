@@ -585,23 +585,6 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
         };
     }
 
-    if (pathname.startsWith('/heatmap')) {
-        return {
-            title: 'Token Heatmap',
-            subtitle: 'Market map',
-            systemContext: 'The user is on the Token Heatmap page, which may not have live heatmap data available yet.',
-            module: 'heatmap',
-            preferredTools: ['get_platform_updates', 'get_detection_updates'],
-            icon: <Activity size={18} />,
-            prompts: [
-                'What should I use instead?',
-                'Show active tokens',
-                'What is moving today?',
-                'Open Detection context'
-            ]
-        };
-    }
-
     if (pathname.startsWith('/sentiment')) {
         return {
             title: 'Narrative Intelligence',

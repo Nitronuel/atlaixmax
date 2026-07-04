@@ -39,12 +39,18 @@ type RecentTokenFlowSummary = {
   missingSellQty: number;
   hasMissingBasis: boolean;
   hasTransferBaseline: boolean;
+  hasHistoricalPrice: boolean;
+  receivedValue: number;
+  sentValue: number;
 };
 
 type TransactionTransferFlow = {
   row: AnyRecord;
   direction: 'in' | 'out';
+  id?: string;
+  address?: string;
   symbol: string;
+  logo?: string;
   quantity: number;
   value?: number;
 };
@@ -54,7 +60,7 @@ type TokenLot = {
   remainingQuantity: number;
   cost: number;
   timestamp: number;
-  source: 'swap' | 'transfer';
+  source: 'swap' | 'transfer' | 'paired_transfer' | 'historical_price';
 };
 
 type LedgerState = RecentTokenFlowSummary & {
@@ -84,6 +90,18 @@ export type ZerionIntelligenceResponse = {
   positions?: ZerionPart;
   pnl?: ZerionPart;
   transactions?: ZerionPart;
+};
+
+export type HistoricalPriceRequest = {
+  key: string;
+  chainId: string;
+  address: string;
+  symbol: string;
+  timestamp: number;
+};
+
+export type NormalizerOptions = {
+  historicalPrices?: Map<string, number>;
 };
 
 const CHAIN_LABELS: Record<string, WalletChain | string> = {
@@ -247,6 +265,11 @@ function indexToken<T>(map: Map<string, T>, value: T, ...keys: unknown[]) {
   tokenKeys(...keys).forEach((key) => map.set(key, value));
 }
 
+export function historicalPriceKey(chainId: string, address: string, timestamp: number) {
+  const day = Math.floor(timestamp / 86_400_000);
+  return `${chainId.toLowerCase()}:${address.toLowerCase()}:${day}`;
+}
+
 function quantityValue(value: unknown) {
   return firstNumber(
     deepGet(value, ['quantity', 'float']),
@@ -325,7 +348,7 @@ function pnlStatus(row: AnyRecord): WalletTradePerformance['status'] {
 
   if (netInvested !== undefined && Math.abs(netInvested) > 0.01) return 'Open position';
   if (realizedPnl !== undefined || totalInvested !== undefined) return 'Closed';
-  return 'Cost basis missing';
+  return 'No priced basis';
 }
 
 function shortTokenAddress(value: string) {
@@ -361,6 +384,9 @@ function normalizeBreakdownRows(summaryRow: AnyRecord): WalletTradePerformance[]
       totalPnl: pnlTotal(row),
       returnPct: pnlReturn(row),
       invested: pnlInvested(row),
+      valueLabel: 'PnL',
+      valuationSource: 'zerion',
+      valuationConfidence: 'high',
       status: pnlStatus(row)
     });
   });
@@ -378,6 +404,9 @@ function normalizeBreakdownRows(summaryRow: AnyRecord): WalletTradePerformance[]
       totalPnl: pnlTotal(row),
       returnPct: pnlReturn(row),
       invested: pnlInvested(row),
+      valueLabel: 'PnL',
+      valuationSource: 'zerion',
+      valuationConfidence: 'high',
       status: pnlStatus(row)
     });
   });
@@ -484,6 +513,9 @@ function normalizePnl(raw: unknown): { summary?: WalletPnlSummary; rows: WalletT
         totalPnl,
         returnPct,
         invested,
+        valueLabel: 'PnL',
+        valuationSource: 'zerion',
+        valuationConfidence: 'high',
         status: pnlStatus(row)
       };
     })
@@ -529,6 +561,31 @@ function transferTokenAddress(value: unknown, chainId: string) {
   );
 }
 
+function transactionTransferFlows(transfers: unknown[], chainId: string) {
+  return transfers.map((transfer): TransactionTransferFlow | null => {
+    const transferRow = record(transfer);
+    const direction = transferDirection(transferRow);
+    if (!direction) return null;
+
+    const fungible = transferFungible(transferRow);
+    const fungibleAttrs = attrs(fungible);
+    const symbol = firstString(fungibleAttrs.symbol, transferRow.symbol);
+    const quantity = Math.abs(quantityValue(transferRow) || 0);
+    if (!symbol || !quantity) return null;
+
+    return {
+      row: transferRow,
+      direction,
+      id: firstString(record(fungible).id, transferRow.fungible_id),
+      address: transferTokenAddress(transferRow, chainId),
+      symbol,
+      logo: iconUrl(fungibleAttrs),
+      quantity,
+      value: transferUsdValue(transferRow)
+    };
+  }).filter((flow): flow is TransactionTransferFlow => Boolean(flow));
+}
+
 function fallbackPairedValue(flow: TransactionTransferFlow, flows: TransactionTransferFlow[]) {
   if (flow.value !== undefined && flow.value > 0) return flow.value;
 
@@ -544,6 +601,36 @@ function fallbackPairedValue(flow: TransactionTransferFlow, flows: TransactionTr
   const totalQuantity = unvaluedSameDirection.reduce((total, item) => total + item.quantity, 0);
   if (!totalQuantity) return undefined;
   return oppositeValue * (flow.quantity / totalQuantity);
+}
+
+function resolvedFlowValue(flow: TransactionTransferFlow, flows: TransactionTransferFlow[], chainId: string, timestamp: number, options?: NormalizerOptions) {
+  if (flow.value !== undefined && flow.value > 0) {
+    return {
+      value: flow.value,
+      source: flowSource(flow, flows)
+    };
+  }
+
+  const pairedValue = fallbackPairedValue(flow, flows);
+  if (pairedValue !== undefined && pairedValue > 0) {
+    return {
+      value: pairedValue,
+      source: 'paired_transfer' as const
+    };
+  }
+
+  const price = flow.address && timestamp ? options?.historicalPrices?.get(historicalPriceKey(chainId, flow.address, timestamp)) : undefined;
+  if (price !== undefined && price > 0) {
+    return {
+      value: price * flow.quantity,
+      source: 'historical_price' as const
+    };
+  }
+
+  return {
+    value: undefined,
+    source: undefined
+  };
 }
 
 function transactionTimestamp(value: unknown) {
@@ -576,6 +663,9 @@ function emptyLedger(flow: TransactionTransferFlow, id: string, address: string,
     missingSellQty: 0,
     hasMissingBasis: false,
     hasTransferBaseline: false,
+    hasHistoricalPrice: false,
+    receivedValue: 0,
+    sentValue: 0,
     lots: []
   };
 }
@@ -618,7 +708,38 @@ function finalizeLedger(ledger: LedgerState): RecentTokenFlowSummary {
   };
 }
 
-function deriveRecentTokenFlows(raw: unknown) {
+export function collectHistoricalPriceRequests(raw: unknown) {
+  const requests = new Map<string, HistoricalPriceRequest>();
+
+  dataArray(raw).forEach((transaction) => {
+    const row = attrs(transaction);
+    const timestamp = transactionTimestamp(transaction);
+    const chainId = firstString(row.chain_id, row.chain);
+    if (!timestamp || !chainId) return;
+
+    const transfers = Array.isArray(row.transfers) ? row.transfers : Array.isArray(row.changes) ? row.changes : [];
+    const transferFlows = transactionTransferFlows(transfers, chainId);
+    transferFlows.forEach((flow) => {
+      if (isStablecoinSymbol(flow.symbol) || !flow.address) return;
+      if (fallbackPairedValue(flow, transferFlows) !== undefined) return;
+
+      const key = historicalPriceKey(chainId, flow.address, timestamp);
+      if (!requests.has(key)) {
+        requests.set(key, {
+          key,
+          chainId,
+          address: flow.address,
+          symbol: flow.symbol,
+          timestamp
+        });
+      }
+    });
+  });
+
+  return [...requests.values()];
+}
+
+function deriveRecentTokenFlows(raw: unknown, options?: NormalizerOptions) {
   const groups = new Map<string, LedgerState>();
 
   dataArray(raw).slice().sort((a, b) => transactionTimestamp(a) - transactionTimestamp(b)).forEach((transaction) => {
@@ -626,49 +747,29 @@ function deriveRecentTokenFlows(raw: unknown) {
     const timestamp = transactionTimestamp(transaction);
     const chainId = firstString(row.chain_id, row.chain);
     const transfers = Array.isArray(row.transfers) ? row.transfers : Array.isArray(row.changes) ? row.changes : [];
-    const transferFlows = transfers.map((transfer): TransactionTransferFlow | null => {
-      const transferRow = record(transfer);
-      const direction = transferDirection(transferRow);
-      if (!direction) return null;
-
-      const fungible = transferFungible(transferRow);
-      const fungibleAttrs = attrs(fungible);
-      const symbol = firstString(fungibleAttrs.symbol, transferRow.symbol);
-      const quantity = Math.abs(quantityValue(transferRow) || 0);
-      if (!symbol || !quantity) return null;
-
-      return {
-        row: transferRow,
-        direction,
-        symbol,
-        quantity,
-        value: transferUsdValue(transferRow)
-      };
-    }).filter((flow): flow is TransactionTransferFlow => Boolean(flow));
+    const transferFlows = transactionTransferFlows(transfers, chainId);
 
     transferFlows.forEach((flow) => {
       if (isStablecoinSymbol(flow.symbol)) return;
 
-      const transferRow = flow.row;
-      const fungible = transferFungible(transferRow);
-      const fungibleAttrs = attrs(fungible);
-      const id = firstString(record(fungible).id, transferRow.fungible_id);
-      const address = transferTokenAddress(transferRow, chainId);
+      const id = firstString(flow.id);
+      const address = firstString(flow.address);
       const key = firstString(address, id, flow.symbol).toLowerCase();
       if (!key) return;
 
-      const current = groups.get(key) || emptyLedger(flow, id, address, iconUrl(fungibleAttrs));
+      const current = groups.get(key) || emptyLedger(flow, id, address, flow.logo);
 
-      const value = fallbackPairedValue(flow, transferFlows);
+      const { value, source } = resolvedFlowValue(flow, transferFlows, chainId, timestamp, options);
       current.flowCount += 1;
       current.valuedFlowCount += value !== undefined && value > 0 ? 1 : 0;
       current.lastActivityAt = Math.max(current.lastActivityAt, timestamp);
+      current.hasHistoricalPrice = current.hasHistoricalPrice || source === 'historical_price';
 
       if (flow.direction === 'in') {
         current.boughtQty += flow.quantity;
+        current.receivedValue += value || 0;
         current.earliestBuyAt = current.earliestBuyAt ? Math.min(current.earliestBuyAt, timestamp || current.earliestBuyAt) : timestamp || undefined;
         if (value !== undefined && value > 0) {
-          const source = flowSource(flow, transferFlows);
           current.cost += value;
           current.hasTransferBaseline = current.hasTransferBaseline || source === 'transfer';
           current.lots.push({
@@ -676,7 +777,7 @@ function deriveRecentTokenFlows(raw: unknown) {
             remainingQuantity: flow.quantity,
             cost: value,
             timestamp,
-            source
+            source: source || flowSource(flow, transferFlows)
           });
         } else {
           current.missingBuyQty += flow.quantity;
@@ -684,6 +785,7 @@ function deriveRecentTokenFlows(raw: unknown) {
         }
       } else {
         current.soldQty += flow.quantity;
+        current.sentValue += value || 0;
         current.proceeds += value || 0;
         consumeLots(current, flow.quantity, value);
       }
@@ -721,16 +823,28 @@ function derivePositionPerformance(asset: Pick<WalletAsset, 'address' | 'rawBala
   const remainingKnownQty = Math.max(0, flow.remainingKnownQty);
   const remainingKnownCost = Math.max(0, flow.remainingKnownCost);
   const hasKnownCost = flow.cost > 0 || remainingKnownCost > 0 || flow.realizedPnl !== undefined;
+  const hasReportedBalance = (reportedBalance || 0) > 0;
+  const hasCurrentQuote = asset.rawValue > 0;
+  const missingStatus: WalletTradePerformance['status'] = hasReportedBalance && !hasCurrentQuote ? 'No USD quote' : flow.valuedFlowCount ? 'Cost basis missing' : 'No priced basis';
+  const missingPerformanceStatus: WalletAsset['performanceStatus'] = missingStatus === 'No USD quote'
+    ? 'no_price_quote'
+    : missingStatus === 'No priced basis'
+      ? 'unpriced_transfer'
+      : 'cost_basis_missing';
 
-  if (!hasKnownCost || (!remainingKnownCost && !flow.realizedPnl && (reportedBalance || 0) > 0)) {
+  if (!hasKnownCost || (!remainingKnownCost && !flow.realizedPnl && hasReportedBalance)) {
     return {
       pnl: {
         id: firstString(flow.address, flow.id, flow.symbol),
         token: baseToken,
-        status: 'Cost basis missing'
+        valueUsd: asset.rawValue > 0 ? asset.rawValue : flow.receivedValue || flow.sentValue || flow.proceeds || undefined,
+        valueLabel: asset.rawValue > 0 ? 'Value' : flow.receivedValue > 0 ? 'Received' : flow.sentValue > 0 ? 'Sent' : flow.proceeds > 0 ? 'Proceeds' : undefined,
+        valuationSource: asset.rawValue > 0 ? 'current_value' : flow.hasHistoricalPrice ? 'historical_price' : flow.valuedFlowCount ? 'transfer_value' : undefined,
+        valuationConfidence: asset.rawValue > 0 ? 'medium' : flow.hasHistoricalPrice ? 'medium' : flow.valuedFlowCount ? 'low' : undefined,
+        status: missingStatus
       },
       buyTime: flow.earliestBuyAt,
-      performanceStatus: 'cost_basis_missing',
+      performanceStatus: missingPerformanceStatus,
       timeHeldStatus,
       totalPnl: undefined,
       totalReturnPct: undefined,
@@ -738,7 +852,7 @@ function derivePositionPerformance(asset: Pick<WalletAsset, 'address' | 'rawBala
       openReturnPct: undefined,
       costBasisUsd: remainingKnownCost || undefined,
       proceedsUsd: flow.proceeds || undefined,
-      pnlSource: 'missing_basis',
+      pnlSource: flow.hasHistoricalPrice ? 'historical_price' : 'missing_basis',
       pnlConfidence: 'low'
     };
   }
@@ -764,6 +878,10 @@ function derivePositionPerformance(asset: Pick<WalletAsset, 'address' | 'rawBala
       invested: remainingKnownCost || flow.cost,
       realizedCostBasis: Math.max(0, flow.cost - remainingKnownCost),
       openCostBasis: remainingKnownCost,
+      valueUsd: totalPnl !== undefined ? undefined : remainingKnownCost || flow.receivedValue || undefined,
+      valueLabel: totalPnl !== undefined ? undefined : flow.hasTransferBaseline ? 'Received' : 'Cost basis',
+      valuationSource: flow.hasHistoricalPrice ? 'historical_price' : flow.hasTransferBaseline ? 'transfer_value' : 'fifo',
+      valuationConfidence: flow.hasHistoricalPrice || partial ? 'medium' : 'high',
       status: partial ? 'Partial' : reportedBalance && reportedBalance > 0 ? 'Open position' : 'Closed'
     },
     buyTime: flow.earliestBuyAt,
@@ -775,7 +893,7 @@ function derivePositionPerformance(asset: Pick<WalletAsset, 'address' | 'rawBala
     openReturnPct,
     costBasisUsd: remainingKnownCost || flow.cost,
     proceedsUsd: flow.proceeds || undefined,
-    pnlSource: flow.hasTransferBaseline ? 'transfer_baseline' : 'fifo',
+    pnlSource: flow.hasHistoricalPrice ? 'historical_price' : flow.hasTransferBaseline ? 'transfer_baseline' : 'fifo',
     pnlConfidence: partial ? 'medium' : 'high'
   };
 }
@@ -808,7 +926,10 @@ function deriveHistoryPerformanceRows(recentFlows: Map<string, RecentTokenFlowSu
   });
 
   const rows: WalletTradePerformance[] = [];
+  const seenFlows = new Set<RecentTokenFlowSummary>();
   recentFlows.forEach((flow) => {
+    if (seenFlows.has(flow)) return;
+    seenFlows.add(flow);
     if (tokenKeys(flow.id, flow.address, flow.symbol).some((key) => existingKeys.has(key))) return;
 
     const id = firstString(flow.address, flow.id, flow.symbol);
@@ -819,10 +940,20 @@ function deriveHistoryPerformanceRows(recentFlows: Map<string, RecentTokenFlowSu
     };
 
     if (!flow.cost || !flow.valuedFlowCount || flow.hasMissingBasis && flow.realizedPnl === undefined) {
+      const status: WalletTradePerformance['status'] = flow.proceeds > 0
+        ? 'Cost basis missing'
+        : flow.boughtQty > 0 && !flow.valuedFlowCount
+          ? 'No priced basis'
+          : 'Open position';
+
       rows.push({
         id,
         token,
-        status: flow.proceeds > 0 ? 'Cost basis missing' : 'Open position'
+        valueUsd: flow.proceeds || flow.sentValue || flow.receivedValue || undefined,
+        valueLabel: flow.proceeds > 0 ? 'Proceeds' : flow.sentValue > 0 ? 'Sent' : flow.receivedValue > 0 ? 'Received' : undefined,
+        valuationSource: flow.hasHistoricalPrice ? 'historical_price' : flow.valuedFlowCount ? 'transfer_value' : undefined,
+        valuationConfidence: flow.hasHistoricalPrice ? 'medium' : flow.valuedFlowCount ? 'low' : undefined,
+        status
       });
       return;
     }
@@ -838,6 +969,10 @@ function deriveHistoryPerformanceRows(recentFlows: Map<string, RecentTokenFlowSu
       totalPnl,
       returnPct,
       invested: flow.cost,
+      valueUsd: realizedPnl === undefined ? flow.cost || flow.receivedValue || undefined : undefined,
+      valueLabel: realizedPnl === undefined ? flow.hasTransferBaseline ? 'Received' : 'Cost basis' : undefined,
+      valuationSource: flow.hasHistoricalPrice ? 'historical_price' : flow.hasTransferBaseline ? 'transfer_value' : 'fifo',
+      valuationConfidence: flow.hasHistoricalPrice || flow.hasMissingBasis ? 'medium' : 'high',
       status: flow.hasMissingBasis ? 'Partial' : flow.remainingKnownQty <= 1e-12 ? 'Closed' : 'Open position'
     });
   });
@@ -1049,10 +1184,10 @@ function firstError(response: ZerionIntelligenceResponse) {
   return response.portfolio?.error || response.positions?.error || response.pnl?.error;
 }
 
-export function normalizeZerionIntelligence(response: ZerionIntelligenceResponse): { portfolio: WalletPortfolio; activity: WalletActivity } {
+export function normalizeZerionIntelligence(response: ZerionIntelligenceResponse, options?: NormalizerOptions): { portfolio: WalletPortfolio; activity: WalletActivity } {
   const pnl = normalizePnl(response.pnl?.data);
   const overview = normalizePortfolioOverview(response.portfolio?.data);
-  const recentFlows = deriveRecentTokenFlows(response.transactions?.data);
+  const recentFlows = deriveRecentTokenFlows(response.transactions?.data, options);
   const assets = normalizePositions(response.positions?.data, pnl.byToken, recentFlows);
   const tradePerformance = enrichTradePerformanceRows(pnl.rows, recentFlows);
   const historyPerformance = deriveHistoryPerformanceRows(recentFlows, assets, tradePerformance);

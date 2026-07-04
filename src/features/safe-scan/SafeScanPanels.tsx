@@ -197,8 +197,8 @@ export function LiquidityPoolLockPanel({ clusters, totalSupply, liquidity, lockR
   const clusterBalance = clusterSupplyBalance(clusters);
   const clusterShare = clusterBalance !== null && totalSupply ? (clusterBalance / totalSupply) * 100 : null;
   const clusterValueUsd = clusterBalance !== null && liquidity?.tokenPriceUsd ? clusterBalance * liquidity.tokenPriceUsd : null;
-  const liquidityShare = clusterBalance !== null && liquidity?.tokenLiquidity ? (clusterBalance / liquidity.tokenLiquidity) * 100 : null;
-  const tone = drainRiskTone(liquidityShare);
+  const liquidityHeldShare = clusterValueUsd !== null && liquidity?.liquidityUsd ? (clusterValueUsd / liquidity.liquidityUsd) * 100 : null;
+  const tone = drainRiskTone(liquidityHeldShare);
   const lockTone = liquidityLockTone(lockReport);
   const lockedValue = lockReport?.lockedUsd !== null && lockReport?.lockedUsd !== undefined
     ? lockReport.lockedUsd
@@ -229,7 +229,7 @@ export function LiquidityPoolLockPanel({ clusters, totalSupply, liquidity, lockR
       <Card className={`safe-scan-drain-card ${tone}`}>
         <div className="safe-scan-drain-head">
           <span>Drain Risk</span>
-          <strong>{drainRiskLabel(liquidityShare)}</strong>
+          <strong>{drainRiskLabel(liquidityHeldShare)}</strong>
         </div>
         <div className="safe-scan-drain-grid">
           <div>
@@ -242,8 +242,8 @@ export function LiquidityPoolLockPanel({ clusters, totalSupply, liquidity, lockR
             <strong>{liquidity ? formatCurrencyCompact(liquidity.liquidityUsd) : 'N/A'}</strong>
           </div>
           <div>
-            <span>Liquidity held</span>
-            <strong>{liquidityShare !== null ? formatPercent(liquidityShare) : 'N/A'}</strong>
+            <span>Liquidity held by cluster</span>
+            <strong>{liquidityHeldShare !== null ? formatPercent(liquidityHeldShare) : 'N/A'}</strong>
           </div>
         </div>
         {loading || error || !liquidity ? <p>{error || (loading ? 'Checking live pool depth...' : 'No live token-side liquidity was found for this token.')}</p> : null}
@@ -308,8 +308,8 @@ export function HolderConcentrationPanel({ holders, labels, totalSupply }: {
         title="Holder Concentration"
         eyebrow="Largest balances"
         action={holderCount ? (
-          <button className="secondary-pill" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
-            {expanded ? 'Hide holders' : `Show holders (${formatNumber(holderCount)})`}
+          <button className="secondary-pill holder-action-pill" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
+            {expanded ? 'Hide holders' : `View top holders (${formatNumber(holderCount)})`}
           </button>
         ) : null}
       />

@@ -829,9 +829,12 @@ export function AtlasPanel({ map, clusters, labels }: {
                     onBlur={() => setHoveredClusterKey(null)}
                   >
                     {!item.cluster ? <EyeOff className="cluster-row-eye muted" size={15} aria-hidden="true" /> : null}
-                    <span className="cluster-dot" style={{ backgroundColor: hexToRgba(color, 0.24), borderColor: color }} />
-                    <span>
-                      <strong>{item.name}</strong>
+                    <span className="cluster-dot cluster-dot-leading" style={{ backgroundColor: hexToRgba(color, 0.24), borderColor: color }} />
+                    <span className="cluster-summary-copy">
+                      <span className="cluster-title-line">
+                        <strong>{item.name}</strong>
+                        <span className="cluster-dot cluster-dot-inline" style={{ backgroundColor: hexToRgba(color, 0.24), borderColor: color }} aria-hidden="true" />
+                      </span>
                       <small>{hidden ? 'Hidden from graph / ' : ''}{formatNumber(item.members.length)} wallets{item.sharePercent !== null ? ` / ${formatPercentPoints(item.sharePercent)}` : ''}</small>
                       <i className="cluster-share-meter" aria-hidden="true" />
                     </span>

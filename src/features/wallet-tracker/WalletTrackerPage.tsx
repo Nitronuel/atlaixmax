@@ -174,7 +174,20 @@ function tokenPerformanceLabel(token: WalletActivityToken | WalletTradedToken) {
 function formatPerformanceUsd(value?: number) {
   if (value === undefined || !Number.isFinite(value)) return 'N/A';
   const sign = value > 0 ? '+' : value < 0 ? '-' : '';
-  return `${sign}${Math.abs(value).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}`;
+  const absolute = Math.abs(value);
+  if (absolute > 0 && absolute < 0.01) {
+    return `${sign}${absolute.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 8 })}`;
+  }
+  return `${sign}${absolute.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}`;
+}
+
+function formatValuationUsd(value?: number) {
+  if (value === undefined || !Number.isFinite(value)) return 'N/A';
+  const absolute = Math.abs(value);
+  if (absolute > 0 && absolute < 0.01) {
+    return absolute.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 8 });
+  }
+  return absolute.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
 function formatPerformanceReturn(value?: number) {
@@ -253,6 +266,10 @@ function buildTradePerformanceRows(activity: WalletActivity) {
         token: row.token,
         realizedPnl,
         returnPct,
+        valueUsd: realizedPnl === undefined ? row.proceeds || row.cost || undefined : undefined,
+        valueLabel: realizedPnl === undefined ? row.proceeds > 0 ? 'Proceeds' : row.cost > 0 ? 'Cost basis' : undefined : 'PnL',
+        valuationSource: realizedPnl === undefined ? 'transfer_value' : 'fifo',
+        valuationConfidence: realizedPnl === undefined ? 'low' : 'medium',
         status
       };
     });
@@ -649,7 +666,6 @@ function WalletProfile({ address }: { address: string }) {
                   </div>
                   <div className="wallet-result-actions">
                     <button className="quiet-button" type="button" onClick={() => setEditing(true)}>Edit Profile</button>
-                    <button className="primary-action" type="button" onClick={openWalletAlert}>Add Alert</button>
                     {savedWallet ? (
                       <button className="quiet-button danger icon-only" type="button" onClick={() => {
                         WalletStorage.delete(address);
@@ -689,6 +705,8 @@ function WalletProfile({ address }: { address: string }) {
           stats={portfolioState.stats}
           assets={portfolioState.portfolio.assets}
           activity={activityState.activity}
+          loadingPortfolio={portfolioState.loading || portfolioState.enriching}
+          loadingActivity={activityState.loading}
           alertRules={walletAlertRules}
           loadingAlerts={walletAlertRulesLoading}
           onCreateMonitor={openWalletAlert}
@@ -925,6 +943,8 @@ function WalletInsightRail({
   stats,
   assets,
   activity,
+  loadingPortfolio,
+  loadingActivity,
   alertRules,
   loadingAlerts,
   onCreateMonitor,
@@ -936,13 +956,18 @@ function WalletInsightRail({
   stats: ReturnType<typeof useWalletPortfolio>['stats'];
   assets: WalletPortfolio['assets'];
   activity: WalletActivity;
+  loadingPortfolio: boolean;
+  loadingActivity: boolean;
   alertRules: SmartAlertRule[];
   loadingAlerts: boolean;
   onCreateMonitor: () => void;
   tradePerformance: WalletTradePerformance[];
   walletPnl?: WalletPnlSummary;
 }) {
-  const insight = buildWalletInsight(stats, activity, categories, assets);
+  const insightLoading = loadingPortfolio || loadingActivity;
+  const hasWalletRead = assets.length > 0 || activity.activities.length > 0 || activity.summary.lastActiveAt > 0;
+  const insightReady = !insightLoading && hasWalletRead;
+  const insight = insightReady ? buildWalletInsight(stats, activity, categories, assets) : null;
   const activeRules = alertRules.filter((rule) => rule.enabled);
   const monitorRows = WALLET_MONITOR_ROWS.map((row) => ({
     ...row,
@@ -951,8 +976,6 @@ function WalletInsightRail({
 
   return (
     <aside className="wallet-side-rail">
-      <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} />
-
       <section className="wallet-ai-insights-panel">
         <header>
           <div>
@@ -960,12 +983,19 @@ function WalletInsightRail({
             <p>Live read on {walletName}.</p>
           </div>
         </header>
-        <dl className="wallet-insight-list">
-          <div><dt>Behavior Type</dt><dd>{insight.behaviorType}</dd></div>
-          <div><dt>Risk Profile</dt><dd className={insight.riskProfile === 'Low' ? 'positive' : 'warning'}>{insight.riskProfile}</dd></div>
-          <div><dt>Trading Style</dt><dd>{insight.tradingStyle}</dd></div>
-          <div><dt>Preference</dt><dd>{insight.preference}</dd></div>
-        </dl>
+        {insight ? (
+          <dl className="wallet-insight-list">
+            <div><dt>Behavior Type</dt><dd>{insight.behaviorType}</dd></div>
+            <div><dt>Risk Profile</dt><dd className={insight.riskProfile === 'Low' ? 'positive' : 'warning'}>{insight.riskProfile}</dd></div>
+            <div><dt>Trading Style</dt><dd>{insight.tradingStyle}</dd></div>
+            <div><dt>Preference</dt><dd>{insight.preference}</dd></div>
+          </dl>
+        ) : (
+          <div className="wallet-insight-loading">
+            {insightLoading ? <Loader2 size={16} className="spin" /> : null}
+            <span>{insightLoading ? 'Reading wallet activity' : 'No wallet insight yet'}</span>
+          </div>
+        )}
       </section>
 
       <section className="wallet-monitors-panel">
@@ -986,6 +1016,8 @@ function WalletInsightRail({
           Create New Monitor
         </button>
       </section>
+
+      <TradePerformancePanel activity={activity} tradePerformance={tradePerformance} walletPnl={walletPnl} assets={assets} />
     </aside>
   );
 }
@@ -1063,6 +1095,8 @@ function shouldShowHolding(asset: ReturnType<typeof useWalletPortfolio>['portfol
 function holdingStatusLabel(status: ReturnType<typeof useWalletPortfolio>['portfolio']['assets'][number]['performanceStatus']) {
   if (status === 'reported') return 'Reported by Zerion';
   if (status === 'cost_basis_missing') return 'Cost basis missing';
+  if (status === 'unpriced_transfer') return 'No priced basis';
+  if (status === 'no_price_quote') return 'No USD quote';
   return 'Unavailable';
 }
 
@@ -1227,29 +1261,47 @@ function hasPerformanceValue(row: WalletTradePerformance) {
   return row.realizedPnl !== undefined || row.unrealizedPnl !== undefined || row.totalPnl !== undefined || row.returnPct !== undefined;
 }
 
+function hasValuationValue(row: WalletTradePerformance) {
+  return hasPerformanceValue(row) || row.valueUsd !== undefined;
+}
+
+function tradeRowSortScore(row: WalletTradePerformance) {
+  if (hasPerformanceValue(row)) return 0;
+  if (row.valueUsd !== undefined) return 1;
+  return 2;
+}
+
 function mergeTradePerformanceRows(rows: WalletTradePerformance[]) {
   const merged = new Map<string, WalletTradePerformance>();
   rows.forEach((row) => {
     const key = tradeRowKey(row);
     const existing = merged.get(key);
-    if (!existing || (!hasPerformanceValue(existing) && hasPerformanceValue(row))) {
+    if (!existing || (!hasValuationValue(existing) && hasValuationValue(row)) || (!hasPerformanceValue(existing) && hasPerformanceValue(row))) {
       merged.set(key, row);
     }
   });
-  return Array.from(merged.values());
+  return Array.from(merged.values()).sort((left, right) => (
+    tradeRowSortScore(left) - tradeRowSortScore(right)
+    || Math.abs(right.totalPnl ?? right.realizedPnl ?? right.valueUsd ?? 0) - Math.abs(left.totalPnl ?? left.realizedPnl ?? left.valueUsd ?? 0)
+    || left.token.symbol.localeCompare(right.token.symbol)
+  ));
 }
 
 function positionPerformanceRows(assets: WalletPortfolio['assets']): WalletTradePerformance[] {
   return assets
     .filter((asset) => !asset.isStablecoin)
-    .filter((asset) => asset.totalPnl !== undefined || asset.totalReturnPct !== undefined || asset.realizedPnl !== undefined || asset.unrealizedPnl !== undefined || asset.performanceStatus === 'cost_basis_missing')
-    .map((asset) => {
+    .filter((asset) => asset.totalPnl !== undefined || asset.totalReturnPct !== undefined || asset.realizedPnl !== undefined || asset.unrealizedPnl !== undefined || asset.performanceStatus === 'cost_basis_missing' || asset.performanceStatus === 'unpriced_transfer' || asset.performanceStatus === 'no_price_quote')
+    .map((asset): WalletTradePerformance => {
       const totalPnl = asset.totalPnl ?? (asset.realizedPnl !== undefined || asset.unrealizedPnl !== undefined
         ? (asset.realizedPnl || 0) + (asset.unrealizedPnl || 0)
         : undefined);
-      const status: WalletTradePerformance['status'] = asset.performanceStatus === 'cost_basis_missing'
-        ? 'Cost basis missing'
-        : asset.rawBalance && asset.rawBalance > 0 ? asset.realizedPnl !== undefined ? 'Partial' : 'Open position' : 'Closed';
+      const status: WalletTradePerformance['status'] = asset.performanceStatus === 'no_price_quote'
+        ? 'No USD quote'
+        : asset.performanceStatus === 'unpriced_transfer'
+          ? 'No priced basis'
+          : asset.performanceStatus === 'cost_basis_missing'
+            ? 'Cost basis missing'
+            : asset.rawBalance && asset.rawBalance > 0 ? asset.realizedPnl !== undefined ? 'Partial' : 'Open position' : 'Closed';
 
       return {
         id: asset.address || asset.symbol,
@@ -1264,6 +1316,10 @@ function positionPerformanceRows(assets: WalletPortfolio['assets']): WalletTrade
         returnPct: asset.totalReturnPct,
         invested: asset.costBasisUsd,
         openCostBasis: asset.openCostBasisUsd,
+        valueUsd: totalPnl === undefined ? asset.rawValue || asset.openCostBasisUsd || asset.costBasisUsd || asset.proceedsUsd : undefined,
+        valueLabel: totalPnl === undefined ? asset.rawValue > 0 ? 'Value' : asset.openCostBasisUsd || asset.costBasisUsd ? 'Cost basis' : asset.proceedsUsd ? 'Proceeds' : undefined : 'PnL',
+        valuationSource: totalPnl === undefined ? asset.rawValue > 0 ? 'current_value' : asset.pnlSource === 'historical_price' ? 'historical_price' : asset.openCostBasisUsd || asset.costBasisUsd || asset.proceedsUsd ? 'transfer_value' : undefined : asset.pnlSource === 'zerion' ? 'zerion' : asset.pnlSource === 'historical_price' ? 'historical_price' : 'fifo',
+        valuationConfidence: totalPnl === undefined ? asset.rawValue > 0 ? 'medium' : asset.pnlConfidence : asset.pnlConfidence,
         status
       };
     });
@@ -1277,6 +1333,10 @@ function TradePerformancePanel({ activity, tradePerformance, walletPnl, assets }
     realizedPnl: row.realizedPnl,
     totalPnl: row.realizedPnl,
     returnPct: row.returnPct,
+    valueUsd: row.valueUsd,
+    valueLabel: row.valueLabel as WalletTradePerformance['valueLabel'],
+    valuationSource: row.valuationSource as WalletTradePerformance['valuationSource'],
+    valuationConfidence: row.valuationConfidence as WalletTradePerformance['valuationConfidence'],
     status: row.status as WalletTradePerformance['status']
   }));
   const rows = mergeTradePerformanceRows([
@@ -1313,6 +1373,15 @@ function TradePerformancePanel({ activity, tradePerformance, walletPnl, assets }
                   <span className="wallet-performance-breakdown">Realized {formatPerformanceUsd(row.realizedPnl)} / Open {formatPerformanceUsd(row.unrealizedPnl)}</span>
                 ) : null}
               </>
+            </small>
+          ) : row.valueUsd !== undefined ? (
+            <small className="wallet-performance-metric">
+              <span className="wallet-performance-metric-line">
+                <span>{formatValuationUsd(row.valueUsd)}</span>
+              </span>
+              <span className="wallet-performance-breakdown">
+                {row.valueLabel || 'Value'}{row.valuationSource ? ` (${row.valuationSource.replace(/_/g, ' ')})` : ''}
+              </span>
             </small>
           ) : null}
         </div>

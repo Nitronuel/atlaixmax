@@ -1034,6 +1034,69 @@ input:disabled {
   color: var(--text-medium);
 }
 
+.dark-preview .wallet-modal-layer {
+  background: rgba(7, 9, 12, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.dark-preview .wallet-modal h3 {
+  color: var(--text-light);
+}
+
+.dark-preview .wallet-modal-head button {
+  border-color: rgba(54, 61, 69, 0.95);
+  background: rgba(17, 19, 21, 0.78);
+  color: rgba(188, 197, 208, 0.92);
+}
+
+.dark-preview .wallet-modal-head button:hover,
+.dark-preview .wallet-modal-head button:focus-visible {
+  border-color: rgba(38, 211, 86, 0.34);
+  background: rgba(38, 211, 86, 0.1);
+  color: var(--text-light);
+}
+
+.dark-preview .modal-search:focus-within {
+  border-color: rgba(38, 211, 86, 0.38);
+  box-shadow: 0 0 0 3px rgba(38, 211, 86, 0.09);
+}
+
+.dark-preview .modal-search input::placeholder {
+  color: rgba(150, 158, 171, 0.78);
+}
+
+.dark-preview .chain-list {
+  scrollbar-color: rgba(126, 136, 148, 0.82) rgba(16, 18, 21, 0.9);
+}
+
+.dark-preview .chain-list button {
+  border-color: rgba(47, 53, 59, 0.95);
+  background:
+    linear-gradient(135deg, rgba(28, 31, 35, 0.98), rgba(19, 22, 25, 0.96));
+  color: rgba(235, 239, 244, 0.96);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.dark-preview .chain-list button:hover,
+.dark-preview .chain-list button:focus-visible {
+  border-color: rgba(38, 211, 86, 0.36);
+  background:
+    linear-gradient(135deg, rgba(31, 41, 35, 0.98), rgba(19, 26, 23, 0.96));
+  color: var(--text-light);
+  transform: translateY(-1px);
+}
+
+.dark-preview .chain-list small {
+  color: rgba(141, 151, 165, 0.86);
+}
+
+.dark-preview .chain-list button:hover small,
+.dark-preview .chain-list button:focus-visible small {
+  color: rgba(38, 211, 86, 0.92);
+}
+
 .dark-preview .quiet-button.danger {
   color: var(--primary-red);
 }
@@ -3132,6 +3195,25 @@ main {
 
 }
 
+.holder-action-pill {
+  min-height: 44px;
+  border-color: rgba(31, 143, 58, 0.88);
+  background: var(--brand-green-dark);
+  color: #fff;
+  padding: 0 22px;
+  font-size: 13px;
+  font-weight: 900;
+  box-shadow: 0 14px 28px rgba(31, 143, 58, 0.24);
+}
+
+.holder-action-pill:hover,
+.holder-action-pill:focus-visible {
+  border-color: rgba(31, 143, 58, 0.95);
+  background: var(--primary-green);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
 .status-pill.good {
   border-color: rgba(63, 163, 77, 0.25);
   background: rgba(63, 163, 77, 0.1);
@@ -3911,6 +3993,27 @@ main {
 
 }
 
+.cluster-title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+
+}
+
+.cluster-title-line strong {
+  min-width: 0;
+
+}
+
+.cluster-dot-inline {
+  display: none;
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+
+}
+
 .cluster-browser-item strong,
 .cluster-browser-item small {
   display: block;
@@ -4386,6 +4489,20 @@ main {
 
 }
 
+.dark-preview .holder-action-pill {
+  border-color: rgba(38, 211, 86, 0.7);
+  background: var(--brand-green-dark);
+  color: #fff;
+  box-shadow: 0 16px 30px rgba(38, 211, 86, 0.18);
+}
+
+.dark-preview .holder-action-pill:hover,
+.dark-preview .holder-action-pill:focus-visible {
+  border-color: rgba(38, 211, 86, 0.9);
+  background: var(--primary-green);
+  color: #fff;
+}
+
 .dark-preview .search-control input,
 .dark-preview .scan-form select {
   color: var(--text-light);
@@ -4498,9 +4615,17 @@ main {
 }
 
 .dark-preview .safe-scan-drain-card.warning {
-  border-color: rgba(246, 217, 103, 0.26);
+  border-color: rgba(245, 158, 11, 0.48);
   background:
-    linear-gradient(135deg, rgba(246, 217, 103, 0.12), rgba(23, 27, 31, 0.94));
+    radial-gradient(circle at 88% 18%, rgba(245, 158, 11, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(32, 29, 20, 0.98), rgba(20, 23, 26, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 18px 50px rgba(0, 0, 0, 0.24);
+}
+
+.dark-preview .safe-scan-drain-card.warning .safe-scan-drain-head strong {
+  color: #f59e0b;
 }
 
 .dark-preview .safe-scan-drain-card.safe {
@@ -10345,13 +10470,22 @@ main {
 }
 
 .cluster-row-main {
-    grid-template-columns: 14px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(82px, auto) auto;
+    gap: 8px;
   
 }
 
 .cluster-browser-item.solo .cluster-row-main {
-    grid-template-columns: 18px 14px minmax(0, 1fr);
+    grid-template-columns: 18px minmax(0, 1fr) minmax(82px, auto) auto;
   
+}
+
+.cluster-dot-leading {
+    display: none;
+}
+
+.cluster-dot-inline {
+    display: inline-flex;
 }
 
 .cluster-list-head {
@@ -10364,21 +10498,42 @@ main {
   
 }
 
-.cluster-row-main b,
-.cluster-row-main em {
+.cluster-summary-copy {
+    grid-column: 1;
+  
+}
+
+.cluster-browser-item.solo .cluster-summary-copy {
     grid-column: 2;
   
 }
 
-.cluster-browser-item.solo .cluster-row-main b,
-.cluster-browser-item.solo .cluster-row-main em {
-    grid-column: 3;
+.cluster-row-main b {
+    grid-column: 2;
+    align-self: center;
+    justify-self: start;
+    text-align: left;
   
 }
 
-.cluster-row-main b {
-    text-align: left;
-  
+.cluster-row-main em {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+    justify-self: end;
+}
+
+.cluster-browser-item.solo .cluster-row-main b {
+    grid-column: 3;
+}
+
+.cluster-browser-item.solo .cluster-row-main em {
+    grid-column: 4;
+    grid-row: 1;
+}
+
+.cluster-share-meter {
+    display: none;
 }
 
   .cluster-members button {
@@ -11372,6 +11527,20 @@ main {
   color: #c47b18;
 }
 
+.wallet-insight-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 74px;
+  color: var(--text-medium);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.wallet-insight-loading svg {
+  color: var(--primary-green);
+}
+
 .wallet-monitors-panel header a {
   color: var(--primary-green);
   font-size: 12px;
@@ -11525,6 +11694,13 @@ main {
 .dark-preview .wallet-performance-status.partial {
   background: transparent;
   color: var(--primary-yellow);
+}
+
+.dark-preview .wallet-performance-status.cost-basis-missing,
+.dark-preview .wallet-performance-status.no-priced-basis,
+.dark-preview .wallet-performance-status.no-usd-quote {
+  background: transparent;
+  color: rgba(211, 153, 82, 0.95);
 }
 
 .wallet-result-layout .holdings-panel {
@@ -12657,9 +12833,11 @@ main {
   color: #a46405;
 }
 
-.wallet-performance-status.cost-basis-missing {
+.wallet-performance-status.cost-basis-missing,
+.wallet-performance-status.no-priced-basis,
+.wallet-performance-status.no-usd-quote {
   background: transparent;
-  color: var(--text-dark);
+  color: #9b5a11;
 }
 
 .wallet-performance-status.open-position {
@@ -16721,17 +16899,18 @@ main {
 }
 
 .watchlist-auth-panel {
-  width: min(620px, 100%);
+  width: min(460px, 100%);
+  min-height: 260px;
   margin: 0 auto;
-  padding: 34px;
+  padding: 28px;
   border: 1px solid var(--border-color);
   border-radius: 16px;
   background: var(--bg-card);
 }
 
 .watchlist-auth-panel p {
-  margin: 0 0 20px;
-  max-width: 58ch;
+  margin: 0 0 18px;
+  max-width: 34ch;
 }
 
 .watchlist-auth-panel button,

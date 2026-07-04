@@ -50,7 +50,6 @@ export type AiAssistantPageModule =
     | 'smart-money'
     | 'smart-alerts'
     | 'safe-scan'
-    | 'heatmap'
     | 'narrative'
     | 'assistant'
     | 'settings'

@@ -1,4 +1,4 @@
-import { Activity, Bell, LayoutDashboard, LogIn, LogOut, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Star, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
+import { Bell, LayoutDashboard, LogIn, LogOut, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Star, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalAiAssistant } from '../components/assistant/GlobalAiAssistant';
@@ -10,7 +10,6 @@ const navItems = [
   { path: '/detection', label: 'Detection Engine', icon: <Radar size={19} />, group: 'market' },
   { path: '/sentiment', label: 'Narrative Intelligence', icon: <Target size={19} />, group: 'market' },
   { path: '/smart-money', label: 'Smart Money Engine', icon: <Zap size={19} />, group: 'capital' },
-  { path: '/heatmap', label: 'Token Heatmap', icon: <Activity size={19} />, group: 'capital' },
   { path: '/wallet', label: 'Wallet Intelligence', icon: <Wallet size={19} />, group: 'capital' },
   { path: '/smart-alerts', label: 'Smart Alerts', icon: <Bell size={19} />, group: 'tools' },
   { path: '/ai-assistant', label: 'AI Assistant', icon: <MessageSquare size={19} />, group: 'tools' },
@@ -34,7 +33,6 @@ function titleFromPath(pathname: string) {
   if (pathname.startsWith('/detection')) return 'Detection Engine';
   if (pathname.startsWith('/sentiment')) return 'Narrative Intelligence';
   if (pathname.startsWith('/smart-money')) return 'Smart Money Engine';
-  if (pathname.startsWith('/heatmap')) return 'Token Heatmap';
   if (pathname.startsWith('/wallet')) return 'Wallet Intelligence';
   if (pathname.startsWith('/smart-alerts')) return 'Smart Alerts';
   if (pathname.startsWith('/watchlist')) return 'Watchlist';

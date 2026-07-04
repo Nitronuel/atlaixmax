@@ -50,10 +50,10 @@ export type WalletAsset = {
   openReturnPct?: number;
   costBasisUsd?: number;
   proceedsUsd?: number;
-  pnlSource?: 'zerion' | 'fifo' | 'transfer_baseline' | 'missing_basis' | 'stablecoin';
+  pnlSource?: 'zerion' | 'fifo' | 'transfer_baseline' | 'historical_price' | 'missing_basis' | 'stablecoin';
   pnlConfidence?: 'high' | 'medium' | 'low';
   buyTime?: number;
-  performanceStatus?: 'reported' | 'partial_history' | 'cost_basis_missing' | 'unknown';
+  performanceStatus?: 'reported' | 'partial_history' | 'cost_basis_missing' | 'unpriced_transfer' | 'no_price_quote' | 'unknown';
   timeHeldStatus?: 'reported' | 'partial_history' | 'unknown';
 };
 
@@ -93,7 +93,11 @@ export type WalletTradePerformance = {
   invested?: number;
   realizedCostBasis?: number;
   openCostBasis?: number;
-  status: 'Open position' | 'Partial' | 'Closed' | 'Cost basis missing';
+  valueUsd?: number;
+  valueLabel?: 'PnL' | 'Value' | 'Received' | 'Sent' | 'Cost basis' | 'Proceeds';
+  valuationSource?: 'zerion' | 'fifo' | 'paired_transfer' | 'historical_price' | 'current_value' | 'transfer_value';
+  valuationConfidence?: 'high' | 'medium' | 'low';
+  status: 'Open position' | 'Partial' | 'Closed' | 'Cost basis missing' | 'No priced basis' | 'No USD quote';
 };
 
 export type WalletOverview = {

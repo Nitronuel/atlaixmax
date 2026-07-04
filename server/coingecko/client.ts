@@ -238,6 +238,22 @@ export async function fetchCoinChart(id: string, days = 7): Promise<CoinGeckoCha
   };
 }
 
+export async function fetchTokenContractChartRange(assetPlatformId: string, contractAddress: string, from: number, to: number): Promise<CoinGeckoChartResponse> {
+  const payload = await fetchCoinGecko<{ prices?: Array<[number, number]> }>(`/coins/${encodeURIComponent(assetPlatformId)}/contract/${encodeURIComponent(contractAddress)}/market_chart/range`, {
+    vs_currency: 'usd',
+    from: String(Math.floor(from)),
+    to: String(Math.ceil(to))
+  });
+  return {
+    generatedAt: new Date().toISOString(),
+    coinId: `${assetPlatformId}:${contractAddress.toLowerCase()}`,
+    days: Math.max(1, Math.ceil((to - from) / 86_400)),
+    prices: (payload.prices || [])
+      .filter((point) => Array.isArray(point) && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])))
+      .map(([timestamp, price]) => ({ timestamp: Number(timestamp), price: Number(price) }))
+  };
+}
+
 export async function searchCoinGecko(query: string) {
   const payload = await fetchCoinGecko<CoinGeckoSearchPayload>('/search', { query });
   return (payload.coins || []).slice(0, 20).map((coin) => ({
