@@ -1186,33 +1186,11 @@ input:disabled {
   }
 }
 
-.auth-loading,
 .settings-page {
   min-height: calc(100dvh - 78px);
   display: grid;
   place-items: center;
   padding: 28px;
-}
-
-.auth-loading > div {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 16px;
-  background: var(--bg-card-solid);
-  padding: 34px;
-  box-shadow: var(--shadow-subtle);
-}
-
-.auth-loading span {
-  width: 42px;
-  height: 42px;
-  border: 3px solid rgba(47, 134, 60, 0.22);
-  border-top-color: var(--primary-green);
-  border-radius: 50%;
-  animation: spin 780ms linear infinite;
 }
 
 .admin-page {
