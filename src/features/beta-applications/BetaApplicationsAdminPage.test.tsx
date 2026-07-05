@@ -91,6 +91,7 @@ describe('BetaApplicationsAdminPage', () => {
     expect(window.confirm).toHaveBeenCalledWith("Delete Pending Applicant's beta application? This cannot be undone.");
     expect(BetaApplicationService.delete).toHaveBeenCalledWith('pending-application');
     expect(await screen.findByText('Application deleted.')).toBeInTheDocument();
-    expect(BetaApplicationService.listApplications).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Pending Applicant')).not.toBeInTheDocument();
+    expect(BetaApplicationService.listApplications).toHaveBeenCalledTimes(1);
   });
 });

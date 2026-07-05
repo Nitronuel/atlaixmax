@@ -63,7 +63,9 @@ export function BetaApplicationsAdminPage() {
         setMessage('Application rejected.');
       } else if (action === 'delete') {
         await BetaApplicationService.delete(application.id);
+        setApplications((current) => current.filter((item) => item.id !== application.id));
         setMessage('Application deleted.');
+        return;
       } else {
         const response = action === 'approve'
           ? await BetaApplicationService.approve(application.id)

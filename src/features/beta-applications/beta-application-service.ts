@@ -66,7 +66,7 @@ export const BetaApplicationService = {
   async listApplications(status?: BetaApplicationStatus | 'all') {
     const params = status && status !== 'all' ? `?${new URLSearchParams({ status }).toString()}` : '';
     const headers = await sessionHeaders();
-    return requestJson<{ applications: BetaApplication[] }>(`/api/beta-applications/admin${params}`, { headers });
+    return requestJson<{ applications: BetaApplication[] }>(`/api/beta-applications/admin${params}`, { cache: 'no-store', headers });
   },
 
   async approve(id: string) {
