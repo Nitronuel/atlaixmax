@@ -2339,6 +2339,35 @@ main {
   animation: fade-in 220ms ease both;
 }
 
+.smart-money-coming-soon {
+  min-height: calc(100dvh - 128px);
+  align-items: center;
+  justify-content: center;
+}
+
+.smart-money-coming-soon section {
+  display: grid;
+  width: min(560px, 100%);
+  justify-items: center;
+  border: 1px solid rgba(215, 226, 220, 0.86);
+  border-radius: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 248, 0.92));
+  box-shadow:
+    0 24px 60px rgba(73, 92, 84, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  padding: clamp(42px, 7vw, 72px);
+  text-align: center;
+}
+
+.smart-money-coming-soon h1 {
+  margin: 0;
+  color: var(--text-light);
+  font-size: clamp(24px, 3.5vw, 36px);
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
 .smart-money-filter-bar,
 .smart-panel,
 .smart-profile-hero,
@@ -3123,6 +3152,19 @@ main {
   --smart-text: var(--text-light);
   --smart-green: var(--primary-green-dark);
   --smart-red: var(--primary-red);
+}
+
+.dark-preview .smart-money-coming-soon section {
+  border-color: rgba(42, 46, 51, 0.9);
+  background:
+    linear-gradient(145deg, rgba(27, 32, 34, 0.96), rgba(15, 18, 19, 0.98));
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark-preview .smart-money-coming-soon h1 {
+  color: #f5f8f6;
 }
 
 .dark-preview .smart-money-filter-bar,
