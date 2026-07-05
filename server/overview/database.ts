@@ -102,8 +102,9 @@ export type OverviewTokenTradesResponse = {
 const CACHE_TTL_MS = 60_000;
 const FEED_READ_TIMEOUT_MS = 3_500;
 const STALE_TOKEN_RETENTION_DAYS = 30;
+const LIVE_MARKET_DATA_MAX_AGE_MS = 10 * 60 * 1000;
 const HYDRATION_LIMIT = 500;
-const ACTIVE_FEED_LIMIT = 400;
+const ACTIVE_FEED_LIMIT = 100;
 const MIN_FEED_VOLUME_24H_USD = 100_000;
 const MIN_FEED_LIQUIDITY_USD = 100_000;
 const MAX_FEED_MARKET_CAP_USD = 25_000_000_000;
@@ -118,8 +119,8 @@ const OVERVIEW_INGESTION_START_DELAY_MS = 10 * 1000;
 const OVERVIEW_INGESTION_INTERVAL_MS = 4 * 60 * 1000;
 const EXISTING_TOKEN_REFRESH_START_DELAY_MS = 25 * 1000;
 const EXISTING_TOKEN_REFRESH_INTERVAL_MS = 60 * 1000;
-const EXISTING_TOKEN_REFRESH_LIMIT = 80;
-const FORCE_EXISTING_TOKEN_REFRESH_LIMIT = 140;
+const EXISTING_TOKEN_REFRESH_LIMIT = 100;
+const FORCE_EXISTING_TOKEN_REFRESH_LIMIT = 100;
 const EXISTING_TOKEN_REFRESH_CONCURRENCY = 5;
 const OVERVIEW_INGESTION_LOCK_NAME = 'overview_ingestion';
 const OVERVIEW_INGESTION_LOCK_TTL_SECONDS = 5 * 60;
@@ -177,6 +178,8 @@ export type OverviewRefreshResponse = {
   generatedAt: string;
   attempted: number;
   refreshed: number;
+  invalidated: number;
+  failed: number;
   skipped?: boolean;
   tokens: OverviewToken[];
 };
@@ -744,6 +747,39 @@ function mapDexPairToSearchToken(pair: DexPair): OverviewToken | null {
   };
 }
 
+function marketDataTime(value?: string | null) {
+  const parsed = value ? Date.parse(value) : 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isFreshMarketData(value?: string | null) {
+  const timestamp = marketDataTime(value);
+  return timestamp > 0 && Date.now() - timestamp <= LIVE_MARKET_DATA_MAX_AGE_MS;
+}
+
+function isFreshToken(token: OverviewToken) {
+  return isFreshMarketData(token.marketDataUpdatedAt);
+}
+
+function visibleFeedTokens(tokens: OverviewToken[]) {
+  return tokens.filter(isFreshToken).slice(0, ACTIVE_FEED_LIMIT);
+}
+
+function feedFreshness(tokens: OverviewToken[]) {
+  const timestamps = tokens
+    .map((token) => marketDataTime(token.marketDataUpdatedAt))
+    .filter((timestamp) => timestamp > 0);
+  const oldest = timestamps.length ? Math.min(...timestamps) : 0;
+  const staleCount = tokens.filter((token) => !isFreshToken(token)).length;
+
+  return {
+    freshCount: tokens.length - staleCount,
+    staleCount,
+    oldestMarketDataAt: oldest ? new Date(oldest).toISOString() : null,
+    maxMarketDataAgeSeconds: Math.floor(LIVE_MARKET_DATA_MAX_AGE_MS / 1000)
+  };
+}
+
 function getRowKey(row: DiscoveredTokenRow) {
   const raw = row.raw_data || {};
   const address = (raw.address || row.address || '').trim().toLowerCase();
@@ -784,6 +820,20 @@ async function deleteSupabaseRows(rows: DiscoveredTokenRow[], label: string) {
       throw new Error(`Supabase ${label} delete failed (${response.status}). ${message}`.trim());
     }
   }
+}
+
+async function deleteOverviewTokens(tokens: OverviewToken[], label: string) {
+  await deleteSupabaseRows(tokens.map((token) => ({
+    address: token.address,
+    chain: token.chain,
+    raw_data: {
+      address: token.address,
+      chain: token.chain,
+      ticker: token.symbol,
+      name: token.name,
+      pairAddress: token.pairAddress
+    }
+  })), label);
 }
 
 async function purgeIneligibleRows(rows: DiscoveredTokenRow[], retainedKeys: Set<string>) {
@@ -1286,7 +1336,7 @@ function withTimeout<T>(work: Promise<T>, milliseconds: number, label: string) {
   ]);
 }
 
-async function loadDatabaseTokens(timeoutMs = SUPABASE_TIMEOUT_MS + 2_000) {
+async function loadDatabaseTokens(timeoutMs = SUPABASE_TIMEOUT_MS + 2_000, options: { includeStale?: boolean } = {}) {
   const rows = await withTimeout(fetchDiscoveredTokenRows(), timeoutMs, 'Supabase discovered_tokens read');
   const byKey = new Map<string, OverviewToken>();
   const retainedRowKeys = new Set<string>();
@@ -1294,11 +1344,12 @@ async function loadDatabaseTokens(timeoutMs = SUPABASE_TIMEOUT_MS + 2_000) {
   rows.forEach((row) => {
     const token = mapRow(row);
     if (!token) return;
+    const rowKey = getRowKey(row);
+    if (rowKey) retainedRowKeys.add(rowKey);
+    if (!options.includeStale && !isFreshToken(token)) return;
     const key = tokenKey(token);
     const current = byKey.get(key);
     if (!current || token.liquidityUsd > current.liquidityUsd) byKey.set(key, token);
-    const rowKey = getRowKey(row);
-    if (rowKey) retainedRowKeys.add(rowKey);
   });
 
   purgeStaleTokens().catch(() => undefined);
@@ -1308,9 +1359,11 @@ async function loadDatabaseTokens(timeoutMs = SUPABASE_TIMEOUT_MS + 2_000) {
 }
 
 function cacheOverviewFeed(tokens: OverviewToken[]) {
+  const liveTokens = visibleFeedTokens(tokens);
   const response = {
     generatedAt: new Date().toISOString(),
-    tokens
+    ...feedFreshness(liveTokens),
+    tokens: liveTokens
   };
   feedCache = { expiresAt: Date.now() + CACHE_TTL_MS, response };
   return response;
@@ -1438,24 +1491,44 @@ async function refreshExistingOverviewTokens(force = false): Promise<OverviewRef
       generatedAt: new Date().toISOString(),
       attempted: 0,
       refreshed: 0,
+      invalidated: 0,
+      failed: 0,
       skipped: true,
       tokens
     };
   }
 
   existingTokenRefreshInFlight = (async () => {
-    const currentTokens = (await loadDatabaseTokens().catch(() => feedCache?.response.tokens || [])).slice(0, ACTIVE_FEED_LIMIT);
+    const currentTokens = (await loadDatabaseTokens(SUPABASE_TIMEOUT_MS + 2_000, { includeStale: true }).catch(() => feedCache?.response.tokens || [])).slice(0, ACTIVE_FEED_LIMIT);
     const candidates = selectExistingTokenRefreshCandidates(
       currentTokens,
       force ? FORCE_EXISTING_TOKEN_REFRESH_LIMIT : EXISTING_TOKEN_REFRESH_LIMIT,
       force
     );
-    const refreshedRows = (await mapWithConcurrency(candidates, EXISTING_TOKEN_REFRESH_CONCURRENCY, async (token) => {
+    const refreshResults = await mapWithConcurrency(candidates, EXISTING_TOKEN_REFRESH_CONCURRENCY, async (token) => {
       const pair = await fetchDexScreenerPair(token.chain, token.pairAddress);
-      return pair ? transformPair(pair) : null;
-    })).filter((row): row is MarketCoinRow => row !== null && shouldRetainMarketRow(row));
+      if (!pair) return { token, row: null, failed: true };
+      const row = transformPair(pair);
+      return { token, row, failed: false };
+    });
+    const refreshedRows: MarketCoinRow[] = [];
+    const invalidatedTokens: OverviewToken[] = [];
+    let failed = 0;
+
+    refreshResults.forEach((result) => {
+      if (result.failed) {
+        failed += 1;
+        return;
+      }
+      if (result.row && shouldRetainMarketRow(result.row)) {
+        refreshedRows.push(result.row);
+        return;
+      }
+      invalidatedTokens.push(result.token);
+    });
 
     if (refreshedRows.length) await upsertDiscoveredTokens(refreshedRows);
+    if (invalidatedTokens.length) await deleteOverviewTokens(invalidatedTokens, 'inactive refreshed token');
 
     const tokens = (await loadDatabaseTokens().catch(() => currentTokens)).slice(0, ACTIVE_FEED_LIMIT);
     cacheOverviewFeed(tokens);
@@ -1464,6 +1537,8 @@ async function refreshExistingOverviewTokens(force = false): Promise<OverviewRef
       generatedAt: new Date().toISOString(),
       attempted: candidates.length,
       refreshed: refreshedRows.length,
+      invalidated: invalidatedTokens.length,
+      failed,
       tokens
     };
   })().finally(async () => {

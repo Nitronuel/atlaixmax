@@ -33,5 +33,9 @@ export type OverviewEvent =
 
 export type OverviewFeedResponse = {
   generatedAt: string;
+  freshCount?: number;
+  staleCount?: number;
+  oldestMarketDataAt?: string | null;
+  maxMarketDataAgeSeconds?: number;
   tokens: OverviewToken[];
 };

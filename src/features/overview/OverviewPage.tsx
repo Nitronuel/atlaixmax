@@ -16,6 +16,7 @@ import { DEFAULT_OVERVIEW_FILTERS, type OverviewFilters } from './overview-utils
 import { TokenSearch } from './TokenSearch';
 
 const FEED_REFRESH_INTERVAL_MS = 60_000;
+const FEED_CACHE_MAX_AGE_MS = FEED_REFRESH_INTERVAL_MS * 2;
 const FEED_CACHE_KEY = 'atlaix:overview-feed';
 const COIN_FEED_CACHE_KEY = 'atlaix:coingecko-feed';
 
@@ -34,6 +35,8 @@ function readCachedFeed<T extends { generatedAt: string }>(key: string, field: '
     const cached = window.localStorage.getItem(key);
     if (!cached) return null;
     const parsed = JSON.parse(cached) as T & Record<string, unknown>;
+    const generatedAt = Date.parse(String(parsed.generatedAt || ''));
+    if (!Number.isFinite(generatedAt) || Date.now() - generatedAt > FEED_CACHE_MAX_AGE_MS) return null;
     return Array.isArray(parsed[field]) && parsed.generatedAt ? parsed as T : null;
   } catch {
     return null;

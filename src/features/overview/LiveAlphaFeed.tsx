@@ -21,6 +21,7 @@ import {
 } from './overview-utils';
 
 const PAGE_SIZE = 50;
+const MARKET_DATA_MAX_AGE_SECONDS = 600;
 const chainLabels: Record<string, string> = {
   abstract: 'Abstract',
   arbitrum: 'Arbitrum',
@@ -140,6 +141,20 @@ function signedClass(value: number) {
   return value >= 0 ? 'positive' : 'negative';
 }
 
+function getMarketDataFreshness(tokens: OverviewToken[]) {
+  const timestamps = tokens
+    .map((token) => token.marketDataUpdatedAt ? Date.parse(token.marketDataUpdatedAt) : 0)
+    .filter((timestamp) => Number.isFinite(timestamp) && timestamp > 0);
+  if (!timestamps.length) return 'Waiting for market data';
+
+  const oldest = Math.min(...timestamps);
+  const ageSeconds = Math.max(0, Math.floor((Date.now() - oldest) / 1000));
+  if (ageSeconds <= MARKET_DATA_MAX_AGE_SECONDS) return 'Market data <10m';
+
+  const ageMinutes = Math.floor(ageSeconds / 60);
+  return `Oldest market data ${ageMinutes}m`;
+}
+
 function TokenLogo({ token }: { token: OverviewToken }) {
   return <span className="overview-token-logo">{token.logo ? <img src={token.logo} alt="" /> : token.symbol.slice(0, 2)}</span>;
 }
@@ -236,6 +251,7 @@ export function LiveAlphaFeed({
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
   const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlowUsd24h))), [pageRows]);
+  const freshnessLabel = useMemo(() => getMarketDataFreshness(tokens), [tokens]);
   const tableColumns = isMobileTable ? mobileColumns : columns;
   const tableWidth = tableColumns.reduce((sum, column) => sum + column.width, 0);
 
@@ -310,7 +326,7 @@ export function LiveAlphaFeed({
               Filters
               {activeFilterCount(filters) ? <b>{activeFilterCount(filters)}</b> : null}
             </button>
-            <small>{lastUpdated ? `Last sync ${lastUpdated.toLocaleTimeString()}` : 'Waiting for sync'}</small>
+            <small>{lastUpdated ? `Last sync ${lastUpdated.toLocaleTimeString()} | ${freshnessLabel}` : freshnessLabel}</small>
           </div>
         </div>
 
