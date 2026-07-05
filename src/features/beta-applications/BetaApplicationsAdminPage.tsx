@@ -14,7 +14,7 @@ function statusLabel(status: BetaApplicationStatus | 'all') {
 }
 
 export function BetaApplicationsAdminPage() {
-  const [status, setStatus] = useState<BetaApplicationStatus | 'all'>('pending');
+  const [status, setStatus] = useState<BetaApplicationStatus | 'all'>('all');
   const [applications, setApplications] = useState<BetaApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
@@ -27,11 +27,17 @@ export function BetaApplicationsAdminPage() {
     return total;
   }, {}), [applications]);
 
-  async function loadApplications(nextStatus = status) {
+  const filteredApplications = useMemo(() => (
+    status === 'all'
+      ? applications
+      : applications.filter((application) => application.status === status)
+  ), [applications, status]);
+
+  async function loadApplications() {
     setLoading(true);
     setError(null);
     try {
-      const response = await BetaApplicationService.listApplications(nextStatus);
+      const response = await BetaApplicationService.listApplications('all');
       setApplications(response.applications);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Applications could not be loaded.');
@@ -41,8 +47,8 @@ export function BetaApplicationsAdminPage() {
   }
 
   useEffect(() => {
-    void loadApplications(status);
-  }, [status]);
+    void loadApplications();
+  }, []);
 
   async function runAction(application: BetaApplication, action: 'approve' | 'reject' | 'resend') {
     setWorkingId(application.id);
@@ -60,7 +66,7 @@ export function BetaApplicationsAdminPage() {
         setManualInviteUrl(response.inviteUrl);
         setMessage(response.email.sent ? 'Invitation email sent.' : 'Invite created. Copy the link and send it manually.');
       }
-      await loadApplications(status);
+      await loadApplications();
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Action failed.');
     } finally {
@@ -82,7 +88,7 @@ export function BetaApplicationsAdminPage() {
           <h2>Private Beta Applications</h2>
           <p>Review early access requests, approve invited users, and track registration status.</p>
         </div>
-        <button type="button" className="admin-icon-button" onClick={() => void loadApplications(status)} disabled={loading}>
+        <button type="button" className="admin-icon-button" onClick={() => void loadApplications()} disabled={loading}>
           <RefreshCw size={17} className={loading ? 'spin' : ''} />
           <span>Refresh</span>
         </button>
@@ -125,7 +131,7 @@ export function BetaApplicationsAdminPage() {
         </div>
         {loading ? (
           <div className="admin-empty">Loading applications...</div>
-        ) : applications.length ? applications.map((application) => (
+        ) : filteredApplications.length ? filteredApplications.map((application) => (
           <div className="admin-row" key={application.id}>
             <div>
               <strong>{application.fullName}</strong>
