@@ -8,6 +8,16 @@
   status = 200
 
 [[redirects]]
+  from = "/api/beta-applications"
+  to = "/.netlify/functions/beta-applications"
+  status = 200
+
+[[redirects]]
+  from = "/api/beta-applications/*"
+  to = "/.netlify/functions/beta-applications/:splat"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
