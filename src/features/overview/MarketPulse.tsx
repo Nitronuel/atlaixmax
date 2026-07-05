@@ -158,19 +158,18 @@ export function MarketPulse({ tokens }: { tokens: OverviewToken[] }) {
   return (
     <section className="overview-pulse">
       <div className="overview-section-title">
-        <h2>AI Market Pulse</h2>
-        <span />
+        <h2>Market Pulse</h2>
       </div>
       <div className="overview-pulse-grid">
         <div className="overview-pulse-card">
           <div className="overview-pulse-main">
-            <span><Activity size={16} /> AI Sentiment</span>
+            <span><Activity size={16} /> Market Activity</span>
             <strong>{sentimentLabel}</strong>
           </div>
         </div>
         <div className="overview-pulse-card overview-pulse-card--rotation">
           <div className="overview-pulse-main">
-            <span><Zap size={16} /> Smart Rotation</span>
+            <span><Zap size={16} /> Strong Rotation</span>
             <strong>{defiLlamaChainMomentum?.chain || (smartRotationStatus === 'loading' ? 'Scanning' : 'No rotation')}</strong>
           </div>
           <small>

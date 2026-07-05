@@ -263,8 +263,8 @@ export const AiAssistantPage: React.FC = () => {
     const pageContextRef = useRef<AiAssistantPageContext | null>(handoffRef.current?.pageContext || {
         route: '/ai-assistant',
         module: 'assistant',
-        title: 'AI Assistant',
-        systemContext: 'The user is on the full AI Assistant page. Continue the conversation naturally and use Atlaix tools when needed.',
+        title: 'AI Market Analyst',
+        systemContext: 'The user is on the full AI Market Analyst page. Continue the conversation naturally and use Atlaix tools when needed.',
         preferredTools: ['get_platform_updates', 'get_token_deep_brief', 'get_detection_updates', 'run_safe_scan', 'prepare_alert_setup']
     });
     const [provider, setProvider] = useState<AiAssistantProvider | null>(handoffRef.current?.provider || cachedChatRef.current?.provider || null);

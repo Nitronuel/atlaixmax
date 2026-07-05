@@ -802,7 +802,7 @@ export const GlobalAiAssistant: React.FC = () => {
                 ...feedAnswer,
                 actions: [
                     ...(feedAnswer.actions || []),
-                    { label: 'Continue in AI Assistant', href: '/ai-assistant?handoff=1', kind: 'handoff' }
+                    { label: 'Continue in AI Market Analyst', href: '/ai-assistant?handoff=1', kind: 'handoff' }
                 ]
             }]);
             setSending(false);
@@ -822,7 +822,7 @@ export const GlobalAiAssistant: React.FC = () => {
                     data: response.data,
                     actions: [
                         ...(response.actions || []),
-                        { label: 'Continue in AI Assistant', href: '/ai-assistant?handoff=1', kind: 'handoff' }
+                        { label: 'Continue in AI Market Analyst', href: '/ai-assistant?handoff=1', kind: 'handoff' }
                     ],
                     createdAt: new Date(response.createdAt).getTime() || Date.now()
                 }

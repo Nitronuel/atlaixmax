@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, BarChart3, Bell, ExternalLink, Globe, Maximize2, RefreshCw, Star, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { ArrowLeft, Bell, Globe, Maximize2, RefreshCw, Star, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { IconType } from 'react-icons';
 import { SiGithub, SiReddit, SiX } from 'react-icons/si';
@@ -8,8 +8,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { CoinFeedService } from '../overview/coin-feed-service';
 import { formatInteger, formatPercentValue, formatPrice, formatUsd } from '../overview/overview-utils';
 import { WatchlistService } from '../watchlist/watchlist-service';
-
-type CoinPanelTab = 'market' | 'supply' | 'performance' | 'links';
 
 const TRADINGVIEW_SYMBOLS: Record<string, string> = {
   'bitcoin': 'BINANCE:BTCUSDT',
@@ -135,65 +133,29 @@ function CoinLinkIcon({ label, url }: { label: string; url: string }) {
   return <Globe size={17} />;
 }
 
-function safeRatio(numerator: number | null | undefined, denominator: number | null | undefined) {
-  const top = Number(numerator);
-  const bottom = Number(denominator);
-  if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom <= 0) return 'N/A';
-  return formatPercentValue((top / bottom) * 100);
-}
-
-function CoinPanelRows({ coin, tab }: { coin: CoinGeckoCoinDetails | null; tab: CoinPanelTab }) {
-  if (tab === 'supply') {
-    return (
-      <div className="coin-folder-grid">
-        <div><span>Circulating supply</span><strong>{formatInteger(coin?.circulatingSupply)}</strong></div>
-        <div><span>Total supply</span><strong>{formatInteger(coin?.totalSupply)}</strong></div>
-        <div><span>Max supply</span><strong>{formatInteger(coin?.maxSupply)}</strong></div>
-        <div><span>Circulating / max</span><strong>{safeRatio(coin?.circulatingSupply, coin?.maxSupply)}</strong></div>
-      </div>
-    );
-  }
-
-  if (tab === 'performance') {
-    return (
-      <div className="coin-folder-grid">
-        <div><span>1h change</span><strong className={changeAccent(coin?.change1h)}>{formatPercentValue(coin?.change1h)}</strong></div>
-        <div><span>24h change</span><strong className={changeAccent(coin?.change24h)}>{formatPercentValue(coin?.change24h)}</strong></div>
-        <div><span>7d change</span><strong className={changeAccent(coin?.change7d)}>{formatPercentValue(coin?.change7d)}</strong></div>
-        <div><span>30d change</span><strong className={changeAccent(coin?.change30d)}>{formatPercentValue(coin?.change30d)}</strong></div>
-        <div><span>All-time high</span><strong>{formatPrice(coin?.ath)}</strong></div>
-        <div><span>ATH distance</span><strong className={changeAccent(coin?.athChangePercentage)}>{formatPercentValue(coin?.athChangePercentage)}</strong></div>
-        <div><span>All-time low</span><strong>{formatPrice(coin?.atl)}</strong></div>
-        <div><span>ATL recovery</span><strong className={changeAccent(coin?.atlChangePercentage)}>{formatPercentValue(coin?.atlChangePercentage)}</strong></div>
-      </div>
-    );
-  }
-
-  if (tab === 'links') {
-    const links = coin?.links || [];
-    return links.length ? (
-      <div className="coin-link-list">
-        {links.map((link) => (
-          <a key={`${link.label}:${link.url}`} href={link.url} target="_blank" rel="noreferrer">
-            <span><CoinLinkIcon label={link.label} url={link.url} /></span>
-            <strong>{link.label}</strong>
-            <ExternalLink size={15} />
-          </a>
-        ))}
-      </div>
-    ) : (
-      <div className="token-holder-empty">CoinGecko has no verified project links for this coin.</div>
-    );
-  }
+function CoinSupplySnapshot({ coin }: { coin: CoinGeckoCoinDetails | null }) {
+  const supplyValue = (value: unknown) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? formatInteger(numeric) : 'N/A';
+  };
+  const rows = [
+    { label: 'Circulating supply', value: supplyValue(coin?.circulatingSupply) },
+    { label: 'Total supply', value: supplyValue(coin?.totalSupply) },
+    { label: 'All-time high', value: formatPrice(coin?.ath) },
+    { label: 'All-time low', value: formatPrice(coin?.atl) }
+  ];
 
   return (
-    <div className="coin-folder-grid">
-      <div><span>Market cap</span><strong>{formatUsd(coin?.marketCapUsd)}</strong></div>
-      <div><span>Fully diluted value</span><strong>{formatUsd(coin?.fdvUsd)}</strong></div>
-      <div><span>24h volume</span><strong>{formatUsd(coin?.volume24hUsd)}</strong></div>
-      <div><span>Market cap rank</span><strong>#{coin?.marketCapRank || 'N/A'}</strong></div>
-      <div><span>CoinGecko read</span><strong>{coin?.event || 'Market Watch'}</strong></div>
-      <div><span>Last seen</span><strong>{coin?.lastSeenAt ? new Date(coin.lastSeenAt).toLocaleString() : 'N/A'}</strong></div>
+    <div className="token-side-panel coin-supply-snapshot-panel" aria-label="Coin supply and price milestones">
+      <h3>Supply Snapshot</h3>
+      <div className="coin-supply-snapshot-grid">
+        {rows.map((row) => (
+          <div key={row.label}>
+            <span>{row.label}</span>
+            <strong>{row.value}</strong>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -206,10 +168,8 @@ export function CoinDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [chartExpanded, setChartExpanded] = useState(false);
-  const [panelTab, setPanelTab] = useState<CoinPanelTab>('market');
   const [watchlistSaving, setWatchlistSaving] = useState(false);
   const [watchlistMessage, setWatchlistMessage] = useState('');
-  const [refreshVersion, setRefreshVersion] = useState(0);
   const [chartTheme, setChartTheme] = useState<'light' | 'dark'>(() => (
     typeof document !== 'undefined' && document.documentElement.dataset.atlaixTheme === 'dark' ? 'dark' : 'light'
   ));
@@ -232,7 +192,7 @@ export function CoinDetailsPage() {
     return () => {
       cancelled = true;
     };
-  }, [coinId, refreshVersion]);
+  }, [coinId]);
 
   useEffect(() => {
     const updateTheme = () => setChartTheme(document.documentElement.dataset.atlaixTheme === 'dark' ? 'dark' : 'light');
@@ -262,12 +222,6 @@ export function CoinDetailsPage() {
 
   const symbol = coin?.symbol || 'COIN';
   const name = coin?.name || 'Coin details';
-  const tabs: Array<{ id: CoinPanelTab; label: string }> = [
-    { id: 'market', label: 'Market' },
-    { id: 'supply', label: 'Supply' },
-    { id: 'performance', label: 'Performance' },
-    { id: 'links', label: 'Links' }
-  ];
 
   async function addToWatchlist() {
     if (!coin) return;
@@ -377,68 +331,8 @@ export function CoinDetailsPage() {
             </button>
             {watchlistMessage ? <div className="coin-action-note">{watchlistMessage}</div> : null}
           </div>
+          <CoinSupplySnapshot coin={coin} />
         </aside>
-      </section>
-
-      <section className="token-main-detail-grid">
-        <div className="token-left-stack">
-          <div className="token-intelligence-panel">
-            <h3>CoinGecko Profile</h3>
-            <div className="coin-profile-copy">
-              <p>{coin?.description || 'CoinGecko has limited profile text for this coin.'}</p>
-              {coin?.categories?.length ? <div>{coin.categories.map((category) => <span key={category}>{category}</span>)}</div> : null}
-            </div>
-          </div>
-
-          <div className="token-intelligence-panel">
-            <h3>Market Snapshot</h3>
-            <div className="token-intelligence-list">
-              <div className="token-intelligence-row">
-                <span className="token-intelligence-copy"><span className="token-intelligence-icon"><BarChart3 size={16} /></span><span>Rank</span></span>
-                <strong>#{coin?.marketCapRank || 'N/A'}</strong>
-              </div>
-              <div className="token-intelligence-row">
-                <span className="token-intelligence-copy"><span className="token-intelligence-icon"><Activity size={16} /></span><span>Read</span></span>
-                <strong>{coin?.event || 'Market Watch'}</strong>
-              </div>
-              <div className="token-intelligence-row">
-                <span className="token-intelligence-copy"><span className="token-intelligence-icon"><TrendingUp size={16} /></span><span>ATH</span></span>
-                <strong>{formatPrice(coin?.ath)}</strong>
-              </div>
-              <div className="token-intelligence-row">
-                <span className="token-intelligence-copy"><span className="token-intelligence-icon"><TrendingDown size={16} /></span><span>ATL</span></span>
-                <strong>{formatPrice(coin?.atl)}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="atlaix-folder-shell token-market-panel-shell coin-market-panel-shell">
-          <div className="token-folder-toolbar">
-            <div className="atlaix-folder-strip">
-              {tabs.map((tab, index) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setPanelTab(tab.id)}
-                  className={`atlaix-folder-tab ${panelTab === tab.id ? 'is-active' : 'is-idle'} ${index === 0 ? 'is-first' : ''}`}
-                >
-                  <span className="atlaix-folder-label">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="token-table-tools">
-              <button type="button" onClick={() => setRefreshVersion((current) => current + 1)} title="Refresh CoinGecko market data">
-                <RefreshCw size={14} className={loading ? 'spin' : ''} />
-              </button>
-              <span>CoinGecko</span>
-            </div>
-          </div>
-          <div className="atlaix-folder-panel">
-            <div className="atlaix-folder-accent" />
-            <CoinPanelRows coin={coin} tab={panelTab} />
-          </div>
-        </div>
       </section>
 
       {chartExpanded ? (

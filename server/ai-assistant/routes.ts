@@ -429,7 +429,7 @@ async function callOpenRouter(system: string, messages: Array<{ role: 'system' |
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'http://localhost:3000',
-      'X-Title': 'Atlaix AI Assistant'
+      'X-Title': 'Atlaix AI Market Analyst'
     },
     body: JSON.stringify({
       model,
@@ -496,7 +496,7 @@ async function chooseToolWithModel(
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': 'http://localhost:3000',
-      'X-Title': 'Atlaix AI Assistant'
+      'X-Title': 'Atlaix AI Market Analyst'
     },
     body: JSON.stringify({
       model,
