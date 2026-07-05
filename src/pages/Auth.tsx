@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle, Mail } from 'lucide-react';
-import { APP_CONFIG } from '../config';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
-type AuthMode = 'login' | 'signup' | 'reset';
+type AuthMode = 'login' | 'reset';
 
 interface AuthScreenProps {
   initialMode?: AuthMode;
@@ -24,16 +23,13 @@ const formatAuthError = (value: unknown, fallback = 'Authentication could not co
 };
 
 export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
-  const publicSignupEnabled = APP_CONFIG.authMode === 'public';
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { user, loading, profileError, signIn, signUp, resetPassword, signInWithGoogle } = useAuth();
+  const { user, loading, profileError, signIn, resetPassword } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
@@ -66,18 +62,6 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
 
       if (password.length < 12) throw new Error('Password must be at least 12 characters.');
 
-      if (mode === 'signup') {
-        if (!publicSignupEnabled) throw new Error('Private Beta accounts require an invitation.');
-        if (password !== confirmPassword) throw new Error('Passwords do not match.');
-        const result = await signUp(trimmedEmail, password, displayName.trim());
-        if (result.needsEmailConfirmation) {
-          setMessage('Account created. Check your email to confirm your login.');
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
-        return;
-      }
-
       await signIn(trimmedEmail, password);
       navigate(from, { replace: true });
     } catch (err) {
@@ -87,19 +71,8 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
     }
   };
 
-  const handleGoogle = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await signInWithGoogle();
-    } catch (err) {
-      setError(formatAuthError(err, 'Google sign-in could not start. Please try again.'));
-      setSubmitting(false);
-    }
-  };
-
-  const title = mode === 'login' ? 'Welcome back' : mode === 'signup' ? 'Create account' : 'Reset password';
-  const buttonText = mode === 'login' ? 'Log in' : mode === 'signup' ? 'Create account' : 'Send reset email';
+  const title = mode === 'login' ? 'Welcome back' : 'Reset password';
+  const buttonText = mode === 'login' ? 'Log in' : 'Send reset email';
 
   return (
     <main className="auth-page">
@@ -110,26 +83,14 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
         </div>
         <p>Anticipating trends ahead of the market.</p>
 
-        <div className={`auth-tabs ${publicSignupEnabled ? '' : 'single'}`} role="tablist" aria-label="Account access">
+        <div className="auth-tabs single" role="tablist" aria-label="Account access">
           <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
             Sign in
           </button>
-          {publicSignupEnabled ? (
-            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>
-              Create account
-            </button>
-          ) : null}
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <h1>{title}{mode === 'login' ? '!' : ''}</h1>
-
-          {mode === 'signup' && (
-            <label>
-              <span>Display name</span>
-              <input type="text" value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" />
-            </label>
-          )}
 
           <label>
             <span>Email</span>
@@ -143,15 +104,8 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                autoComplete="current-password"
               />
-            </label>
-          )}
-
-          {mode === 'signup' && (
-            <label>
-              <span>Confirm password</span>
-              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" />
             </label>
           )}
 
@@ -181,22 +135,8 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
             <button type="button" onClick={() => setMode('login')}>Back to login</button>
           )}
 
-          {mode !== 'reset' && publicSignupEnabled && (
-            <button type="button" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>
-              {mode === 'login' ? 'Create account' : 'Sign in instead'}
-            </button>
-          )}
-          {mode === 'login' && !publicSignupEnabled ? (
-            <a href={`${APP_CONFIG.marketingBaseUrl}/early-access`}>Apply for Early Access</a>
-          ) : null}
+          {mode === 'login' ? <Link to="/early-access">Apply for Early Access</Link> : null}
         </div>
-
-        {mode !== 'reset' && (
-          <button type="button" className="auth-google" onClick={handleGoogle} disabled={submitting}>
-            <Mail size={20} />
-            <span>Continue with Google</span>
-          </button>
-        )}
       </section>
     </main>
   );

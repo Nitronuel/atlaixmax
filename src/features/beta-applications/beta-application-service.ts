@@ -28,6 +28,14 @@ export type InviteVerification = {
   inviteExpiresAt: string | null;
 };
 
+export type BetaApplicationInput = {
+  fullName: string;
+  email: string;
+  xUsername?: string;
+  telegramUsername?: string;
+  intendedUse?: string;
+};
+
 async function sessionHeaders() {
   const { data } = authSupabase ? await authSupabase.auth.getSession() : { data: { session: null } };
   const accessToken = data.session?.access_token;
@@ -47,6 +55,14 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
 }
 
 export const BetaApplicationService = {
+  async submitApplication(input: BetaApplicationInput) {
+    return requestJson<{ ok: true; message: string }>(`/api/beta-applications`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
+    });
+  },
+
   async listApplications(status?: BetaApplicationStatus | 'all') {
     const params = status && status !== 'all' ? `?${new URLSearchParams({ status }).toString()}` : '';
     const headers = await sessionHeaders();
