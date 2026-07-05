@@ -114,9 +114,6 @@ export function EarlyAccessPage() {
         </div>
 
         <form className="early-access-form-panel" id="early-access-form" onSubmit={submit} noValidate>
-          <div className="early-access-form-icon" aria-hidden="true">
-            {submitted ? <CheckCircle size={34} /> : <UserPlus size={34} />}
-          </div>
           <h2>{submitted ? 'Application received' : 'Apply for Early Access'}</h2>
           <p>{submitted ? 'We will email your invite link if your request is approved.' : 'Tell us a bit about yourself'}</p>
 
