@@ -455,11 +455,11 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
 
     if (routeRoot === 'wallet') {
         return {
-            title: 'Wallets',
-            subtitle: address ? shortAddress(address) : 'Wallet intelligence',
+            title: 'Wallet Intelligence',
+            subtitle: address ? `${shortAddress(address)}${chain ? ` on ${chain}` : ''}` : 'Wallet behavior',
             systemContext: address
-                ? `The user is viewing wallet intelligence for wallet address: ${address}.`
-                : 'The user is on the Wallet Intelligence page.',
+                ? `The user is viewing Wallet Intelligence for wallet address: ${address}. Chain: ${chain || 'unknown'}. Use wallet context when the user asks about this wallet, its behavior, risk, PnL, holdings, recent activity, or monitors.`
+                : 'The user is on the Wallet Intelligence page. Help them reason about wallet behavior, holdings, PnL, recent activity, and monitoring.',
             subjectKind: address ? 'wallet' : undefined,
             subjectAddress: address,
             subjectChain: chain,
@@ -468,9 +468,9 @@ const getRouteContext = (pathname: string, searchParams: URLSearchParams): Route
             icon: <Wallet size={18} />,
             prompts: [
                 address ? 'Analyze this wallet' : 'Help me inspect a wallet',
-                'What should I watch in wallet activity?',
-                'Explain smart-money behavior',
-                'Show me useful wallet workflows'
+                'Explain the wallet risk',
+                'What changed recently?',
+                'What should I monitor next?'
             ]
         };
     }

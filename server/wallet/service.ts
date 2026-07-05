@@ -52,6 +52,7 @@ const REQUEST_RETRY_LIMIT = 2;
 const REQUEST_RETRY_DELAY_MS = 1_200;
 const LOGO_LOOKUP_LIMIT = 40;
 const LOGO_LOOKUP_CONCURRENCY = 4;
+const LOGO_ENRICHMENT_BUDGET_MS = 2_500;
 const cache = new TtlCache();
 const logoCache = new TtlCache();
 const valuationCache = new TtlCache();
@@ -366,6 +367,15 @@ async function enrichMissingLogos(intelligence: WalletIntelligenceResponse) {
   return intelligence;
 }
 
+async function enrichMissingLogosWithinBudget(intelligence: WalletIntelligenceResponse) {
+  return Promise.race([
+    enrichMissingLogos(intelligence).catch(() => intelligence),
+    new Promise<WalletIntelligenceResponse>((resolve) => {
+      setTimeout(() => resolve(intelligence), LOGO_ENRICHMENT_BUDGET_MS);
+    })
+  ]);
+}
+
 function mergeTransactionPages(parts: ZerionPart[]): ZerionPart {
   const first = parts[0] || { data: { data: [] }, status: 200 };
   const rows: unknown[] = [];
@@ -595,7 +605,7 @@ export class WalletPortfolioService {
       .then(async (raw) => {
         const historicalPrices = await fetchHistoricalPrices(collectHistoricalPriceRequests(raw.transactions?.data));
         const normalized = normalizeZerionIntelligence(raw, { historicalPrices });
-        const enriched = await enrichMissingLogos(normalized);
+        const enriched = await enrichMissingLogosWithinBudget(normalized);
         if (!hasThrottle(raw)) {
           valuationCache.set(valuationKey, enriched, WALLET_VALUATION_CACHE_TTL_MS, enriched.portfolio.generatedAt);
           cache.set(key, enriched, WALLET_CACHE_TTL_MS, enriched.portfolio.generatedAt);

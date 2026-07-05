@@ -21,7 +21,6 @@ import {
 } from './overview-utils';
 
 const PAGE_SIZE = 50;
-const MOVER_MAX_AGE_MS = 5 * 60 * 1000;
 const chainLabels: Record<string, string> = {
   abstract: 'Abstract',
   arbitrum: 'Arbitrum',
@@ -141,17 +140,6 @@ function signedClass(value: number) {
   return value >= 0 ? 'positive' : 'negative';
 }
 
-function isFreshMoverToken(token: OverviewToken) {
-  const updatedAt = token.marketDataUpdatedAt ? Date.parse(token.marketDataUpdatedAt) : 0;
-  return (
-    Number.isFinite(updatedAt) &&
-    Date.now() - updatedAt <= MOVER_MAX_AGE_MS &&
-    Number.isFinite(Number(token.priceUsd)) &&
-    Number(token.priceUsd) > 0 &&
-    Number.isFinite(Number(token.change24h))
-  );
-}
-
 function TokenLogo({ token }: { token: OverviewToken }) {
   return <span className="overview-token-logo">{token.logo ? <img src={token.logo} alt="" /> : token.symbol.slice(0, 2)}</span>;
 }
@@ -197,34 +185,6 @@ function ChainLogo({ chain }: { chain: string }) {
       )}
       {!image && !Icon && !['arbitrum', 'avalanche', 'abstract'].includes(key) && <span>{chain.slice(0, 2).toUpperCase()}</span>}
     </span>
-  );
-}
-
-function AlphaMoverPanel({ title, tokens, tone }: { title: string; tokens: OverviewToken[]; tone: 'positive' | 'negative' }) {
-  return (
-    <section className={`overview-mover-panel is-${tone}`} aria-label={title}>
-      <header>
-        <h3>{title}</h3>
-        <span>Price</span>
-        <span>Change %</span>
-      </header>
-      <div className="overview-mover-list">
-        {tokens.length ? tokens.map((token, index) => (
-          <button type="button" key={token.id} className="overview-mover-row" onClick={() => openToken(token)}>
-            <span className="overview-mover-rank">{index + 1}</span>
-            <TokenLogo token={token} />
-            <span className="overview-mover-token">
-              <strong>{token.symbol}</strong>
-              <small>{token.name}</small>
-            </span>
-            <span className="overview-mover-price">{formatPrice(token.priceUsd)}</span>
-            <span className={`overview-mover-change ${signedClass(Number(token.change24h))}`}>{formatPercentValue(token.change24h)}</span>
-          </button>
-        )) : (
-          <div className="overview-mover-empty">No matching tokens</div>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -276,18 +236,6 @@ export function LiveAlphaFeed({
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
   const maxFlow = useMemo(() => Math.max(0, ...pageRows.map((token) => Math.abs(token.dexFlowUsd24h))), [pageRows]);
-  const topGainers = useMemo(() => (
-    [...eventFiltered]
-      .filter((token) => isFreshMoverToken(token) && Number(token.change24h) > 0)
-      .sort((left, right) => Number(right.change24h) - Number(left.change24h))
-      .slice(0, 5)
-  ), [eventFiltered]);
-  const topLosers = useMemo(() => (
-    [...eventFiltered]
-      .filter((token) => isFreshMoverToken(token) && Number(token.change24h) < 0)
-      .sort((left, right) => Number(left.change24h) - Number(right.change24h))
-      .slice(0, 5)
-  ), [eventFiltered]);
   const tableColumns = isMobileTable ? mobileColumns : columns;
   const tableWidth = tableColumns.reduce((sum, column) => sum + column.width, 0);
 
@@ -438,11 +386,6 @@ export function LiveAlphaFeed({
           </button>
         </div>
       </section>
-
-      <aside className="overview-movers" aria-label="Live Market Feed movers">
-        <AlphaMoverPanel title="Top Gainers" tokens={topGainers} tone="positive" />
-        <AlphaMoverPanel title="Top Losers" tokens={topLosers} tone="negative" />
-      </aside>
     </div>
   );
 }

@@ -78,34 +78,6 @@ function CoinLogo({ coin }: { coin: CoinGeckoCoin }) {
   return <span className="overview-token-logo">{coin.image ? <img src={coin.image} alt="" /> : coin.symbol.slice(0, 2)}</span>;
 }
 
-function CoinMoverPanel({ title, coins }: { title: string; coins: CoinGeckoCoin[] }) {
-  return (
-    <section className="overview-mover-panel" aria-label={title}>
-      <header>
-        <h3>{title}</h3>
-        <span>Price</span>
-        <span>Change %</span>
-      </header>
-      <div className="overview-mover-list">
-        {coins.length ? coins.map((coin, index) => (
-          <button type="button" key={coin.id} className="overview-mover-row" onClick={() => openCoin(coin)}>
-            <span className="overview-mover-rank">{index + 1}</span>
-            <CoinLogo coin={coin} />
-            <span className="overview-mover-token">
-              <strong>{coin.symbol}</strong>
-              <small>{coin.name}</small>
-            </span>
-            <span className="overview-mover-price">{formatPrice(coin.priceUsd)}</span>
-            <span className={`overview-mover-change ${signedClass(coin.change24h)}`}>{formatPercentValue(coin.change24h)}</span>
-          </button>
-        )) : (
-          <div className="overview-mover-empty">No matching coins</div>
-        )}
-      </div>
-    </section>
-  );
-}
-
 export function CoinAlphaFeed({
   coins,
   loading,
@@ -139,18 +111,6 @@ export function CoinAlphaFeed({
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
-  const topGainers = useMemo(() => (
-    [...filtered]
-      .filter((coin) => Number.isFinite(Number(coin.change24h)) && Number(coin.change24h) > 0)
-      .sort((left, right) => Number(right.change24h) - Number(left.change24h))
-      .slice(0, 5)
-  ), [filtered]);
-  const topLosers = useMemo(() => (
-    [...filtered]
-      .filter((coin) => Number.isFinite(Number(coin.change24h)) && Number(coin.change24h) < 0)
-      .sort((left, right) => Number(left.change24h) - Number(right.change24h))
-      .slice(0, 5)
-  ), [filtered]);
 
   useEffect(() => setPage(1), [filters, searchQuery, sortConfig]);
   useEffect(() => {
@@ -279,11 +239,6 @@ export function CoinAlphaFeed({
           </button>
         </div>
       </section>
-
-      <aside className="overview-movers" aria-label="Coin Live Market Feed movers">
-        <CoinMoverPanel title="Top Gainers" coins={topGainers} />
-        <CoinMoverPanel title="Top Losers" coins={topLosers} />
-      </aside>
     </div>
   );
 }

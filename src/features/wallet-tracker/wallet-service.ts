@@ -7,6 +7,8 @@ type WalletIntelligence = {
 };
 
 const CACHE_TTL_MS = 60_000;
+const WALLET_INTELLIGENCE_TIMEOUT_MS = 45_000;
+const WALLET_INTELLIGENCE_RETRY_DELAY_MS = 900;
 const intelligenceCache = new Map<string, { expiresAt: number; data: WalletIntelligence }>();
 const pendingRequests = new Map<string, Promise<WalletIntelligence>>();
 
@@ -67,7 +69,44 @@ async function readJson<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-async function loadIntelligence(address: string, chain: WalletChain, timeFilter: WalletTimeFilter, _signal?: AbortSignal, force = false) {
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+    || error instanceof Error && /aborted/i.test(error.message);
+}
+
+function shouldRetryWalletIntelligence(error: unknown) {
+  if (isAbortError(error)) return false;
+  const message = error instanceof Error ? error.message : String(error || '');
+  return /500|502|503|504|fetch failed|timed out|unavailable/i.test(message);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchWalletIntelligence(params: URLSearchParams, signal?: AbortSignal) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), WALLET_INTELLIGENCE_TIMEOUT_MS);
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+
+  try {
+    const response = await fetch(apiUrl(`/api/wallet/intelligence?${params.toString()}`), {
+      signal: controller.signal
+    });
+    return readJson<WalletIntelligence>(response);
+  } catch (error) {
+    if (controller.signal.aborted && !signal?.aborted) {
+      throw new Error('Wallet intelligence request timed out.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener('abort', abort);
+  }
+}
+
+async function loadIntelligence(address: string, chain: WalletChain, timeFilter: WalletTimeFilter, signal?: AbortSignal, force = false) {
   const key = cacheKey(address, chain, timeFilter);
   const cached = intelligenceCache.get(key);
   if (!force && cached && cached.expiresAt > Date.now()) return cached.data;
@@ -82,8 +121,15 @@ async function loadIntelligence(address: string, chain: WalletChain, timeFilter:
   });
   if (force) params.set('force', 'true');
 
-  const request = fetch(apiUrl(`/api/wallet/intelligence?${params.toString()}`))
-    .then((response) => readJson<WalletIntelligence>(response))
+  const request = fetchWalletIntelligence(params, signal)
+    .catch(async (error) => {
+      if (force || !shouldRetryWalletIntelligence(error)) throw error;
+      await wait(WALLET_INTELLIGENCE_RETRY_DELAY_MS);
+      if (signal?.aborted) throw error;
+      const retryParams = new URLSearchParams(params);
+      retryParams.set('force', 'true');
+      return fetchWalletIntelligence(retryParams, signal);
+    })
     .then((data) => {
       intelligenceCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
       return data;

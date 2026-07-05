@@ -1,9 +1,10 @@
-import { ArrowLeft, ArrowUpRight, Bell, Check, CheckCircle, ChevronDown, Clock, ExternalLink, Globe, Loader2, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, Bell, Check, CheckCircle, ChevronDown, Clock, ExternalLink, Globe, Loader2, MessageSquare, Plus, RefreshCw, Search, Trash2, Wallet, X, Zap } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { SmartAlertService, type SmartAlertRule, type WalletAlertEventType } from '../smart-alerts/smart-alert-service';
 import { SmartMoneyService } from '../smart-money/smart-money-service';
 import { TelegramService } from '../../services/TelegramService';
+import { apiUrl } from '../../config';
 import type { SavedWallet, WalletActivity, WalletActivityItem, WalletActivityToken, WalletCategory, WalletChain, WalletPnlSummary, WalletPortfolio, WalletTimeFilter, WalletTradedToken, WalletTradePerformance } from './wallet-types';
 import { useWalletActivity } from './useWalletActivity';
 import { useWalletPortfolio } from './useWalletPortfolio';
@@ -40,6 +41,23 @@ const WALLET_ALERT_EVENT_OPTIONS: Array<{ value: WalletAlertEventType; label: st
   { value: 'execute', label: 'Contract interactions' },
   { value: 'approval', label: 'Approvals' }
 ];
+const GLOBAL_ASSISTANT_OPEN_EVENT = 'atlaix:open-global-assistant';
+const WALLET_AI_INSIGHT_TIMEOUT_MS = 20_000;
+
+type WalletInsightSummary = {
+  behaviorType: string;
+  riskProfile: string;
+  tradingStyle: string;
+  preference: string;
+  insight: string;
+};
+
+type WalletAiInsightResponse = {
+  insight: string;
+  confidence: 'low' | 'medium' | 'high';
+  generatedAt: string;
+  source: 'model' | 'fallback' | 'cache';
+};
 
 function timeFilterLabel(value: WalletTimeFilter) {
   if (value === 'ALL') return 'All Time';
@@ -700,6 +718,8 @@ function WalletProfile({ address }: { address: string }) {
         </div>
 
         <WalletInsightRail
+          address={address}
+          chain={chain}
           walletName={savedWallet?.name || name || walletNameFor(address)}
           categories={categories}
           stats={portfolioState.stats}
@@ -875,22 +895,149 @@ function parseSignedMetricValue(value: string | number | undefined) {
   return Number(normalized) || 0;
 }
 
-function buildWalletInsight(stats: ReturnType<typeof useWalletPortfolio>['stats'], activity: WalletActivity, categories: WalletCategory[], assets: WalletPortfolio['assets']) {
+function normalizeInsightToken(value: string) {
+  return value.toLowerCase().replace(/\s+/g, '-');
+}
+
+function buildWalletInsight(stats: ReturnType<typeof useWalletPortfolio>['stats'], activity: WalletActivity, categories: WalletCategory[], assets: WalletPortfolio['assets'], chain: WalletChain): WalletInsightSummary {
   const trades = activity.activities.filter((item) => item.kind === 'buy' || item.kind === 'sell' || item.kind === 'swap').length;
   const netFlow = activity.summary.netFlowUsd;
   const activePositions = Number(stats.activePositions) || assets.filter((asset) => asset.rawValue > 1).length;
   const pnlValue = parseSignedMetricValue(stats.totalPnl);
+  const winRate = parseSignedMetricValue(stats.winRate);
   const behaviorType = trades >= 8 ? 'Active Trader' : activePositions >= 4 ? 'Portfolio Builder' : 'Watchlist Wallet';
   const riskProfile = pnlValue < 0 || categories.includes('Sniper') ? 'Moderate' : activePositions >= 6 ? 'Elevated' : 'Low';
   const tradingStyle = trades >= 8 ? 'Short to Mid-Term' : activity.summary.lastActiveAt ? 'Selective Rotation' : 'Holding Bias';
-  const preference = categories[0] || (assets.some((asset) => asset.rawValue < 500 && asset.rawValue > 1) ? 'Low Cap' : 'Major Assets');
-  const insight = netFlow > 0
-    ? 'Recent flow leans positive, with incoming value outweighing outgoing activity.'
-    : trades > 0
-      ? 'Recent activity shows active wallet movement across tracked positions.'
-      : 'Activity is light in this view. Monitor future swaps and transfers for a clearer pattern.';
+  const preference: string = categories[0] || (assets.some((asset) => asset.rawValue < 500 && asset.rawValue > 1) ? 'Low Cap' : 'Major Assets');
+  const preferenceText = preference === 'Low Cap' ? 'low-cap' : normalizeInsightToken(preference);
+  const chainText = chain === 'All Chains' ? 'multi-chain' : chain;
+  const pnlText = pnlValue < 0 ? 'negative' : pnlValue > 0 ? 'positive' : 'flat';
+  const insight = trades >= 8 && pnlValue < 0 && winRate < 40
+    ? `This wallet is actively rotating ${preferenceText} ${chainText} positions, but current PnL is negative and win rate is weak.`
+    : trades >= 8
+      ? `This wallet is actively rotating ${preferenceText} ${chainText} positions with ${pnlText} PnL and a ${riskProfile.toLowerCase()} risk profile.`
+      : activePositions >= 4
+        ? `This wallet holds ${activePositions} active ${chainText} positions with a ${preferenceText} bias and ${pnlText} PnL.`
+        : netFlow > 0
+          ? `This wallet has light activity, but recent flow is positive across its tracked ${chainText} positions.`
+          : 'Activity is light in this view, so Atlaix needs more wallet movement for a stronger read.';
 
   return { behaviorType, riskProfile, tradingStyle, preference, insight };
+}
+
+function buildWalletInsightPacket({
+  address,
+  chain,
+  stats,
+  assets,
+  activity,
+  categories,
+  labels,
+  alertRules,
+  tradePerformance,
+  walletPnl
+}: {
+  address: string;
+  chain: WalletChain;
+  stats: ReturnType<typeof useWalletPortfolio>['stats'];
+  assets: WalletPortfolio['assets'];
+  activity: WalletActivity;
+  categories: WalletCategory[];
+  labels: WalletInsightSummary;
+  alertRules: SmartAlertRule[];
+  tradePerformance: WalletTradePerformance[];
+  walletPnl?: WalletPnlSummary;
+}) {
+  const topHoldings = [...assets]
+    .sort((left, right) => right.rawValue - left.rawValue)
+    .slice(0, 6)
+    .map((asset) => ({
+      symbol: asset.symbol,
+      name: asset.name,
+      valueUsd: Math.round(asset.rawValue),
+      pnl: asset.pnl,
+      pnlPercent: asset.pnlPercent,
+      status: asset.performanceStatus,
+      category: asset.positionType
+    }));
+  const recentActivity = activity.activities.slice(0, 8).map((item) => ({
+    kind: item.kind,
+    ageSeconds: Math.max(0, Math.round((Date.now() - item.timestamp) / 1000)),
+    title: item.title,
+    summary: item.summary,
+    valueUsd: item.usdValue,
+    tokens: item.tokens.slice(0, 3).map((token) => ({
+      symbol: token.symbol,
+      amount: token.amount,
+      usdValue: token.usdValue
+    })),
+    confidence: item.confidence
+  }));
+  const performance = tradePerformance.slice(0, 8).map((item) => ({
+    symbol: item.token.symbol,
+    status: item.status,
+    totalPnl: item.totalPnl,
+    realizedPnl: item.realizedPnl,
+    unrealizedPnl: item.unrealizedPnl,
+    returnPct: item.returnPct,
+    valueUsd: item.valueUsd,
+    confidence: item.valuationConfidence
+  }));
+  const dataQuality = {
+    missingCostBasis: assets.filter((asset) => asset.performanceStatus === 'cost_basis_missing').length,
+    unpricedTransfers: assets.filter((asset) => asset.performanceStatus === 'unpriced_transfer' || asset.performanceStatus === 'no_price_quote').length,
+    lowConfidencePerformance: tradePerformance.filter((item) => item.valuationConfidence === 'low').length
+  };
+
+  return {
+    address,
+    chain,
+    labels,
+    stats,
+    categories,
+    walletPnl,
+    activitySummary: activity.summary,
+    tradedTokens: activity.tradedTokens.slice(0, 8),
+    topHoldings,
+    recentActivity,
+    performance,
+    activeMonitorCount: alertRules.filter((rule) => rule.enabled).length,
+    dataQuality
+  };
+}
+
+function walletInsightFingerprint(packet: unknown) {
+  let hash = 0;
+  const input = JSON.stringify(packet).replace(/\s+/g, '').slice(0, 12_000);
+  for (let index = 0; index < input.length; index += 1) {
+    hash = Math.imul(31, hash) + input.charCodeAt(index) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function formatWalletInsightMoney(value: number | undefined) {
+  if (!Number.isFinite(value || NaN)) return '';
+  return Number(value).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+}
+
+async function requestWalletAiInsight(address: string, chain: WalletChain, packet: unknown, fallbackInsight: string, fingerprint: string): Promise<WalletAiInsightResponse> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), WALLET_AI_INSIGHT_TIMEOUT_MS);
+  try {
+    const response = await fetch(apiUrl('/api/wallet/ai-insight'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({ address, chain, packet, fallbackInsight, fingerprint })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : 'Could not generate wallet insight.');
+    }
+    return payload as WalletAiInsightResponse;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function walletMonitorLabel(rule: SmartAlertRule) {
@@ -938,6 +1085,8 @@ function walletMonitorValue(rules: SmartAlertRule[], loading: boolean) {
 }
 
 function WalletInsightRail({
+  address,
+  chain,
   walletName,
   categories,
   stats,
@@ -951,6 +1100,8 @@ function WalletInsightRail({
   tradePerformance,
   walletPnl
 }: {
+  address: string;
+  chain: WalletChain;
   walletName: string;
   categories: WalletCategory[];
   stats: ReturnType<typeof useWalletPortfolio>['stats'];
@@ -964,15 +1115,79 @@ function WalletInsightRail({
   tradePerformance: WalletTradePerformance[];
   walletPnl?: WalletPnlSummary;
 }) {
+  const [aiInsight, setAiInsight] = useState<WalletAiInsightResponse | null>(null);
+  const [aiInsightLoading, setAiInsightLoading] = useState(false);
   const insightLoading = loadingPortfolio || loadingActivity;
   const hasWalletRead = assets.length > 0 || activity.activities.length > 0 || activity.summary.lastActiveAt > 0;
   const insightReady = !insightLoading && hasWalletRead;
-  const insight = insightReady ? buildWalletInsight(stats, activity, categories, assets) : null;
+  const insight = useMemo(() => insightReady ? buildWalletInsight(stats, activity, categories, assets, chain) : null, [activity, assets, categories, chain, insightReady, stats]);
+  const walletInsightPacket = useMemo(() => insight ? buildWalletInsightPacket({
+    address,
+    chain,
+    stats,
+    assets,
+    activity,
+    categories,
+    labels: insight,
+    alertRules,
+    tradePerformance,
+    walletPnl
+  }) : null, [address, activity, alertRules, assets, categories, chain, insight, stats, tradePerformance, walletPnl]);
+  const walletInsightKey = useMemo(() => walletInsightPacket ? walletInsightFingerprint(walletInsightPacket) : '', [walletInsightPacket]);
+  const displayedInsight = aiInsight?.insight || insight?.insight || '';
   const activeRules = alertRules.filter((rule) => rule.enabled);
   const monitorRows = WALLET_MONITOR_ROWS.map((row) => ({
     ...row,
     rules: activeRules.filter(row.matches)
   }));
+  const topHoldingPrompt = [...assets]
+    .sort((left, right) => right.rawValue - left.rawValue)
+    .slice(0, 3)
+    .map((asset) => `${asset.symbol} ${formatWalletInsightMoney(asset.rawValue) || asset.value}`)
+    .join(', ');
+  const recentActivityPrompt = activity.activities.slice(0, 3)
+    .map((item) => `${item.kind} ${item.title}${item.usdValue ? ` ${formatWalletInsightMoney(item.usdValue)}` : ''}`)
+    .join('; ');
+  const assistantPrompt = [
+    `Analyze this wallet on ${chain}: ${address}.`,
+    `Current snapshot: net worth ${stats.netWorth}, win rate ${stats.winRate}, total PnL ${stats.totalPnl}, realized PnL ${stats.realizedPnl}, unrealized PnL ${stats.unrealizedPnl}, active positions ${stats.activePositions}.`,
+    `Wallet insight: ${displayedInsight || insight?.insight || 'not ready'}.`,
+    topHoldingPrompt ? `Top holdings: ${topHoldingPrompt}.` : '',
+    recentActivityPrompt ? `Recent activity: ${recentActivityPrompt}.` : '',
+    'Explain behavior, risk profile, PnL, top holdings, recent activity, and what to monitor next.'
+  ].filter(Boolean).join(' ');
+
+  useEffect(() => {
+    if (!insight || !walletInsightPacket || !walletInsightKey) {
+      setAiInsight(null);
+      setAiInsightLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAiInsight(null);
+    setAiInsightLoading(true);
+    requestWalletAiInsight(address, chain, walletInsightPacket, insight.insight, walletInsightKey)
+      .then((response) => {
+        if (!cancelled) setAiInsight(response);
+      })
+      .catch(() => {
+        if (!cancelled) setAiInsight(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAiInsightLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address, chain, insight, walletInsightKey, walletInsightPacket]);
+
+  function askAtlaixAboutWallet() {
+    window.dispatchEvent(new CustomEvent(GLOBAL_ASSISTANT_OPEN_EVENT, {
+      detail: { prompt: assistantPrompt }
+    }));
+  }
 
   return (
     <aside className="wallet-side-rail">
@@ -984,12 +1199,22 @@ function WalletInsightRail({
           </div>
         </header>
         {insight ? (
-          <dl className="wallet-insight-list">
-            <div><dt>Behavior Type</dt><dd>{insight.behaviorType}</dd></div>
-            <div><dt>Risk Profile</dt><dd className={insight.riskProfile === 'Low' ? 'positive' : 'warning'}>{insight.riskProfile}</dd></div>
-            <div><dt>Trading Style</dt><dd>{insight.tradingStyle}</dd></div>
-            <div><dt>Preference</dt><dd>{insight.preference}</dd></div>
-          </dl>
+          <>
+            <dl className="wallet-insight-list">
+              <div><dt>Behavior Type</dt><dd>{insight.behaviorType}</dd></div>
+              <div><dt>Risk Profile</dt><dd className={insight.riskProfile === 'Low' ? 'positive' : 'warning'}>{insight.riskProfile}</dd></div>
+              <div><dt>Trading Style</dt><dd>{insight.tradingStyle}</dd></div>
+              <div><dt>Preference</dt><dd>{insight.preference}</dd></div>
+            </dl>
+            <div className="wallet-insight-summary">
+              <span>Insight</span>
+              <p>{aiInsightLoading ? 'Generating wallet insight' : displayedInsight}</p>
+            </div>
+            <button className="wallet-insight-ask-button" type="button" onClick={askAtlaixAboutWallet}>
+              <MessageSquare size={15} />
+              Ask Atlaix about this wallet
+            </button>
+          </>
         ) : (
           <div className="wallet-insight-loading">
             {insightLoading ? <Loader2 size={16} className="spin" /> : null}
