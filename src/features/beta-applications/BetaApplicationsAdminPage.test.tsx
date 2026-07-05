@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BetaApplicationsAdminPage } from './BetaApplicationsAdminPage';
 import { BetaApplicationService, type BetaApplication } from './beta-application-service';
 
@@ -9,7 +9,8 @@ vi.mock('./beta-application-service', () => ({
     listApplications: vi.fn(),
     approve: vi.fn(),
     reject: vi.fn(),
-    resend: vi.fn()
+    resend: vi.fn(),
+    delete: vi.fn()
   }
 }));
 
@@ -54,7 +55,14 @@ const applications: BetaApplication[] = [
 
 describe('BetaApplicationsAdminPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(BetaApplicationService.listApplications).mockResolvedValue({ applications });
+    vi.mocked(BetaApplicationService.delete).mockResolvedValue({ application: applications[0] });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('loads all applications for accurate counts and filters client-side', async () => {
@@ -71,5 +79,18 @@ describe('BetaApplicationsAdminPage', () => {
 
     expect(screen.getByText('Pending Applicant')).toBeInTheDocument();
     expect(screen.queryByText('Registered Applicant')).not.toBeInTheDocument();
+  });
+
+  it('lets admins delete an application after confirmation', async () => {
+    render(<BetaApplicationsAdminPage />);
+
+    expect(await screen.findByText('Pending Applicant')).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole('button', { name: /Delete/ })[0]);
+
+    expect(window.confirm).toHaveBeenCalledWith("Delete Pending Applicant's beta application? This cannot be undone.");
+    expect(BetaApplicationService.delete).toHaveBeenCalledWith('pending-application');
+    expect(await screen.findByText('Application deleted.')).toBeInTheDocument();
+    expect(BetaApplicationService.listApplications).toHaveBeenCalledTimes(2);
   });
 });

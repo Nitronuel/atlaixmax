@@ -5,6 +5,7 @@ import { sendJson, sendNotFound } from '../http/response';
 import {
   approveBetaApplication,
   createBetaApplication,
+  deleteBetaApplication,
   listBetaApplications,
   registerInvitedUser,
   rejectBetaApplication,
@@ -52,6 +53,11 @@ async function requireAdminUser(request: IncomingMessage): Promise<Authenticated
 
 function applicationIdFromPath(pathname: string, action: 'approve' | 'reject' | 'resend') {
   const match = new RegExp(`^/api/beta-applications/admin/([^/]+)/${action}$`).exec(pathname);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+function adminApplicationIdFromPath(pathname: string) {
+  const match = /^\/api\/beta-applications\/admin\/([^/]+)$/.exec(pathname);
   return match ? decodeURIComponent(match[1]) : '';
 }
 
@@ -107,6 +113,13 @@ export class BetaApplicationRoutes {
       sendJson(response, 200, {
         applications: await listBetaApplications(requestUrl.searchParams.get('status') || '')
       });
+      return;
+    }
+
+    const deleteId = adminApplicationIdFromPath(pathname);
+    if (method === 'DELETE' && deleteId) {
+      await requireAdminUser(request);
+      sendJson(response, 200, { application: await deleteBetaApplication(deleteId) });
       return;
     }
 

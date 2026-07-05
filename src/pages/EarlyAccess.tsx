@@ -1,4 +1,4 @@
-import { ArrowRight, CheckCircle, Mail, MessageSquare, Send, User, UserPlus, X } from 'lucide-react';
+import { ArrowRight, CheckCircle, Mail, MessageSquare, Send, User, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -90,24 +90,13 @@ export function EarlyAccessPage() {
 
   return (
     <main className="early-access-page">
-      <div className="early-access-brand">
-        <img src="/logo.png" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-        <span>Atlaix</span>
-      </div>
-
       <section className="early-access-shell" aria-label="Atlaix early access application">
         <div className="early-access-copy">
-          <div className="early-access-mark" aria-hidden="true">
-            <img src="/logo.png" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
-          </div>
+          <img className="early-access-mark" src="/logo.png" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
           <h1>AI-Powered <span>Market Intelligence</span></h1>
           <p>
             Atlaix is available by invitation while we onboard a limited group of early users and refine the platform before public release.
           </p>
-          <a className="early-access-jump" href="#early-access-form">
-            <UserPlus size={19} />
-            Apply for Early Access
-          </a>
           <p className="early-access-signin">
             Already invited? <Link to="/login">Sign in</Link>
           </p>
@@ -203,7 +192,7 @@ export function EarlyAccessPage() {
               {error ? <div className="early-access-error" role="alert">{error}</div> : null}
 
               <button className="early-access-submit" type="submit" disabled={submitting}>
-                <span>{submitting ? 'Submitting...' : 'Submit Application'}</span>
+                <span>{submitting ? 'Submitting...' : 'Apply for Early Access'}</span>
                 {!submitting ? <ArrowRight size={20} /> : null}
               </button>
             </>

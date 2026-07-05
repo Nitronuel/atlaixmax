@@ -93,6 +93,14 @@ export const BetaApplicationService = {
     );
   },
 
+  async delete(id: string) {
+    const headers = await sessionHeaders();
+    return requestJson<{ application: BetaApplication }>(
+      `/api/beta-applications/admin/${encodeURIComponent(id)}`,
+      { method: 'DELETE', headers }
+    );
+  },
+
   async verifyInvite(token: string) {
     const params = new URLSearchParams({ token });
     return requestJson<{ ok: true; application: InviteVerification }>(`/api/beta-applications/invite?${params.toString()}`);

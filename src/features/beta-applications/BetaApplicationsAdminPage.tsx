@@ -1,4 +1,4 @@
-import { Check, Copy, Mail, RefreshCw, UserCheck, X } from 'lucide-react';
+import { Check, Copy, Mail, RefreshCw, Trash2, UserCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { BetaApplicationService, type BetaApplication, type BetaApplicationStatus } from './beta-application-service';
 
@@ -50,7 +50,9 @@ export function BetaApplicationsAdminPage() {
     void loadApplications();
   }, []);
 
-  async function runAction(application: BetaApplication, action: 'approve' | 'reject' | 'resend') {
+  async function runAction(application: BetaApplication, action: 'approve' | 'reject' | 'resend' | 'delete') {
+    if (action === 'delete' && !window.confirm(`Delete ${application.fullName}'s beta application? This cannot be undone.`)) return;
+
     setWorkingId(application.id);
     setError(null);
     setMessage(null);
@@ -59,6 +61,9 @@ export function BetaApplicationsAdminPage() {
       if (action === 'reject') {
         await BetaApplicationService.reject(application.id);
         setMessage('Application rejected.');
+      } else if (action === 'delete') {
+        await BetaApplicationService.delete(application.id);
+        setMessage('Application deleted.');
       } else {
         const response = action === 'approve'
           ? await BetaApplicationService.approve(application.id)
@@ -164,6 +169,10 @@ export function BetaApplicationsAdminPage() {
                 </button>
               ) : null}
               {application.status === 'registered' ? <Check size={18} /> : null}
+              <button type="button" className="danger" onClick={() => void runAction(application, 'delete')} disabled={workingId === application.id}>
+                <Trash2 size={15} />
+                <span>Delete</span>
+              </button>
             </div>
           </div>
         )) : (

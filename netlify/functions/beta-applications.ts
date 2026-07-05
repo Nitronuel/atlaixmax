@@ -2,6 +2,7 @@ import { readEnv } from '../../server/env';
 import {
   approveBetaApplication,
   createBetaApplication,
+  deleteBetaApplication,
   listBetaApplications,
   registerInvitedUser,
   rejectBetaApplication,
@@ -10,7 +11,7 @@ import {
 
 const headers = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
   'Access-Control-Allow-Origin': '*',
   'Content-Type': 'application/json; charset=utf-8'
 };
@@ -119,6 +120,11 @@ function applicationIdFromPath(path: string, action: 'approve' | 'reject' | 'res
   return match ? decodeURIComponent(match[1]) : '';
 }
 
+function adminApplicationIdFromPath(path: string) {
+  const match = /^\/admin\/([^/]+)$/.exec(path);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : 'Request failed.';
   if (message === 'AUTH_REQUIRED') return json(401, { error: 'Sign in required.' });
@@ -181,6 +187,16 @@ export default async function handler(request: Request) {
       return json(200, {
         applications: await listBetaApplications(requestUrl.searchParams.get('status') || '')
       });
+    } catch (error) {
+      return errorResponse(error);
+    }
+  }
+
+  const deleteId = adminApplicationIdFromPath(path);
+  if (method === 'DELETE' && deleteId) {
+    try {
+      await requireAdminUser(request);
+      return json(200, { application: await deleteBetaApplication(deleteId) });
     } catch (error) {
       return errorResponse(error);
     }

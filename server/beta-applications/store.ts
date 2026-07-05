@@ -281,6 +281,19 @@ export async function rejectBetaApplication(id: string, reviewerId: string) {
   });
 }
 
+export async function deleteBetaApplication(id: string) {
+  const params = new URLSearchParams({
+    id: `eq.${id}`,
+    select: APPLICATION_COLUMNS
+  });
+  const rows = await supabaseFetch<BetaApplicationRow[]>(`beta_applications?${params.toString()}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=representation' }
+  });
+  if (!rows[0]) throw new Error('Application was not found.');
+  return normalizeRow(rows[0]);
+}
+
 export async function verifyInviteToken(token: string) {
   if (!token.trim()) throw new Error('Invite token is required.');
   const row = await findByInviteToken(token);

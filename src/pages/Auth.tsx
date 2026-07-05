@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type AuthMode = 'login' | 'reset';
@@ -8,6 +8,8 @@ type AuthMode = 'login' | 'reset';
 interface AuthScreenProps {
   initialMode?: AuthMode;
 }
+
+const REMEMBERED_EMAIL_KEY = 'atlaix-remembered-email';
 
 const formatAuthError = (value: unknown, fallback = 'Authentication could not complete. Please try again.') => {
   const message = value instanceof Error ? value.message : String(value || '');
@@ -26,6 +28,8 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +43,20 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
     setMessage(null);
     setError(null);
   }, [initialMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const rememberedEmail = window.localStorage.getItem(REMEMBERED_EMAIL_KEY);
+      if (rememberedEmail) {
+        setEmail(rememberedEmail);
+        setRemember(true);
+      }
+    } catch {
+      // Remembered email is optional.
+    }
+  }, []);
 
   if (!loading && user) {
     return <Navigate to={from} replace />;
@@ -63,6 +81,15 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
       if (password.length < 12) throw new Error('Password must be at least 12 characters.');
 
       await signIn(trimmedEmail, password);
+      try {
+        if (remember) {
+          window.localStorage.setItem(REMEMBERED_EMAIL_KEY, trimmedEmail);
+        } else {
+          window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+        }
+      } catch {
+        // Sign-in should not fail if local storage is unavailable.
+      }
       navigate(from, { replace: true });
     } catch (err) {
       setError(formatAuthError(err));
@@ -72,7 +99,7 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
   };
 
   const title = mode === 'login' ? 'Welcome back' : 'Reset password';
-  const buttonText = mode === 'login' ? 'Log in' : 'Send reset email';
+  const buttonText = mode === 'login' ? 'Sign in' : 'Send reset email';
 
   return (
     <main className="auth-page">
@@ -81,33 +108,74 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
           <img src="/logo.png" alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
           <strong>Atlaix</strong>
         </div>
-        <p>Anticipating trends ahead of the market.</p>
-
-        <div className="auth-tabs single" role="tablist" aria-label="Account access">
-          <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
-            Sign in
-          </button>
-        </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <h1>{title}{mode === 'login' ? '!' : ''}</h1>
+          <p className="auth-form-subtitle">
+            {mode === 'login' ? 'Sign in to access your Atlaix account' : 'Enter your email to receive a reset link'}
+          </p>
 
           <label>
             <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
+            <div className="auth-input-wrap">
+              <Mail size={23} />
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                autoComplete={remember ? 'email' : 'off'}
+                placeholder="Enter your email"
+              />
+            </div>
           </label>
 
           {mode !== 'reset' && (
             <label>
               <span>Password</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-              />
+              <div className="auth-input-wrap">
+                <Lock size={23} />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete={remember ? 'current-password' : 'off'}
+                  placeholder="Enter your password"
+                />
+                <button
+                  type="button"
+                  className="auth-password-toggle"
+                  onClick={() => setShowPassword((value) => !value)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={23} /> : <Eye size={23} />}
+                </button>
+              </div>
             </label>
           )}
+
+          {mode !== 'reset' ? (
+            <div className="auth-form-options">
+              <label className="auth-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(event) => {
+                    setRemember(event.target.checked);
+                    if (!event.target.checked) {
+                      try {
+                        window.localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+                      } catch {
+                        // Remembered email is optional.
+                      }
+                    }
+                  }}
+                />
+                <span className="auth-checkbox" aria-hidden="true">{remember ? <Check size={14} /> : null}</span>
+                <span>Remember me</span>
+              </label>
+              <button type="button" onClick={() => setMode('reset')}>Forgot password?</button>
+            </div>
+          ) : null}
 
           {(error || profileError) && (
             <div className="auth-message error">
@@ -129,14 +197,20 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
         </form>
 
         <div className="auth-links">
-          {mode !== 'reset' ? (
-            <button type="button" onClick={() => setMode('reset')}>Forgot password?</button>
-          ) : (
+          {mode === 'reset' ? (
             <button type="button" onClick={() => setMode('login')}>Back to login</button>
+          ) : (
+            <>
+              <span>Don't have an account?</span>
+              <Link to="/early-access">Sign up</Link>
+            </>
           )}
-
-          {mode === 'login' ? <Link to="/early-access">Apply for Early Access</Link> : null}
         </div>
+
+        <p className="auth-security-note">
+          <Lock size={17} />
+          <span>Secure and encrypted. Your data is safe with us.</span>
+        </p>
       </section>
     </main>
   );
