@@ -1,9 +1,12 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect } from 'react';
 import { ComingSoonPage } from './app/ComingSoonPage';
 import { Layout } from './app/Layout';
-import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { AdminRoute, ProtectedRoute } from './components/auth/ProtectedRoute';
+import { APP_CONFIG } from './config';
 import { AuthProvider } from './contexts/AuthContext';
 import { AiAssistantPage } from './features/ai-assistant/AiAssistantPage';
+import { BetaApplicationsAdminPage } from './features/beta-applications/BetaApplicationsAdminPage';
 import { CoinDetailsPage } from './features/coin-details/CoinDetailsPage';
 import { DetectionPage } from './features/detection/DetectionPage';
 import { DetectionTokenPage } from './features/detection/DetectionTokenPage';
@@ -15,7 +18,15 @@ import { TokenDetailsPage } from './features/token-details/TokenDetailsPage';
 import { WalletTrackerPage } from './features/wallet-tracker/WalletTrackerPage';
 import { WatchlistPage } from './features/watchlist/WatchlistPage';
 import { AuthScreen } from './pages/Auth';
+import { CreateAccountPage } from './pages/CreateAccount';
 import { ProfileSettings } from './pages/ProfileSettings';
+
+function EarlyAccessRedirect() {
+  useEffect(() => {
+    window.location.replace(`${APP_CONFIG.marketingBaseUrl}/early-access`);
+  }, []);
+  return null;
+}
 
 export default function App() {
   return (
@@ -23,7 +34,8 @@ export default function App() {
       <Routes>
         <Route path="/auth" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<AuthScreen initialMode="login" />} />
-        <Route path="/signup" element={<AuthScreen initialMode="signup" />} />
+        <Route path="/signup" element={APP_CONFIG.authMode === 'public' ? <AuthScreen initialMode="signup" /> : <EarlyAccessRedirect />} />
+        <Route path="/create-account" element={<CreateAccountPage />} />
         <Route path="/reset-password" element={<AuthScreen initialMode="reset" />} />
         <Route
           path="/*"
@@ -45,6 +57,7 @@ export default function App() {
                 <Route path="/smart-alerts" element={<SmartAlerts />} />
                 <Route path="/watchlist" element={<WatchlistPage />} />
                 <Route path="/ai-assistant" element={<AiAssistantPage />} />
+                <Route path="/admin/beta-applications" element={<AdminRoute><BetaApplicationsAdminPage /></AdminRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><ProfileSettings /></ProtectedRoute>} />
                 <Route path="*" element={<ComingSoonPage title="Page not found" />} />
               </Routes>

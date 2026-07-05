@@ -5,6 +5,7 @@ import { stat } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { loadEnvFile, readEnv } from './env';
 import { AiAssistantRoutes } from './ai-assistant/routes';
+import { BetaApplicationRoutes } from './beta-applications/routes';
 import { BubblemapsRoutes } from './bubblemaps/routes';
 import { CoinGeckoRoutes } from './coingecko/routes';
 import { startCoinGeckoIngestionScheduler } from './coingecko/database';
@@ -24,6 +25,7 @@ loadEnvFile('.env.local', true);
 
 const port = Number(readEnv('PORT', 'API_PORT') || 3101);
 const host = readEnv('API_HOST', 'HOST') || '0.0.0.0';
+const betaApplicationRoutes = new BetaApplicationRoutes();
 const bubblemapsRoutes = new BubblemapsRoutes();
 const overviewRoutes = new OverviewRoutes();
 const coinGeckoRoutes = new CoinGeckoRoutes();
@@ -107,6 +109,11 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    if (requestUrl.pathname.startsWith('/api/beta-applications')) {
+      await betaApplicationRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
     if (requestUrl.pathname.startsWith('/api/bubblemaps')) {
       await bubblemapsRoutes.handle(request, response, requestUrl);
       return;
@@ -176,6 +183,10 @@ const server = createServer(async (request, response) => {
     }
     if (message === 'AUTH_NOT_CONFIGURED') {
       sendJson(response, 503, { error: 'Account access is not configured.' });
+      return;
+    }
+    if (message === 'ADMIN_REQUIRED') {
+      sendJson(response, 403, { error: 'Admin access is required.' });
       return;
     }
     sendJson(response, 500, {

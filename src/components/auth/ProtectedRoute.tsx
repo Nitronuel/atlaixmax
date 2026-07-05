@@ -21,3 +21,14 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   return <>{children}</>;
 }
+
+export function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, profile, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <AuthLoading />;
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+  if (profile?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+
+  return <>{children}</>;
+}

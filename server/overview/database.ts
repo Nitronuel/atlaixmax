@@ -614,6 +614,17 @@ function shouldRetainToken(token: MarketCoinRow, metrics: {
   return scoreMarketCoin(token, metrics) >= FEED_MIN_SCORE;
 }
 
+function shouldRetainMarketRow(row: MarketCoinRow) {
+  return shouldRetainToken(row, {
+    marketCapUsd: parseCompactNumber(row.cap),
+    liquidityUsd: parseCompactNumber(row.liquidity),
+    volume24hUsd: parseCompactNumber(row.volume24h),
+    dexBuys24h: Math.max(0, Math.trunc(parseCompactNumber(row.dexBuys))),
+    dexSells24h: Math.max(0, Math.trunc(parseCompactNumber(row.dexSells))),
+    change24h: parsePercent(row.h24)
+  });
+}
+
 function normalizeEvent(signal?: string): OverviewEvent {
   if (signal === 'Accumulation') return 'Accumulation';
   if (signal === 'Breakout') return 'Momentum Breakout';
@@ -1442,7 +1453,7 @@ async function refreshExistingOverviewTokens(force = false): Promise<OverviewRef
     const refreshedRows = (await mapWithConcurrency(candidates, EXISTING_TOKEN_REFRESH_CONCURRENCY, async (token) => {
       const pair = await fetchDexScreenerPair(token.chain, token.pairAddress);
       return pair ? transformPair(pair) : null;
-    })).filter((row): row is MarketCoinRow => Boolean(row));
+    })).filter((row): row is MarketCoinRow => row !== null && shouldRetainMarketRow(row));
 
     if (refreshedRows.length) await upsertDiscoveredTokens(refreshedRows);
 

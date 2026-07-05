@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Mail } from 'lucide-react';
+import { APP_CONFIG } from '../config';
 import { useAuth } from '../contexts/AuthContext';
 
 type AuthMode = 'login' | 'signup' | 'reset';
@@ -23,6 +24,7 @@ const formatAuthError = (value: unknown, fallback = 'Authentication could not co
 };
 
 export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
+  const publicSignupEnabled = APP_CONFIG.authMode === 'public';
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -65,6 +67,7 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
       if (password.length < 12) throw new Error('Password must be at least 12 characters.');
 
       if (mode === 'signup') {
+        if (!publicSignupEnabled) throw new Error('Private Beta accounts require an invitation.');
         if (password !== confirmPassword) throw new Error('Passwords do not match.');
         const result = await signUp(trimmedEmail, password, displayName.trim());
         if (result.needsEmailConfirmation) {
@@ -107,13 +110,15 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
         </div>
         <p>Anticipating trends ahead of the market.</p>
 
-        <div className="auth-tabs" role="tablist" aria-label="Account access">
+        <div className={`auth-tabs ${publicSignupEnabled ? '' : 'single'}`} role="tablist" aria-label="Account access">
           <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
             Sign in
           </button>
-          <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>
-            Create account
-          </button>
+          {publicSignupEnabled ? (
+            <button type="button" className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>
+              Create account
+            </button>
+          ) : null}
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -176,11 +181,14 @@ export function AuthScreen({ initialMode = 'login' }: AuthScreenProps) {
             <button type="button" onClick={() => setMode('login')}>Back to login</button>
           )}
 
-          {mode !== 'reset' && (
+          {mode !== 'reset' && publicSignupEnabled && (
             <button type="button" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}>
               {mode === 'login' ? 'Create account' : 'Sign in instead'}
             </button>
           )}
+          {mode === 'login' && !publicSignupEnabled ? (
+            <a href={`${APP_CONFIG.marketingBaseUrl}/early-access`}>Apply for Early Access</a>
+          ) : null}
         </div>
 
         {mode !== 'reset' && (

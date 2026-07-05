@@ -1,4 +1,4 @@
-import { Bell, LayoutDashboard, LogIn, LogOut, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Star, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
+import { Bell, ClipboardList, LayoutDashboard, LogIn, LogOut, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Star, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalAiAssistant } from '../components/assistant/GlobalAiAssistant';
@@ -14,7 +14,8 @@ const navItems = [
   { path: '/smart-alerts', label: 'Intelligence Monitor', icon: <Bell size={19} />, group: 'tools' },
   { path: '/ai-assistant', label: 'AI Assistant', icon: <MessageSquare size={19} />, group: 'tools' },
   { path: '/safe-scan', label: 'Safe Scan', icon: <ShieldCheck size={19} />, group: 'tools' },
-  { path: '/settings', label: 'Settings', icon: <Settings size={19} />, group: 'account' }
+  { path: '/settings', label: 'Settings', icon: <Settings size={19} />, group: 'account' },
+  { path: '/admin/beta-applications', label: 'Beta Applications', icon: <ClipboardList size={19} />, group: 'account', adminOnly: true }
 ] as const;
 
 const sections = [
@@ -37,6 +38,7 @@ function titleFromPath(pathname: string) {
   if (pathname.startsWith('/smart-alerts')) return 'Intelligence Monitor';
   if (pathname.startsWith('/watchlist')) return 'Watchlist';
   if (pathname.startsWith('/ai-assistant')) return 'AI Assistant';
+  if (pathname.startsWith('/admin/beta-applications')) return 'Beta Applications';
   if (pathname.startsWith('/settings')) return 'Settings';
   return 'Page not found';
 }
@@ -104,6 +106,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
         <h1>{pageTitle}</h1>
         <div className="topbar-actions">
+          <div className="beta-badge" title="Private Beta">
+            <strong>Private Beta</strong>
+            <span>Thanks for helping shape Atlaix.</span>
+          </div>
           <div className="theme-segment" role="group" aria-label="Choose appearance">
             <button className={!darkMode ? 'active' : ''} type="button" onClick={() => setDarkMode(false)} aria-label="Switch to light mode" aria-pressed={!darkMode} title="Light mode">
               <Sun size={17} />
@@ -128,6 +134,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <Settings size={16} />
                       <span>Settings</span>
                     </Link>
+                    {profile?.role === 'admin' ? (
+                      <Link to="/admin/beta-applications" onClick={() => setUserMenuOpen(false)}>
+                        <ClipboardList size={16} />
+                        <span>Beta Applications</span>
+                      </Link>
+                    ) : null}
                     <button type="button" onClick={handleLogout}>
                       <LogOut size={16} />
                       <span>Log out</span>
@@ -177,10 +189,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 function NavList({ closeMobile }: { closeMobile?: () => void }) {
   const location = useLocation();
+  const { profile } = useAuth();
   return (
     <nav className="nav-list" aria-label="Primary navigation">
       {sections.map((section) => {
-        const items = navItems.filter((item) => item.group === section.key);
+        const items = navItems.filter((item) => item.group === section.key && (!('adminOnly' in item) || profile?.role === 'admin'));
         return (
           <div className="nav-section" key={section.key}>
             <small>{section.label}</small>
