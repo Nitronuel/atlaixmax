@@ -106,10 +106,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </Link>
         <h1>{pageTitle}</h1>
         <div className="topbar-actions">
-          <div className="beta-badge" title="Private Beta">
-            <strong>Private Beta</strong>
-            <span>Thanks for helping shape Atlaix.</span>
-          </div>
           <div className="theme-segment" role="group" aria-label="Choose appearance">
             <button className={!darkMode ? 'active' : ''} type="button" onClick={() => setDarkMode(false)} aria-label="Switch to light mode" aria-pressed={!darkMode} title="Light mode">
               <Sun size={17} />

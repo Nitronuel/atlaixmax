@@ -1407,29 +1407,6 @@ input:disabled {
   margin-left: auto;
 }
 
-.beta-badge {
-  display: none;
-  max-width: 260px;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(47, 134, 60, 0.18);
-  border-radius: 999px;
-  background: rgba(47, 134, 60, 0.08);
-  color: var(--primary-green);
-  padding: 7px 12px;
-  line-height: 1.1;
-}
-
-.beta-badge strong {
-  font-size: 0.78rem;
-}
-
-.beta-badge span {
-  color: var(--text-medium);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
 .theme-segment {
   display: inline-flex;
   align-items: center;
@@ -16309,12 +16286,6 @@ main {
   .overview-pulse-card small {
     justify-self: start;
     text-align: left;
-  }
-}
-
-@media (min-width: 1180px) {
-  .beta-badge {
-    display: inline-flex;
   }
 }
 
