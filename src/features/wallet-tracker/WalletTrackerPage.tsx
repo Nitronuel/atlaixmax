@@ -1278,7 +1278,7 @@ function WalletStatsGrid({
   ];
   const timelineItems = [
     { label: 'First Seen', value: timeline.firstSeen },
-    { label: 'Last Activity', value: timeline.lastActive, active: timeline.lastActive !== 'N/A' }
+    { label: 'Last Activity', value: timeline.lastActive }
   ];
 
   return (
@@ -1289,16 +1289,11 @@ function WalletStatsGrid({
           <strong className={loading ? '' : metricTone(label, value)}>{loading ? <Loader2 size={18} className="spin" /> : value}</strong>
         </div>
       ))}
-      {timelineItems.map(({ label, value, active }) => (
+      {timelineItems.map(({ label, value }) => (
         <div key={label}>
           <span>{label}</span>
           <strong className="wallet-timeline-value">
-            {timelineLoading ? <Loader2 size={18} className="spin" /> : (
-              <>
-                {value}
-                {active ? <i aria-hidden="true" /> : null}
-              </>
-            )}
+            {timelineLoading ? <Loader2 size={18} className="spin" /> : value}
           </strong>
         </div>
       ))}

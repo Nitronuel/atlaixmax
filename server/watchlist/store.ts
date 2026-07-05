@@ -355,16 +355,28 @@ export class WatchlistStore {
   async deleteAsset(id: string, userId: string) {
     if (!this.useLocalOnly) {
       try {
-        const params = new URLSearchParams({ id: `eq.${id}`, user_id: `eq.${userId}` });
-        await supabaseFetch<null>(`watchlist_assets?${params.toString()}`, { method: 'DELETE' });
+        const params = new URLSearchParams({
+          id: `eq.${id}`,
+          user_id: `eq.${userId}`,
+          select: ASSET_COLUMNS
+        });
+        const rows = await supabaseFetch<any[]>(`watchlist_assets?${params.toString()}`, {
+          method: 'DELETE',
+          headers: { Prefer: 'return=representation' }
+        });
+        const deleted = Array.isArray(rows) ? rows[0] : rows;
+        if (!deleted) throw new Error('Watchlist asset was not found.');
         return;
-      } catch {
+      } catch (error) {
+        if (getSupabaseConfig().url && getSupabaseConfig().key) throw error;
         this.useLocalOnly = true;
       }
     }
 
     const state = readLocalState();
-    state.assets = state.assets.filter((asset) => asset.id !== id || asset.user_id !== userId);
+    const nextAssets = state.assets.filter((asset) => asset.id !== id || asset.user_id !== userId);
+    if (nextAssets.length === state.assets.length) throw new Error('Watchlist asset was not found.');
+    state.assets = nextAssets;
     writeLocalState(state);
   }
 }

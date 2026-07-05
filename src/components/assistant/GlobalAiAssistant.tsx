@@ -871,7 +871,7 @@ export const GlobalAiAssistant: React.FC = () => {
         return null;
     }
 
-    const hideLauncher = location.pathname.startsWith('/detection/token/');
+    const hideLauncher = location.pathname.startsWith('/detection/token/') || location.pathname.startsWith('/wallet');
 
     return (
         <div className="global-ai-assistant fixed bottom-5 right-5 z-[70] sm:bottom-6 sm:right-6">

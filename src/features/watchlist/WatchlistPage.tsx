@@ -166,10 +166,15 @@ export function WatchlistPage() {
   const assetById = useMemo(() => new Map(assets.map((asset) => [asset.id, asset])), [assets]);
 
   const removeAsset = async (asset: WatchlistAsset) => {
-    await WatchlistService.deleteAsset(asset.id);
-    setAssets((current) => current.filter((item) => item.id !== asset.id));
-    if (selectedAsset?.id === asset.id) setSelectedAsset(null);
-    void loadWatchlist();
+    setError('');
+    try {
+      await WatchlistService.deleteAsset(asset.id);
+      setAssets((current) => current.filter((item) => item.id !== asset.id));
+      if (selectedAsset?.id === asset.id) setSelectedAsset(null);
+      void loadWatchlist();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Watchlist asset could not be removed.');
+    }
   };
 
   const toggleMonitor = async (asset: WatchlistAsset, key: keyof WatchlistMonitorSettings) => {

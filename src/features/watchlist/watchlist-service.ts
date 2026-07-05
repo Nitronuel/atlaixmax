@@ -82,6 +82,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const { data } = authSupabase ? await authSupabase.auth.getSession() : { data: { session: null } };
   const accessToken = data.session?.access_token;
   const response = await fetch(apiUrl(path), {
+    cache: 'no-store',
     ...init,
     headers: {
       'Content-Type': 'application/json',
