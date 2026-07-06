@@ -1,5 +1,6 @@
-import { ArrowRight, CheckCircle, Mail, MessageSquare, Send, User, X } from 'lucide-react';
+import { ArrowRight, CheckCircle, Mail, MessageSquare, Send, User } from 'lucide-react';
 import { useState } from 'react';
+import { SiX } from 'react-icons/si';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { BetaApplicationService } from '../features/beta-applications/beta-application-service';
@@ -151,7 +152,7 @@ export function EarlyAccessPage() {
               <label className="early-access-field">
                 <span>X Username <em>(Optional)</em></span>
                 <div>
-                  <X size={18} />
+                  <SiX size={17} aria-hidden="true" />
                   <input
                     type="text"
                     value={form.xUsername}
