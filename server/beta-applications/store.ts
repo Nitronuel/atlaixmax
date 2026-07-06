@@ -164,6 +164,73 @@ function inviteUrl(token: string) {
   return `${appBaseUrl()}/create-account?token=${encodeURIComponent(token)}`;
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function buildPrivateBetaInviteEmail(fullName: string, link: string) {
+  const name = fullName.trim() || 'there';
+  const subject = 'Welcome to Atlaix Private Beta';
+  const logoUrl = `${appBaseUrl()}/logo.png`;
+  const text = [
+    `Hi ${name},`,
+    '',
+    'Thank you for your interest in Atlaix.',
+    '',
+    "We're excited to let you know that your application has been approved. You're now invited to join the Atlaix Private Beta and get early access before our public launch.",
+    '',
+    'Click the button below to create your account and get started.',
+    '',
+    `Create Your Account: ${link}`,
+    '',
+    'This invitation is linked to your approved email address and is intended for you only.',
+    '',
+    "We're excited to have you with us. Your feedback will help shape the future of Atlaix.",
+    '',
+    'Welcome aboard!'
+  ].join('\n');
+  const safeName = escapeHtml(name);
+  const safeLink = escapeHtml(link);
+  const safeLogoUrl = escapeHtml(logoUrl);
+  const html = [
+    '<!doctype html>',
+    '<html>',
+    '<body style="margin:0;background:#f5f7f8;font-family:Inter,Arial,sans-serif;color:#111827;">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f7f8;padding:32px 16px;">',
+    '<tr>',
+    '<td align="center">',
+    '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border:1px solid #dce5df;border-radius:16px;overflow:hidden;">',
+    '<tr>',
+    '<td style="padding:32px;">',
+    `<img src="${safeLogoUrl}" width="44" height="44" alt="Atlaix" style="display:block;width:44px;height:44px;border-radius:12px;margin:0 0 18px;" />`,
+    '<div style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2f8f46;">Atlaix Private Beta</div>',
+    `<h1 style="margin:12px 0 24px;font-size:28px;line-height:1.2;color:#111827;">Welcome to Atlaix Private Beta</h1>`,
+    `<p style="margin:0 0 16px;font-size:16px;line-height:1.65;">Hi ${safeName},</p>`,
+    '<p style="margin:0 0 16px;font-size:16px;line-height:1.65;">Thank you for your interest in Atlaix.</p>',
+    '<p style="margin:0 0 16px;font-size:16px;line-height:1.65;">We&#39;re excited to let you know that your application has been approved. You&#39;re now invited to join the Atlaix Private Beta and get early access before our public launch.</p>',
+    '<p style="margin:0 0 24px;font-size:16px;line-height:1.65;">Click the button below to create your account and get started.</p>',
+    `<p style="margin:0 0 24px;"><a href="${safeLink}" style="display:inline-block;background:#2f8f46;color:#ffffff;text-decoration:none;font-weight:700;border-radius:10px;padding:14px 20px;">Create Your Account</a></p>`,
+    '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563;">This invitation is linked to your approved email address and is intended for you only.</p>',
+    '<p style="margin:0 0 16px;font-size:16px;line-height:1.65;">We&#39;re excited to have you with us. Your feedback will help shape the future of Atlaix.</p>',
+    '<p style="margin:0;font-size:16px;line-height:1.65;">Welcome aboard!</p>',
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</td>',
+    '</tr>',
+    '</table>',
+    '</body>',
+    '</html>'
+  ].join('');
+
+  return { subject, text, html };
+}
+
 async function findByEmail(email: string) {
   const params = new URLSearchParams({
     select: `${APPLICATION_COLUMNS},invite_token_hash`,
@@ -360,6 +427,7 @@ async function createSupabaseUser(input: { email: string; password: string; disp
 async function sendInviteEmail(email: string, fullName: string, link: string) {
   const apiKey = readEnv('RESEND_API_KEY');
   const from = readEnv('RESEND_FROM_EMAIL') || 'Atlaix <hello@atlaix.com>';
+  const invite = buildPrivateBetaInviteEmail(fullName, link);
   if (!apiKey) {
     return { sent: false, reason: 'Email provider is not configured.' };
   }
@@ -373,17 +441,9 @@ async function sendInviteEmail(email: string, fullName: string, link: string) {
     body: JSON.stringify({
       from,
       to: [email],
-      subject: 'Your Atlaix Private Beta invite',
-      text: [
-        `Hi ${fullName},`,
-        '',
-        'Your Atlaix Private Beta invite is ready.',
-        `Create your account here: ${link}`,
-        '',
-        'This invite expires in 7 days.',
-        '',
-        'Atlaix'
-      ].join('\n')
+      subject: invite.subject,
+      text: invite.text,
+      html: invite.html
     })
   });
 
