@@ -16,16 +16,22 @@ export type MailMessage = {
 const DEFAULT_SMTP_HOST = 'smtp.hostinger.com';
 const DEFAULT_SMTP_PORT = 465;
 const DEFAULT_SMTP_FROM = 'Atlaix Support <support@atlaix.com>';
+const DEFAULT_SMTP_TIMEOUT_MS = 8000;
 
 function smtpConfig() {
-  const port = Number(readEnv('SMTP_PORT') || DEFAULT_SMTP_PORT);
+  const configuredPort = readEnv('SMTP_PORT');
+  const configuredSecure = readEnv('SMTP_SECURE');
+  const port = Number(configuredPort || DEFAULT_SMTP_PORT);
   return {
     host: readEnv('SMTP_HOST') || DEFAULT_SMTP_HOST,
     port: Number.isFinite(port) ? port : DEFAULT_SMTP_PORT,
-    secure: (readEnv('SMTP_SECURE') || 'true').toLowerCase() !== 'false',
+    secure: (configuredSecure || 'true').toLowerCase() !== 'false',
     user: readEnv('SMTP_USER'),
     pass: readEnv('SMTP_PASS'),
-    from: readEnv('SMTP_FROM') || DEFAULT_SMTP_FROM
+    from: readEnv('SMTP_FROM') || DEFAULT_SMTP_FROM,
+    timeoutMs: Number(readEnv('SMTP_TIMEOUT_MS') || DEFAULT_SMTP_TIMEOUT_MS),
+    hasCustomPort: Boolean(configuredPort),
+    hasCustomSecure: Boolean(configuredSecure)
   };
 }
 
@@ -39,11 +45,34 @@ export async function sendMail(message: MailMessage): Promise<MailDelivery> {
     return { sent: false, reason: 'SMTP_USER and SMTP_PASS are not configured.' };
   }
 
+  const attempts = [{ port: config.port, secure: config.secure }];
+  if (!config.hasCustomPort && !config.hasCustomSecure && config.port === 465) {
+    attempts.push({ port: 587, secure: false });
+  }
+  const errors: string[] = [];
+
+  for (const attempt of attempts) {
+    const delivery = await sendWithConfig(config, attempt, message);
+    if (delivery.sent) return delivery;
+    if (delivery.reason) errors.push(delivery.reason);
+  }
+
+  return { sent: false, reason: errors.filter(Boolean).join(' | ') || 'Email could not be sent.' };
+}
+
+async function sendWithConfig(
+  config: ReturnType<typeof smtpConfig>,
+  attempt: { port: number; secure: boolean },
+  message: MailMessage
+): Promise<MailDelivery> {
   try {
     const transport = nodemailer.createTransport({
       host: config.host,
-      port: config.port,
-      secure: config.secure,
+      port: attempt.port,
+      secure: attempt.secure,
+      connectionTimeout: config.timeoutMs,
+      greetingTimeout: config.timeoutMs,
+      socketTimeout: config.timeoutMs,
       auth: {
         user: config.user,
         pass: config.pass
@@ -59,9 +88,10 @@ export async function sendMail(message: MailMessage): Promise<MailDelivery> {
     });
     return { sent: true };
   } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Email could not be sent.';
     return {
       sent: false,
-      reason: error instanceof Error ? error.message : 'Email could not be sent.'
+      reason: `${config.host}:${attempt.port} ${reason}`
     };
   }
 }

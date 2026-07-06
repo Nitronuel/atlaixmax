@@ -48,13 +48,14 @@ describe('feedback support conversations', () => {
 
     expect(thread.messages).toHaveLength(1);
     expect(thread.status).toBe('waiting_admin');
-    expect(thread.messages[0].email_sent_at).toBeTruthy();
     expect(sent).toHaveLength(1);
     expect(sent[0].to).toBe('support@atlaix.com');
     expect(sent[0].replyTo).toBe('ada@example.com');
     expect(sent[0].text).toContain('Sender: Ada <ada@example.com>');
     expect(sent[0].text).toContain('Source page: /wallet/0xabc');
     expect(sent[0].text).toContain('The monitor failed after I tracked a wallet.');
+    const updated = await waitForThread(() => service.getThreadForUser(thread.id, user().id), (next) => Boolean(next.messages[0].email_sent_at));
+    expect(updated.messages[0].email_sent_at).toBeTruthy();
   });
 
   it('keeps feedback saved when email delivery fails', async () => {
@@ -67,8 +68,32 @@ describe('feedback support conversations', () => {
     });
 
     expect(thread.messages).toHaveLength(1);
+    const updated = await waitForThread(() => service.getThreadForUser(thread.id, user().id), (next) => next.messages[0].email_error === 'SMTP test failure.');
+    expect(updated.messages[0].email_sent_at).toBeNull();
+    expect(updated.messages[0].email_error).toBe('SMTP test failure.');
+  });
+
+  it('returns saved feedback before slow email delivery completes', async () => {
+    const deferred: { resolve?: (value: { sent: boolean }) => void } = {};
+    const mailer: FeedbackMailer = async (message) => {
+      sent.push(message);
+      return new Promise((resolve) => {
+        deferred.resolve = resolve;
+      });
+    };
+    const service = new FeedbackService(new FeedbackStore(), mailer);
+
+    const thread = await service.createThread(user(), {
+      subject: 'Slow SMTP',
+      message: 'This should save before email finishes.'
+    });
+
+    expect(thread.messages).toHaveLength(1);
     expect(thread.messages[0].email_sent_at).toBeNull();
-    expect(thread.messages[0].email_error).toBe('SMTP test failure.');
+    expect(sent).toHaveLength(1);
+    deferred.resolve?.({ sent: true });
+    const updated = await waitForThread(() => service.getThreadForUser(thread.id, user().id), (next) => Boolean(next.messages[0].email_sent_at));
+    expect(updated.messages[0].email_sent_at).toBeTruthy();
   });
 
   it('emails the user and stores the message when admin replies', async () => {
@@ -145,4 +170,14 @@ function restoreEnv(key: string, value: string | undefined) {
     return;
   }
   process.env[key] = value;
+}
+
+async function waitForThread<T>(load: () => Promise<T>, predicate: (value: T) => boolean) {
+  let latest = await load();
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (predicate(latest)) return latest;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    latest = await load();
+  }
+  return latest;
 }

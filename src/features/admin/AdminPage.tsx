@@ -18,7 +18,7 @@ function statusLabel(status: string) {
 }
 
 function messageAuthor(message: FeedbackMessage, thread: FeedbackThread) {
-  return message.sender_role === 'admin' ? 'Atlaix Support' : `${thread.user_name} · ${thread.user_email}`;
+  return message.sender_role === 'admin' ? 'Atlaix Support' : `${thread.user_name} - ${thread.user_email}`;
 }
 
 export function AdminPage() {
@@ -170,8 +170,8 @@ function AdminFeedbackPanel() {
               onClick={() => void openThread(thread)}
             >
               <strong>{thread.subject}</strong>
-              <span>{thread.user_name} · {thread.user_email}</span>
-              <small>{thread.category} · {statusLabel(thread.status)}</small>
+              <span>{thread.user_name} - {thread.user_email}</span>
+              <small>{thread.category} - {statusLabel(thread.status)}</small>
               <time>{formatDate(thread.last_message_at)}</time>
             </button>
           )) : (
@@ -186,8 +186,8 @@ function AdminFeedbackPanel() {
                 <div>
                   <small>{selectedThread.category}</small>
                   <h3>{selectedThread.subject}</h3>
-                  <p>{selectedThread.user_name} · {selectedThread.user_email}</p>
-                  <p>Source: {selectedThread.source_path || 'Not provided'} · Last update {formatDate(selectedThread.last_message_at)}</p>
+                  <p>{selectedThread.user_name} - {selectedThread.user_email}</p>
+                  <p>Source: {selectedThread.source_path || 'Not provided'} - Last update {formatDate(selectedThread.last_message_at)}</p>
                 </div>
                 <label>
                   <span className="sr-only">Thread status</span>

@@ -184,7 +184,7 @@ export function FeedbackPage() {
                 onClick={() => void openThread(thread)}
               >
                 <strong>{thread.subject}</strong>
-                <span>{thread.category} · {statusLabel(thread.status)}</span>
+                <span>{thread.category} - {statusLabel(thread.status)}</span>
                 <time>{formatDate(thread.last_message_at)}</time>
               </button>
             )) : (
@@ -199,7 +199,7 @@ export function FeedbackPage() {
                   <div>
                     <small>{selectedThread.category}</small>
                     <h3>{selectedThread.subject}</h3>
-                    <p>{statusLabel(selectedThread.status)} · Last update {formatDate(selectedThread.last_message_at)}</p>
+                    <p>{statusLabel(selectedThread.status)} - Last update {formatDate(selectedThread.last_message_at)}</p>
                   </div>
                   <span className={`feedback-status is-${selectedThread.status}`}>{statusLabel(selectedThread.status)}</span>
                 </header>
@@ -212,7 +212,6 @@ export function FeedbackPage() {
                         <time>{formatDate(item.created_at)}</time>
                       </div>
                       <p>{item.message}</p>
-                      {item.email_error ? <small>Email notice: {item.email_error}</small> : null}
                     </article>
                   ))}
                 </div>

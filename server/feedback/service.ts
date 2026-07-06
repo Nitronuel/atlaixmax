@@ -101,6 +101,18 @@ export class FeedbackService {
     private readonly mailer: FeedbackMailer = sendMail
   ) {}
 
+  private queueEmail(messageId: string, message: MailMessage) {
+    void this.mailer(message)
+      .then((delivery) => this.store.updateMessageEmail(messageId, delivery))
+      .catch((error) => this.store.updateMessageEmail(messageId, {
+        sent: false,
+        reason: error instanceof Error ? error.message : 'Email could not be sent.'
+      }))
+      .catch((error) => {
+        console.warn('[Feedback] Email status update failed.', error);
+      });
+  }
+
   async createThread(user: AuthenticatedUser, input: CreateFeedbackInput) {
     const thread = await this.store.createThread({
       userId: user.id,
@@ -117,13 +129,12 @@ export class FeedbackService {
       senderEmail: user.email,
       message: requireMessage(input.message)
     });
-    const delivery = await this.mailer({
+    this.queueEmail(message.id, {
       to: supportEmail(),
       subject: supportSubject(thread),
       text: supportMessageText(thread, message.message, 'New Atlaix feedback'),
       replyTo: user.email
     });
-    await this.store.updateMessageEmail(message.id, delivery);
     return this.getThreadForUser(thread.id, user.id);
   }
 
@@ -136,13 +147,12 @@ export class FeedbackService {
       senderEmail: user.email,
       message: requireMessage(input.message)
     });
-    const delivery = await this.mailer({
+    this.queueEmail(message.id, {
       to: supportEmail(),
       subject: supportSubject(thread),
       text: supportMessageText(thread, message.message, 'User replied to Atlaix feedback'),
       replyTo: user.email
     });
-    await this.store.updateMessageEmail(message.id, delivery);
     return this.getThreadForUser(thread.id, user.id);
   }
 
@@ -155,13 +165,12 @@ export class FeedbackService {
       senderEmail: admin.email,
       message: requireMessage(input.message)
     });
-    const delivery = await this.mailer({
+    this.queueEmail(message.id, {
       to: thread.user_email,
       subject: userSubject(thread),
       text: userReplyText(thread, message.message),
       replyTo: supportEmail()
     });
-    await this.store.updateMessageEmail(message.id, delivery);
     return this.getThreadForAdmin(thread.id);
   }
 
