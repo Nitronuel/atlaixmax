@@ -167,6 +167,7 @@ export class FeedbackService {
     });
     this.queueEmail(message.id, {
       to: thread.user_email,
+      bcc: supportEmail(),
       subject: userSubject(thread),
       text: userReplyText(thread, message.message),
       replyTo: supportEmail()

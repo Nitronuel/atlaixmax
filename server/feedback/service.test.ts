@@ -13,7 +13,7 @@ describe('feedback support conversations', () => {
   const originalSupabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
   const originalSupportEmail = process.env.SUPPORT_EMAIL;
   let workspace = '';
-  let sent: Array<{ to: string | string[]; subject: string; text: string; replyTo?: string }> = [];
+  let sent: Array<{ to: string | string[]; bcc?: string | string[]; subject: string; text: string; replyTo?: string }> = [];
   let failNext = false;
 
   beforeEach(() => {
@@ -111,6 +111,7 @@ describe('feedback support conversations', () => {
     expect(replied.messages.map((message) => message.sender_role)).toEqual(['user', 'admin']);
     expect(sent).toHaveLength(2);
     expect(sent[1].to).toBe('ada@example.com');
+    expect(sent[1].bcc).toBe('support@atlaix.com');
     expect(sent[1].replyTo).toBe('support@atlaix.com');
     expect(sent[1].text).toContain('Yes, the wallet alert is active now.');
   });

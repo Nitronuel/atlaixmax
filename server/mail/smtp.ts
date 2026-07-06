@@ -8,6 +8,7 @@ export type MailDelivery = {
 
 export type MailMessage = {
   to: string | string[];
+  bcc?: string | string[];
   subject: string;
   text: string;
   replyTo?: string;
@@ -88,6 +89,7 @@ async function sendResendMail(message: MailMessage): Promise<MailDelivery> {
       body: JSON.stringify({
         from,
         to: Array.isArray(message.to) ? message.to : [message.to],
+        ...(message.bcc ? { bcc: Array.isArray(message.bcc) ? message.bcc : [message.bcc] } : {}),
         subject: message.subject,
         text: message.text,
         ...(message.replyTo ? { reply_to: message.replyTo } : {})
@@ -130,6 +132,7 @@ async function sendWithConfig(
     await transport.sendMail({
       from: config.from,
       to: message.to,
+      bcc: message.bcc,
       subject: message.subject,
       text: message.text,
       replyTo: message.replyTo
