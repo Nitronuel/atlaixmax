@@ -30,8 +30,7 @@ function smtpConfig() {
     pass: readEnv('SMTP_PASS'),
     from: readEnv('SMTP_FROM') || DEFAULT_SMTP_FROM,
     timeoutMs: Number(readEnv('SMTP_TIMEOUT_MS') || DEFAULT_SMTP_TIMEOUT_MS),
-    hasCustomPort: Boolean(configuredPort),
-    hasCustomSecure: Boolean(configuredSecure)
+    fallbackDisabled: readEnv('SMTP_DISABLE_FALLBACK').toLowerCase() === 'true'
   };
 }
 
@@ -46,7 +45,7 @@ export async function sendMail(message: MailMessage): Promise<MailDelivery> {
   }
 
   const attempts = [{ port: config.port, secure: config.secure }];
-  if (!config.hasCustomPort && !config.hasCustomSecure && config.port === 465) {
+  if (!config.fallbackDisabled && config.port === 465) {
     attempts.push({ port: 587, secure: false });
   }
   const errors: string[] = [];
