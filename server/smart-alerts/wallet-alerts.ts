@@ -3,7 +3,7 @@ import type { IncomingHttpHeaders } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { readEnv } from '../env';
-import { SmartAlertStore, type SmartAlertRow } from './store';
+import { normalizeAlertCooldownMinutes, SmartAlertStore, type SmartAlertRow } from './store';
 
 type WalletAlertEventType = 'any' | 'buy' | 'sell' | 'trade' | 'receive' | 'send' | 'execute' | 'approval' | 'rollback' | 'unknown';
 
@@ -275,7 +275,7 @@ export async function createWalletActivityAlert(store: SmartAlertStore, input: C
     threshold: eventTypes.includes('any') ? 'Any wallet activity' : eventTypes.join(','),
     triggerLabel: `${label}: ${eventLabel}`,
     notificationChannels,
-    cooldownMinutes: input.cooldownMinutes ?? 1,
+    cooldownMinutes: normalizeAlertCooldownMinutes(input.cooldownMinutes, 1),
     metadata
   }, userId);
 

@@ -3,11 +3,12 @@ import { ComingSoonPage } from './app/ComingSoonPage';
 import { Layout } from './app/Layout';
 import { AdminRoute, ProtectedRoute } from './components/auth/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import { AdminPage } from './features/admin/AdminPage';
 import { AiAssistantPage } from './features/ai-assistant/AiAssistantPage';
-import { BetaApplicationsAdminPage } from './features/beta-applications/BetaApplicationsAdminPage';
 import { CoinDetailsPage } from './features/coin-details/CoinDetailsPage';
 import { DetectionPage } from './features/detection/DetectionPage';
 import { DetectionTokenPage } from './features/detection/DetectionTokenPage';
+import { FeedbackPage } from './features/feedback/FeedbackPage';
 import { OverviewPage } from './features/overview/OverviewPage';
 import { SafeScanPage } from './features/safe-scan/SafeScanPage';
 import { SmartMoneyPage } from './features/smart-money/SmartMoneyPage';
@@ -51,7 +52,9 @@ export default function App() {
                   <Route path="/smart-alerts" element={<SmartAlerts />} />
                   <Route path="/watchlist" element={<WatchlistPage />} />
                   <Route path="/ai-assistant" element={<AiAssistantPage />} />
-                  <Route path="/admin/beta-applications" element={<AdminRoute><BetaApplicationsAdminPage /></AdminRoute>} />
+                  <Route path="/feedback" element={<FeedbackPage />} />
+                  <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+                  <Route path="/admin/beta-applications" element={<Navigate to="/admin" replace />} />
                   <Route path="/settings" element={<ProfileSettings />} />
                   <Route path="*" element={<ComingSoonPage title="Page not found" />} />
                 </Routes>

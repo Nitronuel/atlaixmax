@@ -64,6 +64,25 @@ describe('Intelligence Monitor store', () => {
     expect(updated.metadata.status).toBe('active');
   });
 
+  it('normalizes alert cooldowns to the database range', async () => {
+    const store = new SmartAlertStore();
+
+    const rule = await store.createRule({
+      alertType: 'Price',
+      target: 'Example Token',
+      chainId: 'solana',
+      tokenAddress: 'TokenAddress111111111111111111111111111111',
+      condition: 'above',
+      thresholdKind: 'currency',
+      threshold: '1',
+      triggerLabel: 'Example Token above $1',
+      notificationChannels: ['in_app'],
+      cooldownMinutes: 0
+    }, '11111111-1111-4111-8111-111111111111');
+
+    expect(rule.cooldown_minutes).toBe(1);
+  });
+
   it('notifies each matching detection subscription with per-rule dedupe keys', async () => {
     const store = new SmartAlertStore();
     const event = makeDetectionEvent();

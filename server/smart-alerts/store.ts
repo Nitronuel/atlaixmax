@@ -57,6 +57,9 @@ const SUPABASE_TIMEOUT_MS = 12_000;
 const WALLET_COMPAT_ALERT_TYPE: SmartAlertRow['alert_type'] = 'Whale';
 const RULE_COLUMNS = 'id,user_id,alert_type,target,chain_id,token_address,condition,threshold_kind,threshold,trigger_label,notification_channels,cooldown_minutes,enabled,last_checked_at,last_triggered_at,last_observed_value,last_observed_at,baseline_value,baseline_observed_at,trigger_count,last_error,metadata,created_at,updated_at';
 const TRIGGER_COLUMNS = 'id,alert_rule_id,user_id,alert_type,title,message,observed_value,threshold,source,dedupe_key,metadata,created_at';
+const ALERT_COOLDOWN_MINUTES_MIN = 1;
+const ALERT_COOLDOWN_MINUTES_MAX = 10080;
+const ALERT_COOLDOWN_MINUTES_DEFAULT = 60;
 
 function getDefaultUserId() {
   return readEnv('SMART_ALERTS_USER_ID') || LOCAL_USER_ID;
@@ -132,6 +135,15 @@ function normalizeChannels(value: unknown) {
   return Array.isArray(value) ? value.map(String).filter(Boolean) : ['in_app'];
 }
 
+export function normalizeAlertCooldownMinutes(value: unknown, fallback = ALERT_COOLDOWN_MINUTES_DEFAULT) {
+  const normalizedFallback = Number.isFinite(Number(fallback))
+    ? Math.trunc(Number(fallback))
+    : ALERT_COOLDOWN_MINUTES_DEFAULT;
+  const minutes = value === null || value === undefined ? normalizedFallback : Math.trunc(Number(value));
+  if (!Number.isFinite(minutes)) return normalizedFallback;
+  return Math.min(ALERT_COOLDOWN_MINUTES_MAX, Math.max(ALERT_COOLDOWN_MINUTES_MIN, minutes));
+}
+
 function isWalletActivityMetadata(metadata: unknown) {
   return Boolean(metadata && typeof metadata === 'object' && (
     (metadata as Record<string, unknown>).alertMode === 'wallet_activity' ||
@@ -175,7 +187,7 @@ function normalizeRule(row: any): SmartAlertRow {
     threshold: row.threshold || '',
     trigger_label: row.trigger_label || '',
     notification_channels: normalizeChannels(row.notification_channels),
-    cooldown_minutes: row.cooldown_minutes === null || row.cooldown_minutes === undefined ? 60 : Number(row.cooldown_minutes),
+    cooldown_minutes: normalizeAlertCooldownMinutes(row.cooldown_minutes),
     enabled: Boolean(row.enabled),
     last_checked_at: row.last_checked_at || null,
     last_triggered_at: row.last_triggered_at || null,
@@ -468,7 +480,7 @@ export class SmartAlertStore {
       threshold: input.threshold,
       trigger_label: input.triggerLabel,
       notification_channels: input.notificationChannels?.length ? input.notificationChannels : ['in_app'],
-      cooldown_minutes: input.cooldownMinutes ?? 60,
+      cooldown_minutes: normalizeAlertCooldownMinutes(input.cooldownMinutes),
       enabled: true,
       metadata: input.metadata || {},
       created_at: now,

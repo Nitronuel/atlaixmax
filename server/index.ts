@@ -10,6 +10,7 @@ import { BubblemapsRoutes } from './bubblemaps/routes';
 import { CoinGeckoRoutes } from './coingecko/routes';
 import { startCoinGeckoIngestionScheduler } from './coingecko/database';
 import { DetectionRoutes } from './detection/routes';
+import { FeedbackRoutes } from './feedback/routes';
 import { setBaseHeaders, sendJson, sendNotFound } from './http/response';
 import { startOverviewIngestionScheduler } from './overview/database';
 import { OverviewRoutes } from './overview/routes';
@@ -34,6 +35,7 @@ const aiAssistantRoutes = new AiAssistantRoutes(smartAlertRoutes);
 const smartMoneyRoutes = new SmartMoneyRoutes();
 const walletRoutes = new WalletRoutes();
 const detectionRoutes = new DetectionRoutes();
+const feedbackRoutes = new FeedbackRoutes();
 const securityScannerRoutes = new SecurityScannerRoutes();
 const telegramRoutes = new TelegramRoutes();
 const watchlistRoutes = new WatchlistRoutes(smartAlertRoutes.store);
@@ -136,6 +138,11 @@ const server = createServer(async (request, response) => {
 
     if (requestUrl.pathname.startsWith('/api/security-scanner')) {
       await securityScannerRoutes.handle(request, response, requestUrl);
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/api/feedback')) {
+      await feedbackRoutes.handle(request, response, requestUrl);
       return;
     }
 

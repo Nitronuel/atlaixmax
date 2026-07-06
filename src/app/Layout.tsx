@@ -1,4 +1,4 @@
-import { Bell, ClipboardList, LayoutDashboard, LogIn, LogOut, Menu, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Star, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
+import { Bell, ClipboardList, LayoutDashboard, LogIn, LogOut, Menu, MessageCircle, MessageSquare, Moon, PanelLeft, Radar, Settings, ShieldCheck, Star, Sun, Target, User, Wallet, X, Zap } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { GlobalAiAssistant } from '../components/assistant/GlobalAiAssistant';
@@ -15,7 +15,8 @@ const navItems = [
   { path: '/ai-assistant', label: 'AI Market Analyst', icon: <MessageSquare size={19} />, group: 'tools' },
   { path: '/safe-scan', label: 'Safe Scan', icon: <ShieldCheck size={19} />, group: 'tools' },
   { path: '/settings', label: 'Settings', icon: <Settings size={19} />, group: 'account' },
-  { path: '/admin/beta-applications', label: 'Beta Applications', icon: <ClipboardList size={19} />, group: 'account', adminOnly: true }
+  { path: '/feedback', label: 'Feedback', icon: <MessageCircle size={19} />, group: 'account' },
+  { path: '/admin', label: 'Admin', icon: <ClipboardList size={19} />, group: 'account', adminOnly: true }
 ] as const;
 
 const sections = [
@@ -38,7 +39,8 @@ function titleFromPath(pathname: string) {
   if (pathname.startsWith('/smart-alerts')) return 'Intelligence Monitor';
   if (pathname.startsWith('/watchlist')) return 'Watchlist';
   if (pathname.startsWith('/ai-assistant')) return 'AI Market Analyst';
-  if (pathname.startsWith('/admin/beta-applications')) return 'Beta Applications';
+  if (pathname.startsWith('/feedback')) return 'Feedback';
+  if (pathname.startsWith('/admin')) return 'Admin';
   if (pathname.startsWith('/settings')) return 'Settings';
   return 'Page not found';
 }
@@ -131,9 +133,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <span>Settings</span>
                     </Link>
                     {profile?.role === 'admin' ? (
-                      <Link to="/admin/beta-applications" onClick={() => setUserMenuOpen(false)}>
+                      <Link to="/admin" onClick={() => setUserMenuOpen(false)}>
                         <ClipboardList size={16} />
-                        <span>Beta Applications</span>
+                        <span>Admin</span>
                       </Link>
                     ) : null}
                     <button type="button" onClick={handleLogout}>

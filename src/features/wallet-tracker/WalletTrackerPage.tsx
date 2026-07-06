@@ -586,7 +586,7 @@ function WalletProfile({ address }: { address: string }) {
         eventTypes: walletAlertEventTypes,
         notificationChannels: walletAlertChannels,
         ignoreSpam: true,
-        cooldownMinutes: 0
+        cooldownMinutes: 1
       });
       setWalletAlertRules((current) => [rule, ...current.filter((item) => item.id !== rule.id)]);
       setWalletAlertOpen(false);
