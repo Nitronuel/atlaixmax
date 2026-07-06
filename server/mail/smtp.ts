@@ -40,10 +40,24 @@ export function supportEmail() {
 
 export async function sendMail(message: MailMessage): Promise<MailDelivery> {
   const config = smtpConfig();
-  if (!config.user || !config.pass) {
-    return { sent: false, reason: 'SMTP_USER and SMTP_PASS are not configured.' };
+  const errors: string[] = [];
+
+  if (config.user && config.pass) {
+    const smtpDelivery = await sendSmtpMail(config, message);
+    if (smtpDelivery.sent) return smtpDelivery;
+    if (smtpDelivery.reason) errors.push(smtpDelivery.reason);
+  } else {
+    errors.push('SMTP_USER and SMTP_PASS are not configured.');
   }
 
+  const resendDelivery = await sendResendMail(message);
+  if (resendDelivery.sent) return resendDelivery;
+  if (resendDelivery.reason) errors.push(resendDelivery.reason);
+
+  return { sent: false, reason: errors.filter(Boolean).join(' | ') || 'Email could not be sent.' };
+}
+
+async function sendSmtpMail(config: ReturnType<typeof smtpConfig>, message: MailMessage): Promise<MailDelivery> {
   const attempts = [{ port: config.port, secure: config.secure }];
   if (!config.fallbackDisabled && config.port === 465) {
     attempts.push({ port: 587, secure: false });
@@ -57,6 +71,41 @@ export async function sendMail(message: MailMessage): Promise<MailDelivery> {
   }
 
   return { sent: false, reason: errors.filter(Boolean).join(' | ') || 'Email could not be sent.' };
+}
+
+async function sendResendMail(message: MailMessage): Promise<MailDelivery> {
+  const apiKey = readEnv('RESEND_API_KEY');
+  if (!apiKey) return { sent: false, reason: 'RESEND_API_KEY is not configured.' };
+
+  const from = readEnv('RESEND_FROM_EMAIL', 'SMTP_FROM') || DEFAULT_SMTP_FROM;
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from,
+        to: Array.isArray(message.to) ? message.to : [message.to],
+        subject: message.subject,
+        text: message.text,
+        ...(message.replyTo ? { reply_to: message.replyTo } : {})
+      })
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      return { sent: false, reason: `Resend failed (${response.status}). ${text}`.trim() };
+    }
+
+    return { sent: true };
+  } catch (error) {
+    return {
+      sent: false,
+      reason: error instanceof Error ? error.message : 'Resend email could not be sent.'
+    };
+  }
 }
 
 async function sendWithConfig(

@@ -21,6 +21,15 @@ function messageAuthor(message: FeedbackMessage, thread: FeedbackThread) {
   return message.sender_role === 'admin' ? 'Atlaix Support' : `${thread.user_name} - ${thread.user_email}`;
 }
 
+function EmailDeliveryNotice({ error }: { error: string }) {
+  return (
+    <details className="feedback-email-notice">
+      <summary>Email delivery failed</summary>
+      <span>{error}</span>
+    </details>
+  );
+}
+
 export function AdminPage() {
   const [tab, setTab] = useState<AdminTab>('feedback');
 
@@ -205,7 +214,7 @@ function AdminFeedbackPanel() {
                       <time>{formatDate(item.created_at)}</time>
                     </div>
                     <p>{item.message}</p>
-                    {item.email_error ? <small>Email notice: {item.email_error}</small> : null}
+                    {item.email_error ? <EmailDeliveryNotice error={item.email_error} /> : null}
                   </article>
                 ))}
               </div>
