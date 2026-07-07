@@ -58,6 +58,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
   const pageTitle = titleFromPath(location.pathname);
+  const showGlobalAiAssistant = !location.pathname.startsWith('/feedback');
   const displayName = profile?.display_name || user?.email?.split('@')[0] || 'Guest';
   const displayEmail = user?.email || 'Not signed in';
   const initial = displayName.trim().charAt(0).toUpperCase() || 'A';
@@ -180,7 +181,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main>{children}</main>
-      <GlobalAiAssistant />
+      {showGlobalAiAssistant ? <GlobalAiAssistant /> : null}
     </div>
   );
 }
