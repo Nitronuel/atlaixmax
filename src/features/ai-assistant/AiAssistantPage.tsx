@@ -34,7 +34,6 @@ type ChatMessage = {
 };
 
 const SUGGESTED_PROMPTS = [
-    'How is $KISHU moving?',
     'What tokens are performing well?',
     'Tokens with accumulation events',
     'Run a risk read on a token'
@@ -250,7 +249,6 @@ const toolIcon = (tool?: string) => {
 };
 
 const promptToMessage = (prompt: string) => {
-    if (prompt === 'How is $KISHU moving?') return 'How is $KISHU moving today?';
     if (prompt === 'What tokens are performing well?') return 'What tokens are performing well today?';
     if (prompt === 'Tokens with accumulation events') return 'Show me tokens with accumulation events';
     return 'Run a risk read on a token';
@@ -351,6 +349,15 @@ export const AiAssistantPage: React.FC = () => {
         <div className="ai-assistant-page h-[calc(100vh-132px)] overflow-hidden rounded-xl border border-border bg-card shadow-[0_24px_80px_rgba(0,0,0,0.3)]">
             <div className="flex h-full">
                 <section className="ai-assistant-stage relative flex min-w-0 flex-1 flex-col overflow-hidden bg-main">
+                    <button
+                        type="button"
+                        onClick={startNewChat}
+                        className="ai-assistant-new-chat-button"
+                        aria-label="New assistant chat"
+                        title="New chat"
+                    >
+                        <Plus size={18} />
+                    </button>
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
                             <div className={`ai-assistant-chat-column mx-auto flex min-h-full w-full flex-col ${conversationMode ? 'justify-end gap-3 pb-2' : 'justify-center pb-12'}`}>
                                 {!conversationMode ? (
@@ -390,15 +397,6 @@ export const AiAssistantPage: React.FC = () => {
                                                         aria-label="Send assistant message"
                                                     >
                                                         <Send size={17} />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={startNewChat}
-                                                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-green text-main transition-colors hover:bg-primary-green/90"
-                                                        aria-label="New assistant chat"
-                                                        title="New chat"
-                                                    >
-                                                        <Plus size={18} />
                                                     </button>
                                                 </div>
                                             </form>
@@ -537,15 +535,6 @@ export const AiAssistantPage: React.FC = () => {
                                             aria-label="Send assistant message"
                                         >
                                             <Send size={18} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={startNewChat}
-                                            className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-green text-main transition-colors hover:bg-primary-green/90"
-                                            aria-label="New assistant chat"
-                                            title="New chat"
-                                        >
-                                            <Plus size={20} />
                                         </button>
                                     </div>
                                 </div>

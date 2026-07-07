@@ -29,10 +29,22 @@ const columns: CoinColumn[] = [
   { label: 'Read', key: 'event', width: 170 }
 ];
 
-function ColGroup() {
+const mobileColumns: CoinColumn[] = [
+  { label: 'Rank', key: 'marketCapRank', className: 'chain-col', width: 44, align: 'right' },
+  { label: 'Coin', key: 'symbol', className: 'token-col', width: 112 },
+  { label: 'Price', key: 'priceUsd', width: 82, align: 'right' },
+  { label: '24h', key: 'change24h', width: 72, align: 'right' },
+  { label: 'MCap', key: 'marketCapUsd', width: 88, align: 'right' },
+  { label: '24h Volume', key: 'volume24hUsd', width: 96, align: 'right' },
+  { label: 'FDV', key: 'fdvUsd', width: 92, align: 'right' },
+  { label: 'Circ. Supply', key: 'circulatingSupply', width: 98, align: 'right' },
+  { label: 'Read', key: 'event', width: 112 }
+];
+
+function ColGroup({ tableColumns }: { tableColumns: CoinColumn[] }) {
   return (
     <colgroup>
-      {columns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
+      {tableColumns.map((column) => <col key={column.key} style={{ width: column.width }} />)}
     </colgroup>
   );
 }
@@ -46,10 +58,10 @@ function SortGlyph({ direction }: { direction?: 'asc' | 'desc' }) {
   );
 }
 
-function HeaderRow({ sortConfig, onSort }: { sortConfig: CoinSortConfig; onSort: (key: CoinSortKey) => void }) {
+function HeaderRow({ tableColumns, sortConfig, onSort }: { tableColumns: CoinColumn[]; sortConfig: CoinSortConfig; onSort: (key: CoinSortKey) => void }) {
   return (
     <tr>
-      {columns.map((column) => {
+      {tableColumns.map((column) => {
         const active = sortConfig?.key === column.key;
         const direction = active ? sortConfig?.direction : undefined;
         return (
@@ -78,6 +90,33 @@ function CoinLogo({ coin }: { coin: CoinGeckoCoin }) {
   return <span className="overview-token-logo">{coin.image ? <img src={coin.image} alt="" /> : coin.symbol.slice(0, 2)}</span>;
 }
 
+function CoinCell({ coin, column }: { coin: CoinGeckoCoin; column: CoinColumn }) {
+  const cellClassName = [column.className || '', column.align === 'right' ? 'metric-col' : ''].filter(Boolean).join(' ');
+
+  if (column.key === 'marketCapRank') return <td className={cellClassName}>#{coin.marketCapRank || 'N/A'}</td>;
+  if (column.key === 'symbol') {
+    return (
+      <td className={cellClassName}>
+        <CoinLogo coin={coin} />
+        <span>
+          <strong>{coin.symbol}</strong>
+          <small>{coin.name}</small>
+        </span>
+      </td>
+    );
+  }
+  if (column.key === 'priceUsd') return <td className={cellClassName}>{formatPrice(coin.priceUsd)}</td>;
+  if (column.key === 'change1h') return <td className={`${cellClassName} ${signedClass(coin.change1h)}`}>{formatPercentValue(coin.change1h)}</td>;
+  if (column.key === 'change24h') return <td className={`${cellClassName} ${signedClass(coin.change24h)}`}>{formatPercentValue(coin.change24h)}</td>;
+  if (column.key === 'change7d') return <td className={`${cellClassName} ${signedClass(coin.change7d)}`}>{formatPercentValue(coin.change7d)}</td>;
+  if (column.key === 'change30d') return <td className={`${cellClassName} ${signedClass(coin.change30d)}`}>{formatPercentValue(coin.change30d)}</td>;
+  if (column.key === 'marketCapUsd') return <td className={cellClassName}>{formatUsd(coin.marketCapUsd)}</td>;
+  if (column.key === 'volume24hUsd') return <td className={cellClassName}>{formatUsd(coin.volume24hUsd)}</td>;
+  if (column.key === 'fdvUsd') return <td className={cellClassName}>{formatUsd(coin.fdvUsd)}</td>;
+  if (column.key === 'circulatingSupply') return <td className={cellClassName}>{formatInteger(coin.circulatingSupply)}</td>;
+  return <td className={cellClassName}><span className="overview-event-pill">{coin.event}</span></td>;
+}
+
 export function CoinAlphaFeed({
   coins,
   loading,
@@ -99,6 +138,7 @@ export function CoinAlphaFeed({
 }) {
   const [sortConfig, setSortConfig] = useState<CoinSortConfig>({ key: 'marketCapRank', direction: 'asc' });
   const [page, setPage] = useState(1);
+  const [isMobileTable, setIsMobileTable] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches);
   const feedRef = useRef<HTMLElement | null>(null);
   const headRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLDivElement | null>(null);
@@ -110,12 +150,21 @@ export function CoinAlphaFeed({
   const limited = useMemo(() => sorted.slice(0, visibleLimit(filters, sorted.length)), [filters, sorted]);
   const totalPages = Math.max(1, Math.ceil(limited.length / PAGE_SIZE));
   const pageRows = useMemo(() => limited.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [limited, page]);
-  const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
+  const tableColumns = isMobileTable ? mobileColumns : columns;
+  const tableWidth = tableColumns.reduce((sum, column) => sum + column.width, 0);
 
   useEffect(() => setPage(1), [filters, searchQuery, sortConfig]);
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 720px)');
+    const update = () => setIsMobileTable(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
 
   useLayoutEffect(() => {
     const feed = feedRef.current;
@@ -179,8 +228,8 @@ export function CoinAlphaFeed({
 
         <div ref={headerRef} onScroll={() => syncScroll(headerRef.current)} className="overview-column-head">
           <table style={{ minWidth: tableWidth }}>
-            <ColGroup />
-            <thead><HeaderRow sortConfig={sortConfig} onSort={toggleSort} /></thead>
+            <ColGroup tableColumns={tableColumns} />
+            <thead><HeaderRow tableColumns={tableColumns} sortConfig={sortConfig} onSort={toggleSort} /></thead>
           </table>
         </div>
 
@@ -196,28 +245,11 @@ export function CoinAlphaFeed({
             </div>
           ) : (
             <table style={{ minWidth: tableWidth }}>
-              <ColGroup />
+              <ColGroup tableColumns={tableColumns} />
               <tbody>
                 {pageRows.map((coin) => (
                   <tr key={coin.id} onClick={() => openCoin(coin)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openCoin(coin)}>
-                    <td className="chain-col metric-col">#{coin.marketCapRank || 'N/A'}</td>
-                    <td className="token-col">
-                      <CoinLogo coin={coin} />
-                      <span>
-                        <strong>{coin.symbol}</strong>
-                        <small>{coin.name}</small>
-                      </span>
-                    </td>
-                    <td className="metric-col">{formatPrice(coin.priceUsd)}</td>
-                    <td className={`metric-col ${signedClass(coin.change1h)}`}>{formatPercentValue(coin.change1h)}</td>
-                    <td className={`metric-col ${signedClass(coin.change24h)}`}>{formatPercentValue(coin.change24h)}</td>
-                    <td className={`metric-col ${signedClass(coin.change7d)}`}>{formatPercentValue(coin.change7d)}</td>
-                    <td className={`metric-col ${signedClass(coin.change30d)}`}>{formatPercentValue(coin.change30d)}</td>
-                    <td className="metric-col">{formatUsd(coin.marketCapUsd)}</td>
-                    <td className="metric-col">{formatUsd(coin.volume24hUsd)}</td>
-                    <td className="metric-col">{formatUsd(coin.fdvUsd)}</td>
-                    <td className="metric-col">{formatInteger(coin.circulatingSupply)}</td>
-                    <td><span className="overview-event-pill">{coin.event}</span></td>
+                    {tableColumns.map((column) => <CoinCell coin={coin} column={column} key={column.key} />)}
                   </tr>
                 ))}
               </tbody>

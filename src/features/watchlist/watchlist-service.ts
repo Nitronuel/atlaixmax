@@ -17,6 +17,7 @@ const DEFAULT_MONITORS: WatchlistMonitorSettings = {
   aiStateChanges: true,
   majorVolumeEvents: true
 };
+const WATCHLIST_REQUEST_TIMEOUT_MS = 12_000;
 
 function normalizeNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -78,23 +79,36 @@ function normalizeActivity(row: any): WatchlistActivityItem {
   };
 }
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { data } = authSupabase ? await authSupabase.auth.getSession() : { data: { session: null } };
   const accessToken = data.session?.access_token;
-  const response = await fetch(apiUrl(path), {
-    cache: 'no-store',
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(init?.headers || {})
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), WATCHLIST_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(apiUrl(path), {
+      ...init,
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(init.headers || {})
+      }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(typeof payload?.error === 'string' ? payload.error : 'Watchlist request failed.');
     }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(typeof payload?.error === 'string' ? payload.error : 'Watchlist request failed.');
+    return payload as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Watchlist request timed out.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return payload as T;
 }
 
 export const WatchlistService = {

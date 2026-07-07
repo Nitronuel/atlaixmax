@@ -51,9 +51,8 @@ function writeCachedFeed(key: string, feed: CachedOverviewFeed | CachedCoinFeed)
   }
 }
 
-function applyFeed(response: CachedOverviewFeed, setTokens: (tokens: OverviewToken[]) => void, setLastUpdated: (date: Date) => void) {
+function applyFeed(response: CachedOverviewFeed, setTokens: (tokens: OverviewToken[]) => void) {
   setTokens(response.tokens);
-  setLastUpdated(new Date(response.generatedAt));
   writeCachedFeed(FEED_CACHE_KEY, { generatedAt: response.generatedAt, tokens: response.tokens });
 }
 
@@ -72,7 +71,6 @@ export function OverviewPage() {
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [coinsError, setCoinsError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [coinsLastUpdated, setCoinsLastUpdated] = useState<Date | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<OverviewFilters>(DEFAULT_OVERVIEW_FILTERS);
@@ -99,7 +97,7 @@ export function OverviewPage() {
     setError(null);
     try {
       const response = await OverviewService.getFeed(force);
-      applyFeed(response, setTokens, setLastUpdated);
+      applyFeed(response, setTokens);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Live Market Feed is unavailable.');
     } finally {
@@ -139,7 +137,6 @@ export function OverviewPage() {
     const cached = readCachedFeed<CachedOverviewFeed>(FEED_CACHE_KEY, 'tokens');
     if (cached) {
       setTokens(cached.tokens);
-      setLastUpdated(new Date(cached.generatedAt));
       setLoading(false);
       void loadFeed(false);
       void loadDetectionEvents();
@@ -209,7 +206,6 @@ export function OverviewPage() {
           tokens={tokens}
           loading={loading || syncing}
           error={error}
-          lastUpdated={lastUpdated}
           searchQuery={searchQuery}
           filters={filters}
           detectionEvents={detectionEvents}

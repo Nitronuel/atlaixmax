@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, BarChart3, TrendingUp, Zap } from 'lucide-react';
+import { Activity, BarChart3, ChevronRight, TrendingUp, Zap } from 'lucide-react';
 import type { OverviewToken } from '../../shared/overview';
 import { formatInteger, formatUsd, openToken } from './overview-utils';
 
@@ -203,6 +203,7 @@ export function MarketPulse({ tokens }: { tokens: OverviewToken[] }) {
           </div>
         </div>
       </div>
+      <span className="overview-pulse-scroll-cue" aria-hidden="true"><ChevronRight size={16} /></span>
     </section>
   );
 }

@@ -45,19 +45,9 @@ export class WatchlistRoutes {
 
     if (method === 'GET' && pathname === '/api/watchlist/assets') {
       const user = await requireAuthenticatedUser(request);
-      const { assets, activity } = await this.loadActivity(user.id, 50, true);
-      const byAsset = latestActivityByAsset(activity);
-      sendJson(response, 200, {
-        assets: assets.map((asset) => {
-          const latest = byAsset.get(asset.id);
-          return latest ? {
-            ...asset,
-            state: asset.state || latest.title,
-            last_event_type: asset.last_event_type || latest.title,
-            last_event_at: asset.last_event_at || latest.createdAt
-          } : asset;
-        })
-      });
+      const assets = await this.loadAssets(user.id);
+      void refreshWatchlistMarketData(this.store, assets, user.id).catch(() => undefined);
+      sendJson(response, 200, { assets });
       return;
     }
 

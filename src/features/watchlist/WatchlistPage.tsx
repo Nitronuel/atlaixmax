@@ -113,19 +113,31 @@ export function WatchlistPage() {
       return;
     }
 
-    setLoading(true);
+    const hasPageData = assets.length > 0 || activity.length > 0 || summary !== EMPTY_SUMMARY;
+    if (!hasPageData) setLoading(true);
     setError('');
     try {
-      const [nextAssets, nextSummary, nextActivity] = await Promise.all([
-        WatchlistService.listAssets(),
+      const nextAssets = await WatchlistService.listAssets();
+      setAssets(nextAssets);
+      if (selectedAsset) {
+        setSelectedAsset(nextAssets.find((asset) => asset.id === selectedAsset.id) || null);
+      }
+
+      if (!hasPageData) setLoading(false);
+
+      const [nextSummary, nextActivity] = await Promise.allSettled([
         WatchlistService.getSummary(),
         WatchlistService.getActivity(30)
       ]);
-      setAssets(nextAssets);
-      setSummary(nextSummary);
-      setActivity(nextActivity);
-      if (selectedAsset) {
-        setSelectedAsset(nextAssets.find((asset) => asset.id === selectedAsset.id) || null);
+      if (nextSummary.status === 'fulfilled') {
+        setSummary(nextSummary.value);
+      }
+      if (nextActivity.status === 'fulfilled') {
+        setActivity(nextActivity.value);
+      }
+      if (nextSummary.status === 'rejected' || nextActivity.status === 'rejected') {
+        const failed = nextSummary.status === 'rejected' ? nextSummary.reason : nextActivity.status === 'rejected' ? nextActivity.reason : null;
+        setError(failed instanceof Error ? failed.message : 'Some watchlist intelligence could not be loaded.');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Watchlist could not be loaded.');
